@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+    <channel>
+        <title>Termy</title>
+        <description>Latest Termy releases</description>
+        <language>en</language>
+
+        <item>
+            <title>Version 0.5.0</title>
+            <description><![CDATA[
+                <h2>Visual previews + auto-updater</h2>
+                <ul>
+                    <li>Theme/cursor/density/font/opacity visual previews in Settings</li>
+                    <li>Icon-only AI launcher row in white</li>
+                    <li>Sparkle auto-updater wired up</li>
+                    <li>Profiles model (UI coming next release)</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 17:30:00 +0000</pubDate>
+            <sparkle:version>5</sparkle:version>
+            <sparkle:shortVersionString>0.5.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.5.0/Termy.dmg"
+                sparkle:version="5"
+                sparkle:shortVersionString="0.5.0"
+                length="0"
+                type="application/octet-stream"/>
+        </item>
+    </channel>
+</rss>
