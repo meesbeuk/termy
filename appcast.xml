@@ -6,6 +6,28 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.31</title>
+            <description><![CDATA[
+                <h2>Diagnostics view (A #2 from the roadmap)</h2>
+                <ul>
+                    <li><strong>Settings → About → Run Diagnostics…</strong> opens a sheet showing exactly what Termy is currently advertising to tools that probe terminal capabilities: TERM / TERM_PROGRAM / LC_TERMINAL / TERM_FEATURES env vars, graphics-protocol parsers active, OSC 133 / OSC 8 setup state, notification settings, recording state. Plus a "Copy report to clipboard" button so the user can paste it directly into a GitHub issue when something isn't working.</li>
+                    <li>Cuts down "why isn't <code>imgcat</code> rendering?" / "why isn't my OSC 133 setup firing?" support load by making detection state visible.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 08:45:00 +0000</pubDate>
+            <sparkle:version>48</sparkle:version>
+            <sparkle:shortVersionString>0.9.31</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.31/Termy.dmg"
+                sparkle:version="48"
+                sparkle:shortVersionString="0.9.31"
+                length="2991852"
+                sparkle:edSignature="ZX90Sg6b1q/Pre8ruOyQ1xqJ1IaYimJtPFz36ugCAG+PjGoUdmbKDOAJVhSSxlL7dnpfw1Wu+YKBHl5/33foCg=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.30</title>
             <description><![CDATA[
                 <h2>Trigger packs — Bucket A #4 (Termy's take on iTerm2 triggers)</h2>

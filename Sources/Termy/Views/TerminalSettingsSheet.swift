@@ -521,6 +521,7 @@ private struct TriggerPacksControl: View {
 
 private struct AboutPane: View {
     @State private var showingResetConfirm = false
+    @State private var showingDiagnostics = false
 
     private var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
@@ -569,6 +570,22 @@ private struct AboutPane: View {
                 }
             }
 
+            DSSection("Diagnostics") {
+                Button(action: { showingDiagnostics = true }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "stethoscope")
+                        Text("Run Diagnostics…")
+                    }
+                    .font(DS.Typo.caption)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.Colors.accent)
+                Text("Shows what Termy is currently advertising to tools that probe terminal capabilities. Paste the copyable report in a GitHub issue if something's not working.")
+                    .font(DS.Typo.tiny)
+                    .foregroundStyle(DS.Colors.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             DSSection("Reset") {
                 Button(role: .destructive, action: { showingResetConfirm = true }) {
                     HStack(spacing: 4) {
@@ -584,6 +601,9 @@ private struct AboutPane: View {
                     .foregroundStyle(DS.Colors.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+        .sheet(isPresented: $showingDiagnostics) {
+            DiagnosticsSheet(onDismiss: { showingDiagnostics = false })
         }
         .alert("Reset all Termy settings?", isPresented: $showingResetConfirm) {
             Button("Cancel", role: .cancel) {}
