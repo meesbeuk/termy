@@ -69,9 +69,9 @@ struct TerminalSettingsSheet: View {
                 case .general: GeneralPane()
                 case .profiles: ProfilesPane()
                 case .vibecoder: VibecoderPane()
+                // .cursor removed; no case to handle.
                 case .theme: ThemePane()
                 case .font: FontPane()
-                case .cursor: CursorPane()
                 case .density: DensityPane()
                 case .chrome: ChromePane()
                 case .background: BackgroundPane()
@@ -89,7 +89,10 @@ struct TerminalSettingsSheet: View {
 }
 
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    case general, profiles, vibecoder, theme, font, cursor, density, chrome, background, updates, about
+    // Cursor pane removed in v0.8.3 — SwiftTerm doesn't expose a public API to
+    // set cursor style/blink, so the toggles did nothing. Better gone than
+    // misleading users into thinking they had an effect.
+    case general, profiles, vibecoder, theme, font, density, chrome, background, updates, about
     var id: String { rawValue }
     var displayName: String {
         switch self {
@@ -98,7 +101,6 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .vibecoder: return "Vibecoder"
         case .theme: return "Theme"
         case .font: return "Font"
-        case .cursor: return "Cursor"
         case .density: return "Density"
         case .chrome: return "Chrome"
         case .background: return "Background"
@@ -113,7 +115,6 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .vibecoder: return "sparkles"
         case .theme: return "paintpalette"
         case .font: return "textformat"
-        case .cursor: return "cursorarrow"
         case .density: return "rectangle.compress.vertical"
         case .chrome: return "rectangle.topthird.inset.filled"
         case .background: return "circle.lefthalf.filled"
@@ -261,26 +262,9 @@ private struct FontPane: View {
     }
 }
 
-private struct CursorPane: View {
-    @EnvironmentObject var settings: TerminalSettings
-    var body: some View {
-        DSSection("Cursor") {
-            HStack(spacing: DS.Spacing.s) {
-                ForEach(CursorStyle.allCases) { style in
-                    CursorPreview(
-                        style: style,
-                        blink: settings.cursorBlink,
-                        isSelected: settings.cursorStyle == style,
-                        onSelect: { settings.cursorStyle = style }
-                    )
-                    .frame(maxWidth: .infinity)
-                }
-            }
-            Toggle("Blink", isOn: $settings.cursorBlink)
-                .toggleStyle(.checkbox).font(DS.Typo.caption)
-        }
-    }
-}
+// CursorPane removed in v0.8.3 — SwiftTerm doesn't expose a public hook to
+// change cursor style/blink, and the DECSCUSR escape we tried corrupted the
+// terminal buffer. We'll bring this back when there's a safe way to wire it.
 
 private struct DensityPane: View {
     @EnvironmentObject var settings: TerminalSettings

@@ -49,13 +49,8 @@ final class TerminalSettings: ObservableObject {
         didSet { UserDefaults.standard.set(vibecoderMode, forKey: Self.vibecoderKey) }
     }
 
-    @Published var cursorStyle: CursorStyle {
-        didSet { UserDefaults.standard.set(cursorStyle.rawValue, forKey: Self.cursorStyleKey) }
-    }
-
-    @Published var cursorBlink: Bool {
-        didSet { UserDefaults.standard.set(cursorBlink, forKey: Self.cursorBlinkKey) }
-    }
+    // cursorStyle + cursorBlink removed in v0.8.3 — SwiftTerm has no public
+    // hook to set them and the DECSCUSR path corrupted the buffer.
 
     @Published var paddingPreset: PaddingPreset {
         didSet { UserDefaults.standard.set(paddingPreset.rawValue, forKey: Self.paddingKey) }
@@ -112,8 +107,6 @@ final class TerminalSettings: ObservableObject {
     private static let opacityKey = "termy.opacity"
     private static let autoOpacityKey = "termy.autoOpacity"
     private static let vibecoderKey = "termy.vibecoderMode"
-    private static let cursorStyleKey = "termy.cursorStyle"
-    private static let cursorBlinkKey = "termy.cursorBlink"
     private static let paddingKey = "termy.padding"
     private static let lineSpacingKey = "termy.lineSpacing"
     private static let showStatusBarKey = "termy.showStatusBar"
@@ -143,13 +136,6 @@ final class TerminalSettings: ObservableObject {
             self.vibecoderMode = true
         } else {
             self.vibecoderMode = UserDefaults.standard.bool(forKey: Self.vibecoderKey)
-        }
-        let cursorRaw = UserDefaults.standard.string(forKey: Self.cursorStyleKey) ?? CursorStyle.block.rawValue
-        self.cursorStyle = CursorStyle(rawValue: cursorRaw) ?? .block
-        if UserDefaults.standard.object(forKey: Self.cursorBlinkKey) == nil {
-            self.cursorBlink = true
-        } else {
-            self.cursorBlink = UserDefaults.standard.bool(forKey: Self.cursorBlinkKey)
         }
         let padRaw = UserDefaults.standard.string(forKey: Self.paddingKey) ?? PaddingPreset.cozy.rawValue
         self.paddingPreset = PaddingPreset(rawValue: padRaw) ?? .cozy
@@ -211,18 +197,6 @@ final class TerminalSettings: ObservableObject {
     func bumpFontSize() { fontSize += 1 }
     func reduceFontSize() { fontSize -= 1 }
     func resetFontSize() { fontSize = Self.default }
-}
-
-enum CursorStyle: String, CaseIterable, Identifiable {
-    case block, bar, underline
-    var id: String { rawValue }
-    var displayName: String {
-        switch self {
-        case .block: return "Block"
-        case .bar: return "Bar"
-        case .underline: return "Underline"
-        }
-    }
 }
 
 enum PaddingPreset: String, CaseIterable, Identifiable {

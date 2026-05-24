@@ -52,7 +52,7 @@ struct TerminalSurface: NSViewRepresentable {
         // Skip the full re-apply when nothing the view cares about has
         // changed. Avoids reallocating 16 NSColors per parent re-render
         // (hover-state changes in the title strip trigger updateNSView).
-        let stamp = "\(settings.themeID)|\(Int(settings.fontSize))|\(settings.fontFamily)|\(settings.cursorStyle.rawValue)|\(settings.cursorBlink)"
+        let stamp = "\(settings.themeID)|\(Int(settings.fontSize))|\(settings.fontFamily)"
         if context.coordinator.lastAppearanceStamp != stamp {
             applyAppearance(nsView)
             context.coordinator.lastAppearanceStamp = stamp

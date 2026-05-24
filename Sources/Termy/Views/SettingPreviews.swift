@@ -92,8 +92,10 @@ struct ThemePreviewCard: View {
     }
 }
 
-// MARK: - Cursor style preview
-
+// MARK: - Cursor style preview — removed alongside CursorPane in v0.8.3
+// (SwiftTerm doesn't expose a public cursor-style hook). Left here as a
+// marker so we don't forget to re-add it when SwiftTerm gains the API.
+#if false
 struct CursorPreview: View {
     let style: CursorStyle
     let blink: Bool
@@ -160,6 +162,7 @@ struct CursorPreview: View {
         }
     }
 }
+#endif
 
 // MARK: - Density / padding preview
 
