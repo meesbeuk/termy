@@ -46,6 +46,12 @@ struct MainTerminalView: View {
                     StatusBar()
                 }
             }
+            // Push the VStack up into the title-bar inset so the title strip
+            // (with the launchers row) renders at y=0 of the window, level
+            // with the traffic lights. Without this, SwiftUI's default safe
+            // area pushes the title strip below the traffic lights and the
+            // launchers end up in a band beneath them.
+            .ignoresSafeArea(.container, edges: .top)
 
             if showingRecentDirs {
                 ZStack {
@@ -218,11 +224,11 @@ private struct TitleStrip: View {
     let onLaunch: (AILauncher) -> Void
 
     var body: some View {
-        HStack(spacing: 6) {
-            // Reserve only what the three traffic-light buttons actually need
-            // (~52pt + tight breathing room). Anything bigger leaves a visible
-            // gap before the launcher row, which feels disconnected.
-            Color.clear.frame(width: 58, height: 28)
+        HStack(spacing: 12) {
+            // ~52pt for the three traffic-light buttons + comfortable
+            // breathing room before the launcher row so the chrome doesn't
+            // look cramped against the window controls.
+            Color.clear.frame(width: 72, height: 28)
             if showLaunchers {
                 InlineLaunchersRow(onLaunch: onLaunch)
             }
@@ -251,24 +257,50 @@ private struct TitleStrip: View {
 }
 
 /// Compact launchers row that lives inline in the title strip, no separate band.
+/// On hover, the active tool's display name appears as an inline pill next to
+/// the row — no floating overlay that can get clipped by neighbouring views.
 private struct InlineLaunchersRow: View {
     let onLaunch: (AILauncher) -> Void
     @State private var launchers: [AILauncher] = []
+    @State private var hoveredID: String?
 
     var body: some View {
         HStack(spacing: 5) {
             ForEach(launchers) { launcher in
-                InlineLaunchChip(launcher: launcher, onTap: { onLaunch(launcher) })
+                InlineLaunchChip(
+                    launcher: launcher,
+                    isHovered: hoveredID == launcher.id,
+                    onTap: { onLaunch(launcher) },
+                    onHoverChanged: { hovering in
+                        if hovering { hoveredID = launcher.id }
+                        else if hoveredID == launcher.id { hoveredID = nil }
+                    }
+                )
+            }
+            if let id = hoveredID,
+               let l = launchers.first(where: { $0.id == id }) {
+                Text(l.displayName)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule().fill(SwiftUI.Color.white.opacity(0.12))
+                    )
+                    .transition(.opacity)
+                    .fixedSize()
             }
         }
+        .animation(.easeOut(duration: 0.10), value: hoveredID)
         .onAppear { launchers = AILauncher.installed() }
     }
 }
 
 private struct InlineLaunchChip: View {
     let launcher: AILauncher
+    let isHovered: Bool
     let onTap: () -> Void
-    @State private var hovering = false
+    let onHoverChanged: (Bool) -> Void
 
     var body: some View {
         Button(action: onTap) {
@@ -278,7 +310,7 @@ private struct InlineLaunchChip: View {
                 .foregroundStyle(.white)
                 .frame(width: 24, height: 24)
                 .background(
-                    Circle().fill(SwiftUI.Color.white.opacity(hovering ? 0.18 : 0.08))
+                    Circle().fill(SwiftUI.Color.white.opacity(isHovered ? 0.18 : 0.08))
                 )
                 .overlay(
                     Circle().strokeBorder(SwiftUI.Color.white.opacity(0.08), lineWidth: 0.5)
@@ -287,35 +319,7 @@ private struct InlineLaunchChip: View {
         }
         .buttonStyle(.plain)
         .help("\(launcher.displayName) — run `\(launcher.cli)` in active pane")
-        .onHover { newValue in
-            withAnimation(.easeOut(duration: 0.10)) { hovering = newValue }
-        }
-        // Inline name label that fades in on hover so people who don't
-        // recognise the brand mark get an immediate label without waiting on
-        // the OS tooltip delay. Positioned as a floating overlay so it never
-        // shifts the row layout.
-        .overlay(alignment: .top) {
-            if hovering {
-                Text(launcher.displayName)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(SwiftUI.Color.black.opacity(0.85))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .strokeBorder(SwiftUI.Color.white.opacity(0.08), lineWidth: 0.5)
-                    )
-                    .fixedSize()
-                    .offset(y: 30)
-                    .transition(.opacity)
-                    .allowsHitTesting(false)
-                    .zIndex(50)
-            }
-        }
+        .onHover(perform: onHoverChanged)
     }
 }
 

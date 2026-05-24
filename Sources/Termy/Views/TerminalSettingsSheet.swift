@@ -481,11 +481,11 @@ private struct ProfileRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.xs) {
             HStack(spacing: DS.Spacing.s) {
+                // Tapback memoji avatar — random per profile so the user can
+                // pick out their config at a glance without reading names.
+                ProfileAvatar(profile: profile, size: 24)
                 if let dot = profile.tagColor.swiftColor {
                     Circle().fill(dot).frame(width: 8, height: 8)
-                } else {
-                    Circle().stroke(DS.Colors.tertiary.opacity(0.4), lineWidth: 1)
-                        .frame(width: 8, height: 8)
                 }
                 Text(profile.name)
                     .font(DS.Typo.body.weight(.medium))
@@ -542,6 +542,23 @@ private struct ProfileEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+            HStack(spacing: DS.Spacing.s) {
+                Text("Avatar").font(DS.Typo.tiny).foregroundStyle(DS.Colors.tertiary).frame(width: 70, alignment: .leading)
+                ProfileAvatar(profile: draft, size: 36)
+                Button(action: {
+                    draft.avatarSeed = Profile.randomSeed()
+                    draft.avatarColor = Int.random(in: 0...17)
+                }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                        Text("Re-roll")
+                    }
+                    .font(DS.Typo.tiny)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.Colors.accent)
+                Spacer()
+            }
             field("Name", text: $draft.name)
             field("Shell", text: $draft.shellPath, placeholder: "/bin/zsh (or leave blank to use $SHELL)")
             field("Initial cwd", text: $draft.initialCwd, placeholder: "~  (blank = HOME)")
