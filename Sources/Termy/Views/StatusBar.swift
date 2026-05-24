@@ -4,10 +4,12 @@ import AppKit
 
 /// Slim bar pinned to the bottom of the window. Shows the active pane's cwd
 /// (with `~` folding) + git branch (when the cwd is inside a repo) + clock.
-/// Updates on cwd change; git lookup is cached per-cwd so it doesn't fork shells
-/// on every render.
+/// Plus tiny mode indicators (recording dot, cinema icon, always-on-top
+/// pin) so the user can SEE at a glance what non-default modes are on
+/// without opening Settings or Window menu. Reachability + visibility.
 struct StatusBar: View {
     @EnvironmentObject var sessions: TerminalSessions
+    @EnvironmentObject var settings: TerminalSettings
 
     @State private var gitBranch: String?
     @State private var now: Date = Date()
@@ -56,6 +58,27 @@ struct StatusBar: View {
                 }
             }
             Spacer()
+            // Mode indicators — only render when the mode is on. Each is a
+            // tiny SF Symbol that the user can hover to confirm what's
+            // active. Click-through to settings for the relevant one.
+            if settings.recordSessions {
+                Image(systemName: "record.circle")
+                    .font(.system(size: 10))
+                    .foregroundStyle(DS.Colors.danger.opacity(0.85))
+                    .help("Session recording active — output is being logged to ~/Library/Application Support/Termy/sessions/")
+            }
+            if settings.cinemaMode {
+                Image(systemName: "film")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
+                    .help("Cinema mode on — incoming output is being paced at \(Int(settings.cinemaCps)) cps")
+            }
+            if isAlwaysOnTop {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(DS.Colors.accent)
+                    .help("Window is always on top — toggle via Window menu")
+            }
             Text(clockString)
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(.secondary)
@@ -66,6 +89,14 @@ struct StatusBar: View {
         .onChange(of: cwd) { _, _ in resolveGit(force: true) }
         .onReceive(clockTimer) { now = $0 }
         .onReceive(gitTimer) { _ in resolveGit(force: false) }
+    }
+
+    /// Check whether the host window is currently pinned above all others.
+    /// Polled via the clock-timer publisher implicitly because the view
+    /// re-renders on `now` ticks; cheap enough to recompute each render.
+    private var isAlwaysOnTop: Bool {
+        guard let window = sessions.hostedWindow else { return false }
+        return window.level == .floating
     }
 
     private func revealInFinder() {

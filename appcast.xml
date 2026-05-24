@@ -6,6 +6,38 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.17</title>
+            <description><![CDATA[
+                <h2>Modal consistency + UX reachability pass</h2>
+                <h3>Modal pass</h3>
+                <ul>
+                    <li><strong>Cheatsheet redesign.</strong> Was a single 520-wide scrolling column; now matches the Settings / Command Palette shell (640×480, sidebar + detail) so all three modals share the same chrome. Categories: Tabs, Splits, Search &amp; nav, Display, Windows.</li>
+                </ul>
+                <h3>UX reachability</h3>
+                <ul>
+                    <li><strong>⌘, opens Settings</strong> (standard Apple convention).</li>
+                    <li><strong>⌘/ opens the Keyboard Cheatsheet</strong> — discoverability without taking a hand off the keyboard.</li>
+                    <li><strong>Status-bar mode indicators.</strong> When session recording / cinema mode / always-on-top is active, a tiny matching SF Symbol (red record dot / film / pin) lights up in the status bar so the user sees at a glance what non-default modes are on. Hover each for context + how to turn off.</li>
+                </ul>
+                <h3>Image rendering caveat (v0.9.16 follow-up)</h3>
+                <ul>
+                    <li>v0.9.16 advertised inline images as working via SwiftTerm's native OSC 1337 / Sixel / Kitty support. Verification showed SwiftTerm parses OSC 1337 correctly (Terminal.swift:1819) and even decodes the image into an NSImage (AppleTerminalView.swift:2044), but the final visual insertion didn't render in our overlay setup. Likely an interaction with Termy's adaptive backdrop / SwiftUI host. Logged as known-issue; impersonation env stays (so tools opt in) but visible images are pending a SwiftTerm view-layer investigation.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 03:25:00 +0000</pubDate>
+            <sparkle:version>34</sparkle:version>
+            <sparkle:shortVersionString>0.9.17</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.17/Termy.dmg"
+                sparkle:version="34"
+                sparkle:shortVersionString="0.9.17"
+                length="2702697"
+                sparkle:edSignature="03/pnuGFyFFGjqJYMLB1WuQW1S6fBcz7dbaGzqNXtgNyu6oOBTbjEv9UW+6q48/wyPrsgBvk6IBAfK7oCPIHCg=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.16</title>
             <description><![CDATA[
                 <h2>Inline images via imgcat/viu/yazi + Cinema mode for screen recordings</h2>

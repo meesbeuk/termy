@@ -173,7 +173,9 @@ struct MainTerminalView: View {
             installKeyMonitor: installKeyMonitor,
             removeKeyMonitor: removeKeyMonitor,
             showRecentDirs: { showingRecentDirs = true },
-            showPalette: { showingPalette = true }
+            showPalette: { showingPalette = true },
+            showCheatsheet: { showingCheatsheet = true },
+            showSettings: { showingSettings = true }
         ))
         .sheet(isPresented: $showingSettings) {
             TerminalSettingsSheet(onClose: { showingSettings = false })
