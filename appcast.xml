@@ -6,6 +6,28 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.2</title>
+            <description><![CDATA[
+                <h2>Default shell-script handler + cursor + resize fixes</h2>
+                <ul>
+                    <li>Termy now registers as the system handler for .sh / .command / +x binaries — double-click one in Finder and it opens a new tab in the file's parent dir and runs the script as the first command.</li>
+                    <li>Caret is no longer invisible on dark themes. Pinned caretColor to the theme's foreground (and ansi[0] as the inverse text color) so the cursor is legible on every theme/wallpaper combination.</li>
+                    <li>Scrollback survives window resize. SwiftTerm's reflowWider was being called hundreds of times per second during a corner drag, corrupting wrapped lines. Coalesced into a single reflow on resize end.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 19:55:00 +0000</pubDate>
+            <sparkle:version>19</sparkle:version>
+            <sparkle:shortVersionString>0.9.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.2/Termy.dmg"
+                sparkle:version="19"
+                sparkle:shortVersionString="0.9.2"
+                length="2393298"
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.1</title>
             <description><![CDATA[
                 <h2>Readable on any backdrop</h2>
