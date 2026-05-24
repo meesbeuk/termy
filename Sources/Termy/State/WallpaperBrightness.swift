@@ -41,19 +41,26 @@ enum WallpaperBrightness {
         return 0.2126 * r + 0.7152 * g + 0.0722 * b
     }
 
-    /// Extra dark tint on top of the .hudWindow material. The HUD material
-    /// already gives us a dark-glassy base that's readable on any backdrop,
-    /// so this tint range is small — just adds a touch more contrast over
-    /// light wallpapers while preserving glass on dark ones.
+    /// Extra dark tint on top of the .hudWindow material, applied uniformly
+    /// across the entire window (chrome + terminal — not a per-element box).
+    /// Floor is glassy so dark wallpapers stay translucent; ceiling pushes
+    /// near-opaque so light wallpapers and bright apps parked behind Termy
+    /// can't bleed enough to make text unreadable.
+    ///
+    /// Curve is concave-up (lum²) so we stay glassy across the dark half of
+    /// the brightness range and ramp aggressively only when the wallpaper is
+    /// genuinely light — avoids a "muddy" look on neutral grey desktops.
     ///
     /// Note: we sample the wallpaper file, not the actual pixels behind the
     /// window (which would need screen-recording permission). So if a white
     /// app is parked behind Termy over a dark wallpaper, this read says
-    /// "dark" and applies low tint — that scenario relies on .hudWindow's
-    /// built-in contrast to stay readable.
+    /// "dark" — the .hudWindow material's built-in contrast carries us
+    /// through that edge case.
     static func opacity(forBrightness lum: Double) -> Double {
-        let minOpacity = 0.10
-        let maxOpacity = 0.35
-        return minOpacity + lum * (maxOpacity - minOpacity)
+        let minOpacity = 0.18
+        let maxOpacity = 0.78
+        let clamped = max(0.0, min(1.0, lum))
+        let curved = clamped * clamped
+        return minOpacity + curved * (maxOpacity - minOpacity)
     }
 }

@@ -172,6 +172,30 @@ final class TerminalSettings: ObservableObject {
         self.notifyOnBell = UserDefaults.standard.bool(forKey: Self.notifyOnBellKey)
         refreshEffectiveOpacity(screen: NSScreen.main)
         applyDockVisibility()
+        installBrightnessObservers()
+    }
+
+    /// Re-sample the wallpaper whenever the user is likely to notice a
+    /// changed backdrop: app becomes active, the display config changes
+    /// (monitor connect/disconnect, wallpaper rotation), Space switches.
+    /// Without this, effectiveOpacity is frozen at first launch — switch
+    /// from a dark wallpaper to a light one and Termy stays too transparent.
+    private func installBrightnessObservers() {
+        let center = NotificationCenter.default
+        let wsCenter = NSWorkspace.shared.notificationCenter
+        let refresh: @Sendable (Notification) -> Void = { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshEffectiveOpacity(
+                    screen: NSApp.keyWindow?.screen ?? NSScreen.main
+                )
+            }
+        }
+        center.addObserver(forName: NSApplication.didBecomeActiveNotification,
+                           object: nil, queue: .main, using: refresh)
+        center.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                           object: nil, queue: .main, using: refresh)
+        wsCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
+                             object: nil, queue: .main, using: refresh)
     }
 
     /// Register/unregister Termy as a login item via ServiceManagement.

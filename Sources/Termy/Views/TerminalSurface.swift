@@ -13,10 +13,23 @@ import SwiftTerm
 /// disconnect keyboard input, as v0.8.0–0.8.2 painfully proved).
 final class TermyTerminalView: LocalProcessTerminalView {
     var onBell: (() -> Void)?
+    /// Re-applies theme + caret colors. Set by TerminalSurface so we can
+    /// re-run it from `viewDidMoveToWindow` — caret colors set before the
+    /// view is in a window don't render the cursor on first paint, so we
+    /// have to nudge them once AppKit has us in the hierarchy. (Theme
+    /// switches accidentally fix this because `updateNSView` re-applies
+    /// appearance at a point when the view is already attached.)
+    var onMovedToWindow: (() -> Void)?
 
     override func bell(source: Terminal) {
         super.bell(source: source)
         onBell?()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard window != nil else { return }
+        onMovedToWindow?()
     }
 
     // MARK: - Live-resize coalescing
@@ -24,31 +37,45 @@ final class TermyTerminalView: LocalProcessTerminalView {
     // SwiftTerm's setFrameSize calls `processSizeChange` → `terminal.resize` →
     // `reflowWider` on every AppKit setFrameSize tick. During a window-corner
     // drag AppKit fires that hundreds of times per second with intermediate
-    // widths, and SwiftTerm's reflowWider corrupts scrollback when called
-    // repeatedly — wrapped-continuation lines get dropped without their
-    // contents being merged into the surviving line, so when you scroll back
-    // up after resize you see disconnected text fragments at random columns.
+    // widths, and SwiftTerm's reflowWider has a buggy "remove wrapped
+    // continuation lines" path that drops content without merging into the
+    // surviving line. The net effect: scrollback gains duplicated/ghosted rows
+    // and scrolling back up looks corrupt.
     //
-    // Skip SwiftTerm's reflow during live resize and run it exactly once when
-    // the drag ends. NSView's own setFrameSize still runs so AppKit's layout
-    // pass is consistent — we hand-dispatch to it via the objc runtime to
-    // bypass SwiftTerm's override.
+    // Two defenses, stacked:
+    //   1. Coalesce — during a live drag, skip SwiftTerm's per-tick
+    //      processSizeChange so the cell grid mutates exactly once. We
+    //      hand-dispatch to NSView's setFrameSize via the objc runtime to
+    //      bypass SwiftTerm's override.
+    //   2. Skip the reflow entirely — when the drag ends and we run the one
+    //      final resize, temporarily flip the terminal's scrollback off
+    //      (`isReflowEnabled = hasScrollback`, so nil disables it). The
+    //      resize still rebuilds the visible grid; the buggy reflow path is
+    //      simply never taken. Scrollback past the visible viewport is lost,
+    //      but the alternative (corrupted, unreadable scrollback) is worse.
 
     override func viewDidEndLiveResize() {
         super.viewDidEndLiveResize()
-        // Re-run SwiftTerm's setFrameSize once at the final size so it does
-        // a single reflow from old cols → new cols, instead of N tiny ones.
-        // SwiftTerm's processSizeChange early-returns when the size matches
-        // the current frame, so nudge by half a point first to force the
-        // reflow to run, then settle on the real size.
+        // Settle the grid at the final size with reflow disabled, so the
+        // single resize that crosses cols/rows doesn't run reflowWider.
+        // Nudge by half a point first to force processSizeChange (which
+        // early-returns when the size matches the current frame).
         let final = frame.size
-        super.setFrameSize(NSSize(width: final.width + 0.5, height: final.height))
-        super.setFrameSize(final)
+        withReflowDisabled {
+            super.setFrameSize(NSSize(width: final.width + 0.5, height: final.height))
+            super.setFrameSize(final)
+        }
+        // Full refresh from the buffer so any stale draw region clears.
+        getTerminal().refresh(startRow: 0, endRow: getTerminal().rows - 1)
+        needsDisplay = true
     }
 
     override func setFrameSize(_ newSize: NSSize) {
         guard inLiveResize else {
-            super.setFrameSize(newSize)
+            // Even non-live resizes (programmatic, split-pane drag end,
+            // font-size changes that mutate cell dimensions) can trip the
+            // reflow bug. Always route through the reflow-off path.
+            withReflowDisabled { super.setFrameSize(newSize) }
             return
         }
         // In a live resize: update NSView's frame directly, skipping
@@ -58,6 +85,19 @@ final class TermyTerminalView: LocalProcessTerminalView {
         // the scrollback buffer is not mutated.
         callNSViewSetFrameSize(newSize)
         needsDisplay = true
+    }
+
+    /// Runs `body` with the terminal's scrollback temporarily set to nil so
+    /// `Buffer.resize` skips its reflow path. Restores the prior scrollback
+    /// size afterward. Visible viewport content is preserved across the
+    /// toggle (changeHistorySize trims from the START of the line buffer and
+    /// adjusts yBase/yDisp so the visible window stays anchored).
+    private func withReflowDisabled(_ body: () -> Void) {
+        let terminal = getTerminal()
+        let priorScrollback = terminal.options.scrollback
+        terminal.changeScrollback(nil)
+        body()
+        terminal.changeScrollback(priorScrollback > 0 ? priorScrollback : nil)
     }
 
     private func callNSViewSetFrameSize(_ newSize: NSSize) {
@@ -91,6 +131,13 @@ struct TerminalSurface: NSViewRepresentable {
                 window: session.terminalView?.window,
                 cwd: session.cwd
             )
+        }
+        // Re-apply once we land in a window — fixes the missing-cursor-at-
+        // launch case. The struct's `applyAppearance` is value-safe to
+        // capture; `self` here is the NSViewRepresentable.
+        view.onMovedToWindow = { [weak view] in
+            guard let view else { return }
+            self.applyAppearance(view)
         }
         applyAppearance(view)
         // CRITICAL: autoresizing makes AppKit propagate every superview size
