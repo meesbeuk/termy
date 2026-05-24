@@ -117,6 +117,16 @@ private struct NotificationHandlersB: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .terminalOpenPalette)) { _ in
                 if isKeyWindow() { showPalette() }
             }
+            // LaunchServices handed us files to open (Finder double-click on
+            // .sh, .command, +x binary). Only the key window opens the tabs
+            // so each file produces exactly one tab regardless of how many
+            // windows Termy has open.
+            .onReceive(NotificationCenter.default.publisher(for: .terminalOpenFiles)) { _ in
+                guard isKeyWindow() else { return }
+                let urls = TerminalAppDelegate.pendingOpenURLs
+                TerminalAppDelegate.pendingOpenURLs.removeAll()
+                for url in urls { sessions.openFile(url) }
+            }
             // Window resize is handled by SwiftTerm directly via autoresizing
             // mask set in TerminalSurface.makeNSView — no manual observer needed.
     }

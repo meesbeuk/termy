@@ -65,6 +65,17 @@ struct TerminalSurface: NSViewRepresentable {
         )
 
         session.terminalView = view
+
+        // If the session was opened to run a file the OS handed us, type the
+        // command into the shell once it's had a moment to print its prompt.
+        // ~0.4s is enough for zsh --login to source rc files; sending too
+        // early causes the command to appear before the prompt.
+        if let cmd = session.pendingInitialCommand {
+            session.pendingInitialCommand = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak view] in
+                view?.send(txt: cmd + "\r")
+            }
+        }
         return view
     }
 
@@ -103,11 +114,23 @@ struct TerminalSurface: NSViewRepresentable {
         // source of opacity for the entire app. No per-element backgrounds.
         view.nativeBackgroundColor = NSColor.clear
         let (fr, fg, fb) = settings.theme.foreground
-        view.nativeForegroundColor = NSColor(
+        let foreground = NSColor(
             red: CGFloat(fr) / 255, green: CGFloat(fg) / 255, blue: CGFloat(fb) / 255, alpha: 1.0
         )
+        view.nativeForegroundColor = foreground
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.clear.cgColor
+
+        // Caret defaults to NSColor.selectedControlColor (system accent), which
+        // disappears on dark wallpapers/themes since the window's bg is clear
+        // glass. Pin it to the theme's foreground so the cursor is always
+        // visible, and use ansi[0] (the theme's intended bg) as the inverse
+        // text color so a character under the caret stays legible.
+        view.caretColor = foreground
+        let (br, bg, bb) = settings.theme.ansi[0]
+        view.caretTextColor = NSColor(
+            red: CGFloat(br) / 255, green: CGFloat(bg) / 255, blue: CGFloat(bb) / 255, alpha: 1.0
+        )
 
         view.installColors(settings.theme.swiftTermColors)
     }

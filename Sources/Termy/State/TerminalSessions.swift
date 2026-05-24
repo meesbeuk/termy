@@ -26,6 +26,11 @@ final class TerminalSession: ObservableObject, Identifiable {
     /// Profile this session was opened with — nil = ambient defaults.
     let profileID: UUID?
 
+    /// Optional command typed into the shell right after it boots — used when
+    /// the session was created to run a file the OS asked us to open (.sh,
+    /// .command, +x binary). Cleared after the first send.
+    var pendingInitialCommand: String?
+
     init(initialCwd: String = NSHomeDirectory(), profile: Profile? = nil) {
         if let profile {
             self.shellPath = profile.effectiveShellPath
@@ -215,6 +220,23 @@ final class TerminalSessions: ObservableObject {
     /// inheriting from the current pane). Used by Recent Directories.
     func openTabIn(cwd: String) {
         let session = TerminalSession(initialCwd: cwd)
+        let tab = TerminalTab(panes: [session])
+        tabs.append(tab)
+        selectedTabId = tab.id
+        persist()
+    }
+
+    /// Open a file the OS asked us to handle — typically a .sh / .command /
+    /// +x binary double-clicked in Finder. Opens a new tab in the file's
+    /// parent dir and queues the file path as the first shell command, so
+    /// the user sees the script run instead of a bare prompt.
+    func openFile(_ url: URL) {
+        let dir = url.deletingLastPathComponent().path
+        let session = TerminalSession(initialCwd: dir)
+        // Single-quote the path and escape any literal single quotes inside
+        // it. Works for any filename including spaces / special chars.
+        let escaped = url.path.replacingOccurrences(of: "'", with: "'\\''")
+        session.pendingInitialCommand = "'" + escaped + "'"
         let tab = TerminalTab(panes: [session])
         tabs.append(tab)
         selectedTabId = tab.id

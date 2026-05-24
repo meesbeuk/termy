@@ -155,6 +155,10 @@ extension Notification.Name {
     static let terminalDuplicateTab = Notification.Name("mees.terminal.dupTab")
     static let terminalRecentDirs = Notification.Name("mees.terminal.recentDirs")
     static let terminalOpenPalette = Notification.Name("mees.terminal.palette")
+    /// Fires when LaunchServices hands us files to open (Finder double-click
+    /// on .sh, .command, +x binary). The key window's handler drains
+    /// `TerminalAppDelegate.pendingOpenURLs` and opens a tab per file.
+    static let terminalOpenFiles = Notification.Name("mees.terminal.openFiles")
 }
 
 /// Per-window root. Owns its own TerminalSessions so multi-window works.
@@ -181,6 +185,14 @@ struct TerminalWindowRoot: View {
                         sessions.openTab()
                     }
                 }
+                // Drain any files LaunchServices queued before this window
+                // existed (cold-launch from Finder). The running-app case is
+                // handled by the .terminalOpenFiles notification observer.
+                if !TerminalAppDelegate.pendingOpenURLs.isEmpty {
+                    let urls = TerminalAppDelegate.pendingOpenURLs
+                    TerminalAppDelegate.pendingOpenURLs.removeAll()
+                    for url in urls { sessions.openFile(url) }
+                }
             }
     }
 }
@@ -196,11 +208,32 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
     /// Profile ID requested by the Dock menu — consumed by the next openTab
     /// call in the active window.
     static var pendingDockProfileID: UUID?
+    /// Files LaunchServices asked us to open, drained by either the first
+    /// window's onAppear (cold-launch case) or the key window's
+    /// `.terminalOpenFiles` handler (already-running case).
+    static var pendingOpenURLs: [URL] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let hide = UserDefaults.standard.bool(forKey: "termy.hideFromDock")
         NSApp.setActivationPolicy(hide ? .accessory : .regular)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Called by LaunchServices when the user double-clicks a file whose UTI
+    /// we claim in Info.plist (public.shell-script, public.unix-executable).
+    /// We stash the URLs and let the SwiftUI scene drain them — the scene
+    /// owns `TerminalSessions`, which is where new tabs actually get added.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        TerminalAppDelegate.pendingOpenURLs.append(contentsOf: urls)
+        NSApp.activate(ignoringOtherApps: true)
+        // If a window is already up, the key window's handler picks it up
+        // immediately. If we're cold-launching, the first scene's onAppear
+        // will drain the queue after it finishes restoring tabs.
+        if NSApp.windows.contains(where: { $0.isVisible }) {
+            NotificationCenter.default.post(name: .terminalOpenFiles, object: nil)
+        } else {
+            openNewWindow?()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
