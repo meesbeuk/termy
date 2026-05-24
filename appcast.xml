@@ -6,6 +6,29 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.25</title>
+            <description><![CDATA[
+                <h2>⌘E Use Selection for Find + Help menu links</h2>
+                <ul>
+                    <li><strong>⌘E "Use Selection for Find"</strong> — select text in any pane, press ⌘E → find bar opens prefilled with the selection and jumps to the first match. Standard macOS pattern. Up to 120 chars prefilled.</li>
+                    <li><strong>Help menu</strong> now has real entries: <em>Termy Help on GitHub</em>, <em>Report an Issue…</em>, <em>Release Notes</em> — direct links to README, new-issue form, and the changelog.</li>
+                    <li><strong>README</strong> documents the right-click context menu and ⌘E + ⌘⇧L shortcuts.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 06:15:00 +0000</pubDate>
+            <sparkle:version>42</sparkle:version>
+            <sparkle:shortVersionString>0.9.25</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.25/Termy.dmg"
+                sparkle:version="42"
+                sparkle:shortVersionString="0.9.25"
+                length="2858235"
+                sparkle:edSignature="RuETz8VG8msf6Qrfo/wh+KZCo5KLFcYi9isoIdH0ydrjX0rz3yKhMohUgfGasGgyQ3NgXXC+qMevdwTgjn15Dg=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.24</title>
             <description><![CDATA[
                 <h2>Right-click in terminal → context menu</h2>

@@ -114,6 +114,10 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalToggleFind, object: nil)
                 }
                 .keyboardShortcut("f", modifiers: .command)
+                Button("Use Selection for Find") {
+                    NotificationCenter.default.post(name: .terminalFindSelection, object: nil)
+                }
+                .keyboardShortcut("e", modifiers: .command)
             }
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") { updater.checkForUpdates() }
@@ -124,6 +128,23 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalOpenSettings, object: nil)
                 }
                 .keyboardShortcut(",", modifiers: .command)
+            }
+            CommandGroup(replacing: .help) {
+                Button("Termy Help on GitHub") {
+                    if let url = URL(string: "https://github.com/meesbeuk/termy#readme") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                Button("Report an Issue…") {
+                    if let url = URL(string: "https://github.com/meesbeuk/termy/issues/new") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                Button("Release Notes") {
+                    if let url = URL(string: "https://github.com/meesbeuk/termy/releases") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
             }
             CommandMenu("Termy") {
                 Button("Command Palette…") {
@@ -186,6 +207,7 @@ extension Notification.Name {
     static let terminalOpenCheatsheet = Notification.Name("mees.terminal.openCheatsheet")
     static let terminalOpenSettings = Notification.Name("mees.terminal.openSettings")
     static let terminalOpenSessionLogs = Notification.Name("mees.terminal.openSessionLogs")
+    static let terminalFindSelection = Notification.Name("mees.terminal.findSelection")
     static let terminalClear = Notification.Name("mees.terminal.clear")
     static let terminalToggleFind = Notification.Name("mees.terminal.toggleFind")
     static let terminalSplitHorizontal = Notification.Name("mees.terminal.splitH")

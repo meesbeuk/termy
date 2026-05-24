@@ -9,6 +9,7 @@ struct TerminalHandlers: ViewModifier {
     let isKeyWindow: () -> Bool
     let hostedWindow: () -> NSWindow?
     let performFind: () -> Void
+    let findFromSelection: () -> Void
     let handleDrop: ([NSItemProvider]) -> Bool
     let installKeyMonitor: () -> Void
     let removeKeyMonitor: () -> Void
@@ -28,7 +29,8 @@ struct TerminalHandlers: ViewModifier {
             .modifier(NotificationHandlersA(
                 sessions: sessions,
                 isKeyWindow: isKeyWindow,
-                performFind: performFind
+                performFind: performFind,
+                findFromSelection: findFromSelection
             ))
             .modifier(NotificationHandlersB(
                 sessions: sessions,
@@ -62,6 +64,7 @@ private struct NotificationHandlersA: ViewModifier {
     let sessions: TerminalSessions
     let isKeyWindow: () -> Bool
     let performFind: () -> Void
+    let findFromSelection: () -> Void
 
     func body(content: Content) -> some View {
         content
@@ -95,6 +98,9 @@ private struct NotificationHandlersA: ViewModifier {
             }
             .onReceive(NotificationCenter.default.publisher(for: .terminalToggleFind)) { _ in
                 if isKeyWindow() { performFind() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalFindSelection)) { _ in
+                if isKeyWindow() { findFromSelection() }
             }
             .onReceive(NotificationCenter.default.publisher(for: .terminalSplitHorizontal)) { _ in
                 if isKeyWindow() { sessions.splitHorizontal() }

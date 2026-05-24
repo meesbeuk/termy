@@ -63,8 +63,11 @@ Requires macOS 15+ and the Xcode Command Line Tools.
 
 ### Find + navigate
 - **Inline find bar** (⌘F): search-as-you-type, case + regex toggles, ⌘G / ⌘⇧G cycles matches. Driven by SwiftTerm's native find API.
+- **⌘E "Use Selection for Find"** — standard macOS pattern: select text in a pane, ⌘E opens the find bar prefilled with it.
 - **Command Palette** (⌘⇧P): fuzzy jump to any tab, theme, action, or SSH host.
-- **Keyboard cheatsheet** (`?` icon in title strip): one modal listing every shortcut. Discoverable, not docs-only.
+- **Session Logs browser** (⌘⇧L): browse + grep across every past recorded session. Find that one Claude conversation about WebSockets.
+- **Keyboard cheatsheet** (⌘/ or `?` icon in title strip): one modal listing every shortcut. Discoverable, not docs-only.
+- **Right-click anywhere in a pane** — native menu: Copy, Paste, Select All, Find in Scrollback, Clear, New Tab, Split.
 - **Reveal in Finder** from the status-bar cwd or the tab right-click menu.
 
 ### Look

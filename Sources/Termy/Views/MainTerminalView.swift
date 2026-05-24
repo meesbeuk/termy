@@ -12,6 +12,7 @@ struct MainTerminalView: View {
     @State private var showingFind = false
     @State private var showingCheatsheet = false
     @State private var showingSessionLogs = false
+    @State private var findInitialQuery: String?
     @State private var hostedWindow: NSWindow?
     @State private var keyMonitor: Any?
 
@@ -53,22 +54,21 @@ struct MainTerminalView: View {
                         EmptyView()
                     }
                     if showingFind {
-                        // Tap-outside dismisser — clicking anywhere in the
-                        // pane that isn't the FindBar itself closes search.
-                        // Standard macOS popover semantics; gives users an
-                        // intuitive cancel path beyond ⌘F / × / Esc.
                         Color.clear
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 sessions.currentSession?.terminalView?.clearSearch()
                                 showingFind = false
+                                findInitialQuery = nil
                             }
                             .zIndex(4)
                         FindBar(
                             view: sessions.currentSession?.terminalView,
+                            initialQuery: findInitialQuery,
                             onClose: {
                                 sessions.currentSession?.terminalView?.clearSearch()
                                 showingFind = false
+                                findInitialQuery = nil
                             }
                         )
                         .padding(.top, 10)
@@ -180,6 +180,7 @@ struct MainTerminalView: View {
             isKeyWindow: { isKeyWindow },
             hostedWindow: { hostedWindow },
             performFind: toggleFind,
+            findFromSelection: findFromSelection,
             handleDrop: handleDrop,
             installKeyMonitor: installKeyMonitor,
             removeKeyMonitor: removeKeyMonitor,
@@ -265,9 +266,23 @@ struct MainTerminalView: View {
         if showingFind {
             sessions.currentSession?.terminalView?.clearSearch()
             showingFind = false
+            findInitialQuery = nil
         } else {
+            findInitialQuery = nil
             showingFind = true
         }
+    }
+
+    /// ⌘E — standard macOS "Use Selection for Find". Copies the active
+    /// pane's current selection to the find clipboard and opens the find
+    /// bar prefilled with it. If there's no selection, behaves like ⌘F.
+    private func findFromSelection() {
+        guard let view = sessions.currentSession?.terminalView else { return }
+        view.copy(NSObject())   // SwiftTerm writes selection to NSPasteboard.general
+        let text = NSPasteboard.general.string(forType: .string) ?? ""
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        findInitialQuery = trimmed.isEmpty ? nil : String(trimmed.prefix(120))
+        showingFind = true
     }
 }
 

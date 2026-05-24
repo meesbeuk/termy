@@ -7,6 +7,9 @@ import SwiftTerm
 /// 2007-era NSFindPanel `performFindPanelAction` route used through v0.9.6.
 struct FindBar: View {
     let view: LocalProcessTerminalView?
+    /// Initial query to prefill (used by ⌘E "Use Selection for Find").
+    /// nil → empty field, user types from scratch.
+    let initialQuery: String?
     let onClose: () -> Void
 
     @State private var query: String = ""
