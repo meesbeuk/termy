@@ -281,9 +281,17 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
         // Load every saved window key so each can spawn its own window in
         // launch order. The first window pops the head; the per-window
         // root opens additional windows for the tail. Limited to 8 to
-        // bound runaway accumulation if the dedup logic ever leaks.
+        // bound runaway accumulation. Also garbage-collect orphan keys
+        // beyond the cap so their UserDefaults entries don't leak forever.
         let saved = UserDefaults.standard.stringArray(forKey: TerminalSessions.windowKeysKey) ?? []
-        TerminalSessions.pendingRestoreKeys = Array(saved.prefix(8))
+        let kept = Array(saved.prefix(8))
+        if kept.count != saved.count {
+            UserDefaults.standard.set(kept, forKey: TerminalSessions.windowKeysKey)
+            for orphan in saved.dropFirst(8) {
+                UserDefaults.standard.removeObject(forKey: orphan)
+            }
+        }
+        TerminalSessions.pendingRestoreKeys = kept
         NSApp.activate(ignoringOtherApps: true)
     }
 

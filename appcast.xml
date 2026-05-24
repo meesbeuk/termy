@@ -6,6 +6,29 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.13</title>
+            <description><![CDATA[
+                <h2>OSC 133 shell integration + orphan-key GC</h2>
+                <ul>
+                    <li><strong>OSC 133 / FinalTerm shell integration.</strong> Termy now parses ESC ] 133 ; X sequences and fires accurate command-finished notifications the instant your shell reports done — no idle-heuristic guessing. Add three lines to .zshrc (see README) and `claude`, `codex`, `npm test` etc. ping the moment they return, with the last output line as the notification body. Heuristic stays as fallback for shells without setup.</li>
+                    <li><strong>Multi-window orphan-key garbage collection.</strong> Saved windowKeys list is now capped + pruned at launch — abandoned UserDefaults entries from closed-but-not-unregistered windows no longer leak forever.</li>
+                    <li>Dead code stripped: unused `heightObserver` declaration in QuickTerminalController.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 01:45:00 +0000</pubDate>
+            <sparkle:version>30</sparkle:version>
+            <sparkle:shortVersionString>0.9.13</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.13/Termy.dmg"
+                sparkle:version="30"
+                sparkle:shortVersionString="0.9.13"
+                length="2659201"
+                sparkle:edSignature="UcvloPoTbo2Pd4JXYTDuwXDAQHUnzGFJ6jI+aRrELR75iFb8CjbcUw8Dm8H72N1rQR8gA0baHmDGBIekvgOCDA=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.12 (hotfix)</title>
             <description><![CDATA[
                 <h2>Crash fix — ProfileAvatar arithmetic overflow</h2>

@@ -24,7 +24,6 @@ final class QuickTerminalController {
     private var hideOnFocusLossObserver: Any?
     private var settingsRef: TerminalSettings?
     private var profilesRef: ProfileStore?
-    private var heightObserver: NSKeyValueObservation?
 
     /// Toggle visibility. First call lazily builds the panel; subsequent calls
     /// just show/hide the same instance.

@@ -81,7 +81,13 @@ Requires macOS 15+ and the Xcode Command Line Tools.
 
 ### Quality of life
 - **Status bar** — cwd (with `~` folding), git branch (refreshes every 4s so `git checkout` reflects without `cd`), clock. Handles worktrees + submodules.
-- **Process-done notifications** — toggle in General settings; pair with `precmd() { print -n "\a" }` in zsh and you get system notifications when long commands finish in background windows.
+- **Smart command-finished notifications** — heuristic idle detector for any shell, or **OSC 133 shell integration** for pixel-accurate "Claude finished responding" pings. One-time zsh setup:
+  ```sh
+  # ~/.zshrc — Termy OSC 133 shell integration
+  precmd()  { print -n "\e]133;D;$?\a\e]133;A\a" }
+  preexec() { print -n "\e]133;C\a" }
+  ```
+  After this, Termy notifications fire the instant `claude`, `codex`, `npm test` etc. return, with the last output line as the body. No prompt-line guessing.
 - **Auto-update** via Sparkle, configurable background install.
 - **Confirm before quit**, **launch at login**, **hide from Dock** — standard macOS app conveniences, off by default.
 

@@ -34,23 +34,36 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// so the caret renders without requiring a theme switch.
     private var hasLaidOutAtRealSize = false
 
-    // MARK: - Idle (command-finished) tracking
+    // MARK: - Command-finished tracking
     //
-    // Counts bytes coming back from the PTY and notes when the last burst
-    // ended. A timer fires every 0.5s; if we've been "active" (received
-    // enough bytes recently) and now haven't seen anything for >=
-    // `idleThreshold` seconds, we declare the command finished and emit
-    // onCommandSettled. The vibecoder use case: ask Claude / Codex a
-    // question in one window, switch apps, the notification lands when
-    // the answer is done streaming.
+    // TWO mechanisms, in priority order:
     //
-    // No OSC 133 required — works for any long-running command (build,
-    // test, codex prompt, gemini, etc.).
+    //   1. **OSC 133 shell integration** — if the user's shell emits
+    //      FinalTerm-style markers (`\e]133;D` for command-done), we
+    //      catch them and fire onCommandSettled immediately and
+    //      accurately. Setup is a one-line addition to .zshrc/.bashrc
+    //      (documented in README).
+    //
+    //   2. **Idle heuristic** — fallback for shells without OSC 133.
+    //      Watches for "active output → quiet for N seconds" transitions.
+    //      Works for any long-running command (claude, codex, npm test,
+    //      cargo build, etc.).
+    //
+    // Both feed the same onCommandSettled callback. When OSC 133 fires
+    // during a burst, we suppress the upcoming idle fire so the user
+    // doesn't get two notifications for one command.
     private var lastDataAt: Date = .distantPast
     private var bytesSinceBurstStart: Int = 0
     private var isCurrentlyActive = false
     private var idleTimer: Timer?
     private var lastPreviewBuffer: String = ""
+    private var osc133JustFired = false
+
+    /// Tracks the rolling state of an in-progress OSC 133 sequence so we
+    /// can match `\e]133;D` (with optional `;<exit>`) regardless of byte
+    /// chunk boundaries. SwiftTerm hands us partial reads constantly.
+    private var oscBuffer: [UInt8] = []
+    private var inOSC = false
 
     /// Bytes accumulated within a single burst before the pane is
     /// considered "active". One-byte rerenders (just a prompt refresh)
@@ -65,6 +78,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
 
     override func dataReceived(slice: ArraySlice<UInt8>) {
         super.dataReceived(slice: slice)
+        scanForOSC133(slice)
         let now = Date()
         // Treat a >2s gap as a fresh burst — anything within 2s is one
         // continuous output stream (Claude/Codex stream tokens, builds
@@ -90,6 +104,102 @@ final class TermyTerminalView: LocalProcessTerminalView {
         }
     }
 
+    /// Minimal FinalTerm / iTerm2 OSC 133 parser. Doesn't actually need
+    /// full XParse — only flags the sequence `ESC ] 133 ; X ... BEL` or
+    /// `... ESC \`. We accumulate while `inOSC == true` and dispatch on
+    /// the terminator. Sub-codes we care about:
+    ///
+    ///   - `A` — prompt start: a new prompt is being drawn, so any
+    ///     "active" state from the previous command is implicitly done.
+    ///   - `B` — prompt end / command start (we treat the two
+    ///     interchangeably for notification purposes).
+    ///   - `C` — command output start.
+    ///   - `D[;exit]` — command finished. Fire the notification
+    ///     immediately and suppress the idle fallback for the next tick.
+    private func scanForOSC133(_ slice: ArraySlice<UInt8>) {
+        for byte in slice {
+            if !inOSC {
+                if byte == 0x1B {                  // ESC
+                    oscBuffer = [byte]
+                    inOSC = true
+                }
+                continue
+            }
+            oscBuffer.append(byte)
+            // Cap the buffer so a malformed never-terminating OSC
+            // doesn't grow unbounded. 256B is huge for shell-integration
+            // sequences; if we hit it, drop and re-arm on the next ESC.
+            if oscBuffer.count > 256 {
+                inOSC = false
+                oscBuffer.removeAll()
+                continue
+            }
+            // Terminator: BEL (0x07) or ESC \\ (0x1B 0x5C)
+            let last = oscBuffer.last
+            let secondLast = oscBuffer.count >= 2 ? oscBuffer[oscBuffer.count - 2] : 0
+            let bel = last == 0x07
+            let stTerm = secondLast == 0x1B && last == 0x5C
+            guard bel || stTerm else { continue }
+            handleOSC(oscBuffer)
+            inOSC = false
+            oscBuffer.removeAll()
+        }
+    }
+
+    /// Inspect a complete OSC payload and dispatch on 133;X. Other OSC
+    /// codes (133;P / 133;L for properties, OSC 7 for cwd, OSC 8 for
+    /// hyperlinks) are handled by SwiftTerm itself — we don't intercept.
+    private func handleOSC(_ buffer: [UInt8]) {
+        // Strip ESC ] prefix (2 bytes) and trailing terminator (BEL or
+        // ESC \\). If the prefix isn't ESC ] it's not an OSC we care
+        // about — abort silently.
+        guard buffer.count >= 4,
+              buffer[0] == 0x1B,
+              buffer[1] == 0x5D                    // ']'
+        else { return }
+        let endTrim = buffer.last == 0x07 ? 1 : 2
+        let payload = buffer.dropFirst(2).dropLast(endTrim)
+        guard let str = String(bytes: payload, encoding: .utf8),
+              str.hasPrefix("133;")
+        else { return }
+        let afterPrefix = str.dropFirst("133;".count)
+        guard let code = afterPrefix.first else { return }
+        switch code {
+        case "A", "B":
+            // Prompt boundary — if we were tracking an active burst,
+            // the previous command has settled by now. Fire a settle
+            // event only if we hadn't already (e.g. via 133;D).
+            if isCurrentlyActive && !osc133JustFired {
+                isCurrentlyActive = false
+                let preview = tailLine(from: lastPreviewBuffer)
+                onCommandSettled?(preview)
+            }
+            osc133JustFired = false
+        case "C":
+            // Command output starts — reset preview so it captures only
+            // this command's output, not the prompt prefix.
+            lastPreviewBuffer = ""
+            bytesSinceBurstStart = 0
+        case "D":
+            // Command done with explicit shell signal. Fire immediately
+            // and suppress the idle fallback so the user doesn't get
+            // two notifications for one command.
+            let preview = tailLine(from: lastPreviewBuffer)
+            isCurrentlyActive = false
+            osc133JustFired = true
+            onCommandSettled?(preview)
+        default:
+            break
+        }
+    }
+
+    private func tailLine(from buffer: String) -> String? {
+        buffer
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .last
+            .map(String.init)
+    }
+
     /// Lazy-install the per-view idle-check timer. Tears down with the
     /// view (timers are invalidated in deinit) so we don't leak.
     private func ensureIdleTimer() {
@@ -105,15 +215,18 @@ final class TermyTerminalView: LocalProcessTerminalView {
 
     private func tickIdle() {
         guard isCurrentlyActive else { return }
+        // If OSC 133 already fired for this burst, the heuristic is just
+        // chasing a settled state — suppress it so the user doesn't get
+        // two notifications.
+        if osc133JustFired {
+            osc133JustFired = false
+            return
+        }
         let threshold = UserDefaults.standard.double(forKey: "termy.idleThresholdSeconds")
         let effective = threshold > 0 ? threshold : 4.0
         if Date().timeIntervalSince(lastDataAt) >= effective {
             isCurrentlyActive = false
-            let preview = lastPreviewBuffer
-                .split(separator: "\n", omittingEmptySubsequences: true)
-                .last
-                .map(String.init)
-            onCommandSettled?(preview)
+            onCommandSettled?(tailLine(from: lastPreviewBuffer))
         }
     }
 
