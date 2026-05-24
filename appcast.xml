@@ -6,6 +6,29 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.21</title>
+            <description><![CDATA[
+                <h2>Session Logs browser + tab overflow chevrons + dynamic tab titles</h2>
+                <ul>
+                    <li><strong>Session Logs browser.</strong> ⌘⇧L (also in Command Palette + Termy menu) opens a sidebar+detail browser of every past session you recorded. Sort by date, filter, preview (head + tail with ANSI stripped for readability), reveal in Finder or open in default app. Same 720×520 modal chrome as Settings. Empty-state walks you to enable recording.</li>
+                    <li><strong>Tab overflow chevrons.</strong> When you have more tabs than fit the bar, subtle gradient + chevron cues appear at each edge to indicate scrollable content. Active-tab auto-scroll-into-view kicks in when you select tabs offscreen.</li>
+                    <li><strong>Dynamic tab titles (docs).</strong> README now shows the one-liner zsh setup that makes tab titles update with the currently-running command (<code>npm start</code>, <code>claude</code>, etc.) instead of every tab being named "zsh".</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 04:55:00 +0000</pubDate>
+            <sparkle:version>38</sparkle:version>
+            <sparkle:shortVersionString>0.9.21</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.21/Termy.dmg"
+                sparkle:version="38"
+                sparkle:shortVersionString="0.9.21"
+                length="2832143"
+                sparkle:edSignature="CXi7YE/CR9awSr3lYNmAyjFQjfws37EOvVojTCEuY8qWmpnOQKTSKWx3sEff95V1gSTLBLayJUmp+jr/ZuYACw=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.20</title>
             <description><![CDATA[
                 <h2>Profile picker on + button, Reset all settings</h2>

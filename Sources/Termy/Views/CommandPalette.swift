@@ -177,6 +177,11 @@ struct CommandPalette: View {
         items.append(PaletteItem(kind: .action, title: "Toggle Broadcast Input",
                                  subtitle: "Mirror keys to all panes in this tab",
                                  action: { sessions.currentTab?.broadcastInput.toggle() }))
+        items.append(PaletteItem(kind: .action, title: "Session Logs",
+                                 subtitle: "⌘⇧L — browse past recordings",
+                                 action: {
+            NotificationCenter.default.post(name: .terminalOpenSessionLogs, object: nil)
+        }))
         for host in SSHHostsReader.read() {
             items.append(PaletteItem(kind: .ssh,
                                      title: "SSH: \(host.alias)",

@@ -11,6 +11,7 @@ struct MainTerminalView: View {
     @State private var showingPalette = false
     @State private var showingFind = false
     @State private var showingCheatsheet = false
+    @State private var showingSessionLogs = false
     @State private var hostedWindow: NSWindow?
     @State private var keyMonitor: Any?
 
@@ -128,6 +129,16 @@ struct MainTerminalView: View {
                 .transition(.opacity)
                 .zIndex(12)
             }
+
+            if showingSessionLogs {
+                ZStack {
+                    Color.black.opacity(0.10).ignoresSafeArea()
+                        .onTapGesture { showingSessionLogs = false }
+                    SessionLogBrowser(onDismiss: { showingSessionLogs = false })
+                }
+                .transition(.opacity)
+                .zIndex(13)
+            }
         }
         .frame(minWidth: 480, idealWidth: 920, maxWidth: .infinity,
                minHeight: 320, idealHeight: 620, maxHeight: .infinity)
@@ -175,7 +186,8 @@ struct MainTerminalView: View {
             showRecentDirs: { showingRecentDirs = true },
             showPalette: { showingPalette = true },
             showCheatsheet: { showingCheatsheet = true },
-            showSettings: { showingSettings = true }
+            showSettings: { showingSettings = true },
+            showSessionLogs: { showingSessionLogs = true }
         ))
         .sheet(isPresented: $showingSettings) {
             TerminalSettingsSheet(onClose: { showingSettings = false })
@@ -655,59 +667,137 @@ private struct RecentDirsPanel: View {
 
 private struct TabBar: View {
     @EnvironmentObject var sessions: TerminalSessions
+    @State private var scrollOffset: CGFloat = 0
+    @State private var contentWidth: CGFloat = 0
+    @State private var visibleWidth: CGFloat = 0
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(Array(sessions.tabs.enumerated()), id: \.element.id) { idx, tab in
-                    TabChip(tab: tab,
-                            isActive: tab.id == sessions.selectedTabId,
-                            onSelect: { sessions.selectTab(tab.id) },
-                            onClose: { sessions.closeTab(tab.id) },
-                            onCloseOthers: { sessions.closeOtherTabs(keeping: tab.id) })
-                        .onDrag {
-                            // The tab's UUID as the drag payload — kept
-                            // as a plain string so .onDrop can match any
-                            // recipient without dragging-type plumbing.
-                            return NSItemProvider(object: tab.id.uuidString as NSString)
+        // Overlay scroll-cue chevrons when the tab list overflows the
+        // visible width. Without this, users with 20+ tabs had no
+        // indication that more tabs existed offscreen — scrolling was
+        // discoverable only by trackpad swipe.
+        ZStack(alignment: .leading) {
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        ForEach(Array(sessions.tabs.enumerated()), id: \.element.id) { idx, tab in
+                            TabChip(tab: tab,
+                                    isActive: tab.id == sessions.selectedTabId,
+                                    onSelect: { sessions.selectTab(tab.id) },
+                                    onClose: { sessions.closeTab(tab.id) },
+                                    onCloseOthers: { sessions.closeOtherTabs(keeping: tab.id) })
+                                .onDrag {
+                                    return NSItemProvider(object: tab.id.uuidString as NSString)
+                                }
+                                .onDrop(of: [.text], delegate: TabDropDelegate(
+                                    destinationIndex: idx,
+                                    sessions: sessions
+                                ))
+                                .id(tab.id)
                         }
-                        .onDrop(of: [.text], delegate: TabDropDelegate(
-                            destinationIndex: idx,
-                            sessions: sessions
-                        ))
-                }
-                Button(action: { sessions.openTab() }) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 24, height: 22)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help("New tab (⌘T) — right-click to choose profile")
-                .accessibilityLabel("New tab")
-                // Right-click + button offers a profile picker so users
-                // can open a tab with a specific saved profile without
-                // going to the Dock menu. Lists every defined profile;
-                // 'Default' is the same as a left-click.
-                .contextMenu {
-                    if let store = sessions.profileStore {
-                        Button("New Tab (Default)") { sessions.openTab() }
-                        if store.profiles.count > 1 {
-                            Divider()
-                            ForEach(store.profiles) { p in
-                                Button(p.name) { sessions.openTab(profile: p) }
+                        Button(action: { sessions.openTab() }) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 11, weight: .semibold))
+                                .frame(width: 24, height: 22)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .help("New tab (⌘T) — right-click to choose profile")
+                        .accessibilityLabel("New tab")
+                        .contextMenu {
+                            if let store = sessions.profileStore {
+                                Button("New Tab (Default)") { sessions.openTab() }
+                                if store.profiles.count > 1 {
+                                    Divider()
+                                    ForEach(store.profiles) { p in
+                                        Button(p.name) { sessions.openTab(profile: p) }
+                                    }
+                                }
+                            } else {
+                                Button("New Tab") { sessions.openTab() }
                             }
                         }
-                    } else {
-                        Button("New Tab") { sessions.openTab() }
+                        Spacer(minLength: 0)
                     }
+                    .padding(.horizontal, 10)
+                    .background(
+                        GeometryReader { contentGeo in
+                            Color.clear
+                                .preference(key: TabContentWidthKey.self, value: contentGeo.size.width)
+                                .preference(key: TabScrollOffsetKey.self,
+                                            value: -contentGeo.frame(in: .named("tabScroll")).minX)
+                        }
+                    )
                 }
-                Spacer()
+                .coordinateSpace(name: "tabScroll")
+                .background(
+                    GeometryReader { viewportGeo in
+                        Color.clear
+                            .preference(key: TabVisibleWidthKey.self, value: viewportGeo.size.width)
+                    }
+                )
+                .onPreferenceChange(TabContentWidthKey.self) { contentWidth = $0 }
+                .onPreferenceChange(TabVisibleWidthKey.self) { visibleWidth = $0 }
+                .onPreferenceChange(TabScrollOffsetKey.self) { scrollOffset = $0 }
+                .onChange(of: sessions.selectedTabId) { _, id in
+                    if let id { withAnimation { proxy.scrollTo(id, anchor: .center) } }
+                }
             }
-            .padding(.horizontal, 10)
+
+            // Left chevron — visible only when there's content scrolled
+            // off the left edge. Click scrolls back.
+            if scrollOffset > 4 {
+                ScrollCueChevron(direction: .leading)
+            }
+            // Right chevron — visible when there's more content off the
+            // right edge.
+            if contentWidth - scrollOffset - visibleWidth > 4 {
+                HStack { Spacer(); ScrollCueChevron(direction: .trailing) }
+            }
         }
     }
+}
+
+/// Subtle gradient + chevron at the edge of the tab bar, visible only
+/// when there are tabs scrolled off in that direction. Pure visual cue —
+/// click-through to the scroll content underneath.
+private struct ScrollCueChevron: View {
+    enum Direction { case leading, trailing }
+    let direction: Direction
+
+    var body: some View {
+        ZStack(alignment: direction == .leading ? .leading : .trailing) {
+            LinearGradient(
+                colors: [
+                    Color.primary.opacity(0.12),
+                    Color.primary.opacity(0.0),
+                ],
+                startPoint: direction == .leading ? .leading : .trailing,
+                endPoint:   direction == .leading ? .trailing : .leading
+            )
+            .frame(width: 28)
+            .allowsHitTesting(false)
+            Image(systemName: direction == .leading ? "chevron.left" : "chevron.right")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+private struct TabContentWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+private struct TabVisibleWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+private struct TabScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 /// Receives a tab UUID payload and reorders the tab list to slot in at

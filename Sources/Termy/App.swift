@@ -134,6 +134,10 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalOpenCheatsheet, object: nil)
                 }
                 .keyboardShortcut("/", modifiers: .command)
+                Button("Session Logs…") {
+                    NotificationCenter.default.post(name: .terminalOpenSessionLogs, object: nil)
+                }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
                 QuickTerminalToggleButton(settings: settings, profiles: profiles)
             }
             CommandGroup(after: .windowArrangement) {
@@ -181,6 +185,7 @@ extension Notification.Name {
     static let terminalToggleAlwaysOnTop = Notification.Name("mees.terminal.toggleAlwaysOnTop")
     static let terminalOpenCheatsheet = Notification.Name("mees.terminal.openCheatsheet")
     static let terminalOpenSettings = Notification.Name("mees.terminal.openSettings")
+    static let terminalOpenSessionLogs = Notification.Name("mees.terminal.openSessionLogs")
     static let terminalClear = Notification.Name("mees.terminal.clear")
     static let terminalToggleFind = Notification.Name("mees.terminal.toggleFind")
     static let terminalSplitHorizontal = Notification.Name("mees.terminal.splitH")

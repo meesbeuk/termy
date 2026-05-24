@@ -83,11 +83,13 @@ Requires macOS 15+ and the Xcode Command Line Tools.
 - **Status bar** — cwd (with `~` folding), git branch (refreshes every 4s so `git checkout` reflects without `cd`), clock. Handles worktrees + submodules.
 - **Smart command-finished notifications** — heuristic idle detector for any shell, or **OSC 133 shell integration** for pixel-accurate "Claude finished responding" pings. One-time zsh setup:
   ```sh
-  # ~/.zshrc — Termy OSC 133 shell integration
-  precmd()  { print -n "\e]133;D;$?\a\e]133;A\a" }
-  preexec() { print -n "\e]133;C\a" }
+  # ~/.zshrc — Termy OSC 133 shell integration + dynamic tab title
+  precmd()  { print -n "\e]133;D;$?\a\e]133;A\a" ; print -Pn "\e]0;%~\a" }
+  preexec() { print -n "\e]133;C\a" ; print -Pn "\e]0;$1\a" }
   ```
-  After this, Termy notifications fire the instant `claude`, `codex`, `npm test` etc. return, with the last output line as the body. No prompt-line guessing.
+  After this:
+  - Termy notifications fire the instant `claude`, `codex`, `npm test` etc. return, with the last output line as the body.
+  - Tab titles show the **currently-running command** (`npm start`, `claude`, etc.) while it runs, and fall back to the cwd at the prompt — no more every-tab-named-`zsh`.
 - **Auto-update** via Sparkle, configurable background install.
 - **Confirm before quit**, **launch at login**, **hide from Dock** — standard macOS app conveniences, off by default.
 

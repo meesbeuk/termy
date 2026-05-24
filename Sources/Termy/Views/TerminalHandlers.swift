@@ -16,6 +16,7 @@ struct TerminalHandlers: ViewModifier {
     let showPalette: () -> Void
     let showCheatsheet: () -> Void
     let showSettings: () -> Void
+    let showSessionLogs: () -> Void
 
     func body(content: Content) -> some View {
         content
@@ -36,7 +37,8 @@ struct TerminalHandlers: ViewModifier {
                 showRecentDirs: showRecentDirs,
                 showPalette: showPalette,
                 showCheatsheet: showCheatsheet,
-                showSettings: showSettings
+                showSettings: showSettings,
+                showSessionLogs: showSessionLogs
             ))
     }
 }
@@ -111,6 +113,7 @@ private struct NotificationHandlersB: ViewModifier {
     let showPalette: () -> Void
     let showCheatsheet: () -> Void
     let showSettings: () -> Void
+    let showSessionLogs: () -> Void
 
     func body(content: Content) -> some View {
         content
@@ -134,6 +137,9 @@ private struct NotificationHandlersB: ViewModifier {
             }
             .onReceive(NotificationCenter.default.publisher(for: .terminalOpenSettings)) { _ in
                 if isKeyWindow() { showSettings() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalOpenSessionLogs)) { _ in
+                if isKeyWindow() { showSessionLogs() }
             }
             // LaunchServices handed us files to open (Finder double-click on
             // .sh, .command, +x binary). Only the key window opens the tabs
