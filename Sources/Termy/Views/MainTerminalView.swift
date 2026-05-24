@@ -241,6 +241,9 @@ private struct TitleStrip: View {
                 Text(session.title)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .layoutPriority(-1) // give up width first on narrow windows
             }
             Button(action: { showingSettings = true }) {
                 Image(systemName: "gearshape")

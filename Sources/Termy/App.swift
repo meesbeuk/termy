@@ -100,8 +100,20 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalOpenPalette, object: nil)
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
+                QuickWindowButton()
             }
         }
+    }
+}
+
+/// Opens a fresh small floating window — a "quick terminal" for one-off
+/// commands without disturbing your main session. Keyboard shortcut ⌃` (a
+/// common terminal-app convention; ⌘` conflicts with macOS window cycling).
+struct QuickWindowButton: View {
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Button("Quick Terminal") { openWindow(id: "terminal") }
+            .keyboardShortcut("`", modifiers: .control)
     }
 }
 

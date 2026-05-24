@@ -534,6 +534,15 @@ private struct ProfileRow: View {
             RoundedRectangle(cornerRadius: DS.Radius.s)
                 .fill(DS.Colors.chipBg)
         )
+        // Re-sync the draft whenever the editor is reopened OR the parent
+        // profile changes externally — without this, editing the same profile
+        // twice would show stale data from the previous session.
+        .onChange(of: isEditing) { _, editing in
+            if editing { draft = profile }
+        }
+        .onChange(of: profile) { _, new in
+            if !isEditing { draft = new }
+        }
     }
 }
 
