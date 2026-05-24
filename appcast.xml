@@ -6,6 +6,28 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.8.6</title>
+            <description><![CDATA[
+                <h2>Profile deletion safety</h2>
+                <ul>
+                    <li>Deleting a profile now asks "are you sure?" — no more accidental nukes from misclicking the trash icon.</li>
+                    <li>Default profile delete shows a contextual message about the demotion.</li>
+                    <li>Store refuses to remove the last profile (would have desynced ID-based comparisons).</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 19:20:00 +0000</pubDate>
+            <sparkle:version>16</sparkle:version>
+            <sparkle:shortVersionString>0.8.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.8.6/Termy.dmg"
+                sparkle:version="16"
+                sparkle:shortVersionString="0.8.6"
+                length="2525738"
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.8.5</title>
             <description><![CDATA[
                 <h2>Bigger profile-row hit targets</h2>
