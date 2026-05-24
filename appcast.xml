@@ -6,6 +6,29 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.8</title>
+            <description><![CDATA[
+                <h2>Polish: live git branch, multi-monitor Quake, shortcuts cheatsheet</h2>
+                <ul>
+                    <li><strong>Status bar git branch refreshes live</strong> — `git checkout` / `git switch` now updates the displayed branch within ~4s, without needing to `cd` to bump the cwd. Cheap on-disk poll, off the main thread.</li>
+                    <li><strong>Quake drop-down opens on the active monitor</strong> — previously always opened on the primary display, ignoring where the cursor was. Now lands on whichever screen contains the mouse pointer.</li>
+                    <li><strong>Keyboard cheatsheet</strong> — new ? icon in the title strip surfaces a modal listing every shortcut grouped by category. Discoverability for users who don't memorise key combos.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 23:30:00 +0000</pubDate>
+            <sparkle:version>25</sparkle:version>
+            <sparkle:shortVersionString>0.9.8</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.8/Termy.dmg"
+                sparkle:version="25"
+                sparkle:shortVersionString="0.9.8"
+                length="2634736"
+                sparkle:edSignature="ZeSakKitebRJ7JHoR59qf+3zALZ5+YufZ2VOGAtE9B9DFpzjyBKdIZ2sZyzWSwK7w3Z0Iv8CVeVJImYFpsx6Aw=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.7</title>
             <description><![CDATA[
                 <h2>Real Quake drop-down, inline find bar, visible icon affordances</h2>

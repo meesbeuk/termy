@@ -11,7 +11,12 @@ struct StatusBar: View {
     @State private var gitBranch: String?
     @State private var now: Date = Date()
     @State private var lastResolvedCwd: String = ""
+    @State private var lastResolvedBranch: String?
     private let clockTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+    // Refresh the displayed git branch every 4s so `git checkout` /
+    // `git switch` updates without needing the user to `cd` to bump cwd.
+    // Cheap — it's a single .git/HEAD read off the main thread.
+    private let gitTimer = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
 
     private var cwd: String { sessions.currentSession?.cwd ?? "" }
 
@@ -51,9 +56,10 @@ struct StatusBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
-        .onAppear { resolveGit() }
-        .onChange(of: cwd) { _, _ in resolveGit() }
+        .onAppear { resolveGit(force: true) }
+        .onChange(of: cwd) { _, _ in resolveGit(force: true) }
         .onReceive(clockTimer) { now = $0 }
+        .onReceive(gitTimer) { _ in resolveGit(force: false) }
     }
 
     private var clockString: String {
@@ -64,12 +70,23 @@ struct StatusBar: View {
 
     /// Walk up from cwd looking for a .git directory; if found, read HEAD.
     /// Pure filesystem — no shell fork, no git binary required.
-    private func resolveGit() {
-        guard !cwd.isEmpty, cwd != lastResolvedCwd else { return }
+    /// `force` bypasses the cwd-changed gate so the periodic poll can pick
+    /// up a `git checkout` that didn't change the working directory.
+    private func resolveGit(force: Bool) {
+        guard !cwd.isEmpty else { return }
+        if !force && cwd == lastResolvedCwd && gitBranch != nil { /* still poll */ }
         lastResolvedCwd = cwd
+        let targetCwd = cwd
         DispatchQueue.global(qos: .utility).async {
-            let branch = Self.findBranch(startingAt: cwd)
-            DispatchQueue.main.async { self.gitBranch = branch }
+            let branch = Self.findBranch(startingAt: targetCwd)
+            DispatchQueue.main.async {
+                // Skip the state write when nothing changed — avoids
+                // unnecessary SwiftUI rerenders every 4s when the user is
+                // sitting in a stable branch.
+                if branch != self.gitBranch {
+                    self.gitBranch = branch
+                }
+            }
         }
     }
 

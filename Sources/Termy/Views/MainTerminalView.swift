@@ -10,6 +10,7 @@ struct MainTerminalView: View {
     @State private var showingRecentDirs = false
     @State private var showingPalette = false
     @State private var showingFind = false
+    @State private var showingCheatsheet = false
     @State private var hostedWindow: NSWindow?
     @State private var keyMonitor: Any?
 
@@ -29,7 +30,8 @@ struct MainTerminalView: View {
                         if let store = sessions.profileStore {
                             QuickTerminalController.shared.toggle(settings: settings, profiles: store)
                         }
-                    }
+                    },
+                    onShowCheatsheet: { showingCheatsheet = true }
                 )
                 if settings.showTabBar {
                     TabBar()
@@ -115,6 +117,16 @@ struct MainTerminalView: View {
                 }
                 .transition(.opacity)
                 .zIndex(11)
+            }
+
+            if showingCheatsheet {
+                ZStack {
+                    Color.black.opacity(0.10).ignoresSafeArea()
+                        .onTapGesture { showingCheatsheet = false }
+                    CheatsheetPanel(onDismiss: { showingCheatsheet = false })
+                }
+                .transition(.opacity)
+                .zIndex(12)
             }
         }
         .frame(minWidth: 480, idealWidth: 920, maxWidth: .infinity,
@@ -393,6 +405,7 @@ private struct TitleStrip: View {
     let onSplitH: () -> Void
     let onSplitV: () -> Void
     let onQuickTerminal: () -> Void
+    let onShowCheatsheet: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -425,6 +438,9 @@ private struct TitleStrip: View {
             ChromeIconButton(symbol: "chevron.down.square",
                              tooltip: "Quick Drop-down Terminal (⌃`)",
                              action: onQuickTerminal)
+            ChromeIconButton(symbol: "questionmark.circle",
+                             tooltip: "Keyboard shortcuts cheatsheet",
+                             action: onShowCheatsheet)
             Spacer()
             // cwd lives in the status bar — no need to duplicate it up top.
             Text("\(Int(settings.fontSize))pt")

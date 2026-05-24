@@ -103,8 +103,15 @@ final class QuickTerminalController {
         }
     }
 
+    /// Display the panel on whichever screen currently owns the focus —
+    /// i.e. the screen containing the mouse cursor when the user pressed
+    /// ⌃`. NSScreen.main reflects the menubar-owning screen, which on
+    /// multi-monitor setups is often NOT where the user is working. Falls
+    /// back to .main when no mouseScreen is available (e.g. headless tests).
     private func screen() -> NSScreen {
-        NSScreen.main ?? NSScreen.screens.first!
+        let mouse = NSEvent.mouseLocation
+        let hit = NSScreen.screens.first { NSPointInRect(mouse, $0.frame) }
+        return hit ?? NSScreen.main ?? NSScreen.screens.first!
     }
 
     private func expandedFrame() -> NSRect {
