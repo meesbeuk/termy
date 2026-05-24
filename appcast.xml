@@ -6,6 +6,29 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.16</title>
+            <description><![CDATA[
+                <h2>Inline images via imgcat/viu/yazi + Cinema mode for screen recordings</h2>
+                <ul>
+                    <li><strong>Image rendering works.</strong> Termy now identifies as <code>TERM_PROGRAM=iTerm.app</code> (+ <code>LC_TERMINAL=iTerm2</code>) so tools like <code>imgcat</code>, <code>chafa</code>, <code>viu</code>, <code>yazi</code>, <code>kitten icat</code> emit OSC 1337 / Sixel / Kitty graphics protocols — and SwiftTerm renders them inline. The dedicated <code>TERMY</code> env var lets shell config detect actual-Termy without breaking the image ecosystem. Same approach WezTerm + Ghostty take.</li>
+                    <li><strong>Cinema mode.</strong> Settings → General → Cinema mode: pace incoming PTY output at a fixed characters-per-second rate (30-500 cps, default 80). Streaming text looks "typewriter-smooth" on camera instead of frame-coalesced bursts. Tracking (notifications, OSC 133, session recording) still uses real arrival time — only the visible display is paced. Off by default. Bypassed for large bursts (paste, file dumps) so it never hurts normal output.</li>
+                    <li>Stress-tested: 30 tabs open simultaneously, tab bar scrolls horizontally, active pane stays responsive, no crashes.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 03:05:00 +0000</pubDate>
+            <sparkle:version>33</sparkle:version>
+            <sparkle:shortVersionString>0.9.16</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.16/Termy.dmg"
+                sparkle:version="33"
+                sparkle:shortVersionString="0.9.16"
+                length="2692736"
+                sparkle:edSignature="6FwD+yZ73obqb0Svfi9nTEK2LmSFLxoyYojFOBZba/tTZSgByNV+bZlIXKCOB7Oj+v3lJYNGG7IH1tVezgZVAA=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.15</title>
             <description><![CDATA[
                 <h2>Drag-drop tab reorder, session recording, accessibility, image-tool compat</h2>

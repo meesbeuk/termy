@@ -222,6 +222,28 @@ private struct GeneralPane: View {
                     .toggleStyle(.checkbox).font(DS.Typo.caption)
             }
 
+            DSSection("Cinema mode") {
+                Toggle("Pace incoming output for screen recording", isOn: $settings.cinemaMode)
+                    .toggleStyle(.checkbox).font(DS.Typo.caption)
+                Text("Queues PTY output and drains at a fixed rate so streaming text looks smooth on camera instead of arriving in frame-coalesced bursts. Tracking (notifications, OSC 133) still uses real arrival time. Off by default — turn on only when recording.")
+                    .font(DS.Typo.tiny)
+                    .foregroundStyle(DS.Colors.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Text("Speed")
+                        .font(DS.Typo.caption)
+                        .foregroundStyle(DS.Colors.secondary)
+                    Slider(value: $settings.cinemaCps, in: 30...500, step: 10)
+                        .controlSize(.small)
+                        .disabled(!settings.cinemaMode)
+                        .opacity(settings.cinemaMode ? 1.0 : 0.5)
+                    Text("\(Int(settings.cinemaCps)) cps")
+                        .font(DS.Typo.monoCaption)
+                        .foregroundStyle(DS.Colors.secondary)
+                        .frame(width: 60, alignment: .trailing)
+                }
+            }
+
             DSSection("Session recording") {
                 Toggle("Record every pane's output to a log file", isOn: $settings.recordSessions)
                     .toggleStyle(.checkbox).font(DS.Typo.caption)

@@ -65,6 +65,22 @@ final class TermyTerminalView: LocalProcessTerminalView {
     private var oscBuffer: [UInt8] = []
     private var inOSC = false
 
+    // MARK: - Cinema mode (typewriter pacer)
+    //
+    // Optional feature for users recording Termy demos / screencasts.
+    // When on, incoming PTY bytes are queued and drained at a fixed
+    // characters-per-second rate so streaming output looks "smooth
+    // typewriter" instead of frame-coalesced bursts on camera.
+    //
+    // Important: ONLY the visible display is paced. Tracking (OSC 133
+    // command-finished, idle heuristic, session recording) still runs
+    // at real-time arrival so notifications fire when commands actually
+    // finish, not when the paced display catches up. Large bursts
+    // (paste, file dumps > 200B) bypass the queue and render
+    // immediately — pacing a `cat large_file` would just be annoying.
+    private var typewriterQueue: [UInt8] = []
+    private var typewriterTimer: Timer?
+
     // MARK: - Session recording (optional, off by default)
     //
     // When the user opts in via Settings → General → Notifications →
@@ -88,9 +104,55 @@ final class TermyTerminalView: LocalProcessTerminalView {
     }
 
     override func dataReceived(slice: ArraySlice<UInt8>) {
-        super.dataReceived(slice: slice)
+        // Tracking always runs at real-time arrival, regardless of
+        // cinema-mode pacing. Notifications / OSC 133 / recording all
+        // depend on the actual byte timing, not the paced display.
         recordIfEnabled(slice)
         scanForOSC133(slice)
+        trackIdleBytes(slice)
+
+        // Display path: paced or immediate.
+        let cinema = UserDefaults.standard.bool(forKey: "termy.cinemaMode")
+        if cinema && slice.count <= 200 {
+            typewriterQueue.append(contentsOf: slice)
+            ensureTypewriterTimer()
+        } else {
+            super.dataReceived(slice: slice)
+        }
+        return
+    }
+
+    private func ensureTypewriterTimer() {
+        if typewriterTimer != nil { return }
+        let cps = UserDefaults.standard.double(forKey: "termy.cinemaCps")
+        let effective = cps > 0 ? cps : 80.0
+        let interval = 1.0 / max(30.0, min(500.0, effective))
+        let t = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            self?.drainTypewriter()
+        }
+        RunLoop.main.add(t, forMode: .common)
+        typewriterTimer = t
+    }
+
+    private func drainTypewriter() {
+        guard !typewriterQueue.isEmpty else {
+            typewriterTimer?.invalidate()
+            typewriterTimer = nil
+            return
+        }
+        // Drain a few bytes per tick, with auto-catch-up if the queue
+        // grew large — keeps the apparent rate close to the target cps
+        // without compounding latency on bursty streams.
+        let chunkSize = max(1, typewriterQueue.count / 8)
+        let take = min(chunkSize, typewriterQueue.count)
+        let chunk = ArraySlice(typewriterQueue.prefix(take))
+        typewriterQueue.removeFirst(take)
+        super.dataReceived(slice: chunk)
+    }
+
+    /// Refactored out of the inline body so cinema mode can call the
+    /// same tracking path at real time without double-counting.
+    private func trackIdleBytes(_ slice: ArraySlice<UInt8>) {
         let now = Date()
         // Treat a >2s gap as a fresh burst — anything within 2s is one
         // continuous output stream (Claude/Codex stream tokens, builds
@@ -244,6 +306,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
 
     deinit {
         idleTimer?.invalidate()
+        typewriterTimer?.invalidate()
         try? recordingHandle?.close()
     }
 

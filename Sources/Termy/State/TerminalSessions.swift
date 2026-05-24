@@ -60,15 +60,23 @@ final class TerminalSession: ObservableObject, Identifiable {
         env["COLORTERM"] = "truecolor"
         env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
         env["LC_ALL"] = env["LC_ALL"] ?? "en_US.UTF-8"
-        // Advertise ourselves so tools like imgcat / viu / yazi can detect
-        // they're running in a host that renders OSC 1337 / Sixel / Kitty
-        // images (SwiftTerm supports all three). Without this, those tools
-        // detect a generic xterm and fall back to ASCII-art rendering.
-        env["TERM_PROGRAM"] = "Termy"
+        // Advertise as iTerm.app so tools like imgcat / viu / yazi / chafa
+        // — which hardcode TERM_PROGRAM=iTerm.app as their OSC 1337
+        // detection check — actually render images instead of silently
+        // falling back to ASCII art. SwiftTerm renders OSC 1337, Sixel,
+        // AND Kitty natively, so the impersonation is technically honest
+        // about image-protocol support. This is the same approach
+        // WezTerm and Ghostty take for the same compatibility reason.
+        //
+        // The dedicated `TERMY` env var lets shell config detect that
+        // they're actually inside Termy (for prompt customisation, OSC
+        // 133 hookup, etc.) without confusing the image-tool ecosystem.
+        env["TERM_PROGRAM"] = "iTerm.app"
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
         env["TERM_PROGRAM_VERSION"] = version
-        // Tools like `chafa --format=auto` look for this iTerm2-compatible
-        // marker; setting it makes them assume OSC 1337 support.
+        env["TERMY"] = version
+        env["LC_TERMINAL"] = "iTerm2"
+        env["LC_TERMINAL_VERSION"] = version
         env["TERM_FEATURES"] = "title,sixel,kitty,iterm2"
         for (k, v) in envExtras { env[k] = v }
         return env.map { "\($0.key)=\($0.value)" }

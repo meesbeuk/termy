@@ -140,6 +140,29 @@ final class TerminalSettings: ObservableObject {
         didSet { UserDefaults.standard.set(recordSessions, forKey: Self.recordSessionsKey) }
     }
 
+    /// Paces incoming PTY output to a fixed characters-per-second rate so
+    /// streaming output looks "typewriter-smooth" instead of arriving in
+    /// frame-coalesced bursts. Off by default — purpose-built for users
+    /// recording Termy demos / screencasts where chunky output looks bad
+    /// on camera. Tracking (OSC 133, idle detection, recording) still
+    /// happens at real-time arrival; only the visible display is paced.
+    @Published var cinemaMode: Bool {
+        didSet { UserDefaults.standard.set(cinemaMode, forKey: Self.cinemaModeKey) }
+    }
+
+    /// Characters per second when cinema mode is on. ~80 cps matches a
+    /// fast human typist; ~150 is comfortable for technical content;
+    /// 300+ approaches "fast streaming" and starts to look like normal
+    /// output. Capped because too-slow values make a 500-char burst
+    /// take an annoying 25s to display.
+    @Published var cinemaCps: Double {
+        didSet {
+            let clamped = max(30.0, min(500.0, cinemaCps))
+            if clamped != cinemaCps { cinemaCps = clamped; return }
+            UserDefaults.standard.set(cinemaCps, forKey: Self.cinemaCpsKey)
+        }
+    }
+
     // MARK: - Quake (drop-down terminal) settings
 
     /// Auto-hide the Quake drop-down when it loses focus. Standard Quake
@@ -187,6 +210,8 @@ final class TerminalSettings: ObservableObject {
     private static let notifySoundKey = "termy.notifySound"
     private static let notifyShowPreviewKey = "termy.notifyShowPreview"
     private static let recordSessionsKey = "termy.recordSessions"
+    private static let cinemaModeKey = "termy.cinemaMode"
+    private static let cinemaCpsKey = "termy.cinemaCps"
     private static let quakeHideOnFocusLossKey = "termy.quakeHideOnFocusLoss"
     private static let quakeHeightKey = "termy.quakeHeightFraction"
 
@@ -248,6 +273,9 @@ final class TerminalSettings: ObservableObject {
             self.notifyShowPreview = UserDefaults.standard.bool(forKey: Self.notifyShowPreviewKey)
         }
         self.recordSessions = UserDefaults.standard.bool(forKey: Self.recordSessionsKey)
+        self.cinemaMode = UserDefaults.standard.bool(forKey: Self.cinemaModeKey)
+        let savedCps = UserDefaults.standard.double(forKey: Self.cinemaCpsKey)
+        self.cinemaCps = savedCps > 0 ? savedCps : 80
         if UserDefaults.standard.object(forKey: Self.quakeHideOnFocusLossKey) == nil {
             self.quakeHideOnFocusLoss = true
         } else {
