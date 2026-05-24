@@ -6,6 +6,29 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.22</title>
+            <description><![CDATA[
+                <h2>Cross-log content search + verified 100-tab stress</h2>
+                <ul>
+                    <li><strong>Search across all session logs.</strong> The Session Logs filter now greps file <em>contents</em> too, not just filenames. Type a query → every log with a match shows a per-file hit count badge. Results sort by match density. Selected log highlights every occurrence inline. Vibecoder use case: "find my old Claude conversation about WebSockets" — type "websocket", click the top result, scroll to the highlighted match.</li>
+                    <li>Debounced 150ms so typing stays smooth, runs off-main-thread, skips logs > 5 MB (those use the head/tail preview path).</li>
+                    <li><strong>Verified at 100 tabs:</strong> Termy RSS ~148 MB with 100 live PTYs, tab bar scrolls smoothly with overflow chevrons, app stays responsive. ~1.5 MB per tab is acceptable.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 05:15:00 +0000</pubDate>
+            <sparkle:version>39</sparkle:version>
+            <sparkle:shortVersionString>0.9.22</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.22/Termy.dmg"
+                sparkle:version="39"
+                sparkle:shortVersionString="0.9.22"
+                length="2845220"
+                sparkle:edSignature="yLsZ9pzz7nLndiHCOKylyWPLrFoJBvFG3oIBoO75WxkZBvwnQ8wGtDqM89IYtI1hMvIrYPbDeRvety7QnV2RCw=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.21</title>
             <description><![CDATA[
                 <h2>Session Logs browser + tab overflow chevrons + dynamic tab titles</h2>

@@ -16,6 +16,11 @@ struct SessionLogBrowser: View {
     @State private var logs: [SessionLog] = []
     @State private var selectedLog: SessionLog?
     @State private var query: String = ""
+    /// Per-log content-match counts populated when the query is non-empty
+    /// — lets us show "12 matches" next to each filtered file and rank
+    /// results. Empty when query is empty (filename filter only).
+    @State private var contentMatchCounts: [String: Int] = [:]
+    @State private var searchTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -67,9 +72,10 @@ struct SessionLogBrowser: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 10))
                     .foregroundStyle(DS.Colors.tertiary)
-                TextField("Filter by date or pane id", text: $query)
+                TextField("Search across all logs…", text: $query)
                     .textFieldStyle(.plain)
                     .font(DS.Typo.caption)
+                    .onChange(of: query) { _, _ in scheduleContentSearch() }
             }
             .padding(.horizontal, DS.Spacing.s)
             .padding(.vertical, 4)
@@ -104,6 +110,7 @@ struct SessionLogBrowser: View {
                             SessionLogRow(
                                 log: log,
                                 isSelected: selectedLog?.id == log.id,
+                                matchCount: contentMatchCounts[log.id] ?? 0,
                                 onSelect: { selectedLog = log }
                             )
                         }
@@ -120,7 +127,7 @@ struct SessionLogBrowser: View {
     @ViewBuilder
     private var detail: some View {
         if let log = selectedLog {
-            SessionLogDetail(log: log)
+            SessionLogDetail(log: log, highlight: query.trimmingCharacters(in: .whitespaces))
         } else {
             VStack {
                 Spacer()
@@ -142,7 +149,40 @@ struct SessionLogBrowser: View {
     private var filteredLogs: [SessionLog] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         if q.isEmpty { return logs }
-        return logs.filter { $0.displayName.lowercased().contains(q) }
+        return logs.filter { log in
+            log.displayName.lowercased().contains(q)
+                || (contentMatchCounts[log.id] ?? 0) > 0
+        }.sorted { (contentMatchCounts[$0.id] ?? 0) > (contentMatchCounts[$1.id] ?? 0) || $0.modified > $1.modified }
+    }
+
+    /// Debounced grep across every log's contents. Runs off main thread,
+    /// returns hit counts per log file. Cancelled + restarted on every
+    /// keystroke. Skips files > 5 MB to stay snappy — those are
+    /// pathological and previewed via the head/tail path anyway.
+    private func scheduleContentSearch() {
+        searchTask?.cancel()
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else {
+            contentMatchCounts = [:]
+            return
+        }
+        let snapshot = logs
+        searchTask = Task.detached(priority: .userInitiated) {
+            try? await Task.sleep(nanoseconds: 150_000_000)  // debounce
+            if Task.isCancelled { return }
+            var counts: [String: Int] = [:]
+            for log in snapshot {
+                if Task.isCancelled { return }
+                guard log.size <= 5 * 1024 * 1024 else { continue }
+                if let text = try? String(contentsOf: log.url, encoding: .utf8) {
+                    let lower = text.lowercased()
+                    let count = lower.components(separatedBy: q).count - 1
+                    if count > 0 { counts[log.id] = count }
+                }
+            }
+            if Task.isCancelled { return }
+            await MainActor.run { contentMatchCounts = counts }
+        }
     }
 
     private func loadLogs() {
@@ -200,6 +240,7 @@ struct SessionLog: Identifiable, Equatable {
 private struct SessionLogRow: View {
     let log: SessionLog
     let isSelected: Bool
+    let matchCount: Int
     let onSelect: () -> Void
     @State private var hovering = false
 
@@ -219,6 +260,17 @@ private struct SessionLogRow: View {
                         .foregroundStyle(DS.Colors.tertiary)
                 }
                 Spacer()
+                if matchCount > 0 {
+                    Text("\(matchCount)")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(DS.Colors.accent)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(
+                            Capsule().fill(DS.Colors.accent.opacity(0.15))
+                        )
+                        .help("\(matchCount) match\(matchCount == 1 ? "" : "es") in this log")
+                }
             }
             .padding(.horizontal, DS.Spacing.s)
             .padding(.vertical, DS.Spacing.xs)
@@ -246,6 +298,7 @@ private struct SessionLogRow: View {
 
 private struct SessionLogDetail: View {
     let log: SessionLog
+    let highlight: String
     @State private var preview: String = ""
     @State private var loading = true
 
@@ -275,7 +328,7 @@ private struct SessionLogDetail: View {
                     ProgressView()
                         .padding(DS.Spacing.l)
                 } else {
-                    Text(preview)
+                    highlightedText
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(DS.Colors.primary)
                         .textSelection(.enabled)
@@ -291,6 +344,24 @@ private struct SessionLogDetail: View {
         .padding(DS.Spacing.l)
         .onAppear { loadPreview() }
         .onChange(of: log.id) { _, _ in loadPreview() }
+    }
+
+    /// Renders the preview with matches highlighted via AttributedString
+    /// when a search query is active. Falls back to plain text otherwise.
+    private var highlightedText: Text {
+        guard !highlight.isEmpty else { return Text(preview) }
+        var attributed = AttributedString(preview)
+        let q = highlight.lowercased()
+        let lowerStr = preview.lowercased()
+        var searchStart = lowerStr.startIndex
+        while let range = lowerStr.range(of: q, range: searchStart..<lowerStr.endIndex) {
+            // Map String index range to AttributedString index range.
+            if let attribRange = Range<AttributedString.Index>(range, in: attributed) {
+                attributed[attribRange].backgroundColor = .accentColor.opacity(0.35)
+            }
+            searchStart = range.upperBound
+        }
+        return Text(attributed)
     }
 
     /// Loads head + tail of the log file so previews stay snappy on
