@@ -6,6 +6,28 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.3</title>
+            <description><![CDATA[
+                <h2>Cursor on launch, bulletproof resize, stronger adaptive backdrop</h2>
+                <ul>
+                    <li>Caret renders from the first frame now, not only after toggling themes. Theme + caret colors are re-applied once the view enters its window, so the cursor is visible the moment Termy opens.</li>
+                    <li>Scrollback no longer corrupts when you resize a window and scroll back up. Reflow is now skipped entirely around every resize (SwiftTerm's reflowWider is the buggy path). Visible viewport content is preserved; history past it is dropped on resize — strictly better than the ghosted/duplicated rows you'd get before.</li>
+                    <li>Whole-window adaptive darkening — not a per-element box. The wallpaper-brightness opacity range widened (0.10–0.35 → 0.18–0.78) with a curve that stays glassy through the dark half and ramps hard only on genuinely light wallpapers. Brightness re-samples when you switch apps, displays, or Spaces.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 20:20:00 +0000</pubDate>
+            <sparkle:version>20</sparkle:version>
+            <sparkle:shortVersionString>0.9.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.3/Termy.dmg"
+                sparkle:version="20"
+                sparkle:shortVersionString="0.9.3"
+                length="2558581"
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.2</title>
             <description><![CDATA[
                 <h2>Default shell-script handler + cursor + resize fixes</h2>
