@@ -30,11 +30,11 @@ struct TerminalSurface: NSViewRepresentable {
         // Bridge process state back to the session model — title/cwd updates,
         // termination, etc. Coordinator pattern keeps the delegate alive.
         view.processDelegate = context.coordinator
-        // Also own the view-level delegate so we explicitly handle link clicks
-        // (OSC 8 hyperlinks + plain URL detection). Without this, behaviour
-        // falls back to SwiftTerm's internal NSWorkspace.open default — which
-        // works, but is opaque + can't be customized.
-        view.terminalDelegate = context.coordinator
+        // NOTE: do NOT overwrite view.terminalDelegate. LocalProcessTerminalView
+        // is its own TerminalViewDelegate (see SwiftTerm's MacLocalTerminalView
+        // init) and routes `send(source:data:)` to the PTY's stdin. Replacing
+        // it with our own delegate would silently disconnect keyboard input.
+        // SwiftTerm's macOS default already opens URLs via NSWorkspace.
 
         view.startProcess(
             executable: session.shellPath,
@@ -92,7 +92,7 @@ struct TerminalSurface: NSViewRepresentable {
         view.installColors(settings.theme.swiftTermColors)
     }
 
-    final class Coordinator: NSObject, LocalProcessTerminalViewDelegate, TerminalViewDelegate {
+    final class Coordinator: NSObject, LocalProcessTerminalViewDelegate {
         let session: TerminalSession
         let sessions: TerminalSessions
         /// Last appearance signature (theme|font|cursor) we applied — used to
@@ -140,37 +140,5 @@ struct TerminalSurface: NSViewRepresentable {
             }
         }
 
-        // MARK: - TerminalViewDelegate (link clicks, bell, etc.)
-
-        func requestOpenLink(source: SwiftTerm.TerminalView, link: String, params: [String: String]) {
-            // Only open http(s) and file URLs — refuse arbitrary schemes so
-            // a hostile shell script can't trick us into launching `vscode://`
-            // or similar protocol handlers without explicit user intent.
-            guard let url = URL(string: link),
-                  let scheme = url.scheme?.lowercased(),
-                  ["http", "https", "file"].contains(scheme)
-            else { return }
-            NSWorkspace.shared.open(url)
-        }
-
-        // SwiftTerm's protocol requires these but we don't need custom behavior;
-        // the default macOS implementations handle them appropriately.
-        func sizeChanged(source: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {}
-        func setTerminalTitle(source: SwiftTerm.TerminalView, title: String) {
-            DispatchQueue.main.async {
-                if !title.isEmpty { self.session.title = title }
-            }
-        }
-        func send(source: SwiftTerm.TerminalView, data: ArraySlice<UInt8>) {}
-        func scrolled(source: SwiftTerm.TerminalView, position: Double) {}
-        func bell(source: SwiftTerm.TerminalView) {}
-        func clipboardCopy(source: SwiftTerm.TerminalView, content: Data) {
-            if let s = String(data: content, encoding: .utf8) {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(s, forType: .string)
-            }
-        }
-        func iTermContent(source: SwiftTerm.TerminalView, content: ArraySlice<UInt8>) {}
-        func rangeChanged(source: SwiftTerm.TerminalView, startY: Int, endY: Int) {}
     }
 }
