@@ -6,6 +6,29 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.32</title>
+            <description><![CDATA[
+                <h2>Agent Panel — Bucket A #8 (Termy's take on Warp's agent manager)</h2>
+                <ul>
+                    <li><strong>⌘⇧A opens an Agent Sessions panel</strong> that reads Claude Code's local JSONL transcripts under <code>~/.claude/projects/</code>. Sidebar lists every recent session across every project (up to 60), filterable. Detail pane shows last user message, last assistant reply (text content extracted from the message blocks), the decoded project path, and the session id.</li>
+                    <li><strong>"Open new tab in this directory"</strong> button — click to spawn a fresh Termy tab cd'd into the session's project root. Quickest path from "where did I leave that Claude conversation?" to working there again.</li>
+                    <li>Why this is better than Warp's Agent Management Panel: Warp just lists active tabs, while Termy reads files Claude Code already writes (no first-party API needed) so you get full per-session context across past + present sessions, not just current ones.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 09:10:00 +0000</pubDate>
+            <sparkle:version>49</sparkle:version>
+            <sparkle:shortVersionString>0.9.32</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.32/Termy.dmg"
+                sparkle:version="49"
+                sparkle:shortVersionString="0.9.32"
+                length="3060869"
+                sparkle:edSignature="Mjt9KVzKTalxjaWVYk+ukwXibSsT93sH9xjS53az/pD36HF+rJ0BxXFf9s53KgKmOxmhbbs+b5Tmh7JBgOV5Cg=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.31</title>
             <description><![CDATA[
                 <h2>Diagnostics view (A #2 from the roadmap)</h2>
