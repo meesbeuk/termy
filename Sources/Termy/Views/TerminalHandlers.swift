@@ -45,7 +45,9 @@ private struct LifecycleAndDropHandlers: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onDrop(of: [.fileURL], isTargeted: nil, perform: handleDrop)
-            .onAppear { installKeyMonitor() }
+            // Install lives on the hostedWindow .onChange in MainTerminalView
+            // now — onAppear ran before WindowAccessor's async dispatch set
+            // the window, so the monitor's window check no-op'd silently.
             .onDisappear { removeKeyMonitor() }
     }
 }

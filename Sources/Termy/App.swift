@@ -6,7 +6,6 @@ struct TermyApp: App {
     @NSApplicationDelegateAdaptor(TerminalAppDelegate.self) var delegate
     @StateObject private var settings = TerminalSettings()
     @StateObject private var profiles = ProfileStore()
-    @StateObject private var workflows = WorkflowStore()
     @StateObject private var updater = Updater()
 
     /// Only the first window restores persisted tabs; further windows are blank.
@@ -25,7 +24,6 @@ struct TermyApp: App {
             }
             .environmentObject(settings)
             .environmentObject(profiles)
-            .environmentObject(workflows)
             .environmentObject(updater)
         }
         .windowStyle(.hiddenTitleBar)
@@ -113,20 +111,25 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalOpenPalette, object: nil)
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
-                QuickWindowButton()
+                QuickTerminalToggleButton(settings: settings, profiles: profiles)
             }
         }
     }
 }
 
-/// Opens a fresh small floating window — a "quick terminal" for one-off
-/// commands without disturbing your main session. Keyboard shortcut ⌃` (a
-/// common terminal-app convention; ⌘` conflicts with macOS window cycling).
-struct QuickWindowButton: View {
-    @Environment(\.openWindow) private var openWindow
+/// Toggles the Quake-style drop-down terminal. ⌃` (⌘` collides with macOS
+/// window cycling). The panel is a persistent NSPanel — see
+/// `QuickTerminalController`. Replaces the v0.9.6 behavior of opening a
+/// regular second WindowGroup window with the same id, which was indistinguishable
+/// from ⌘N.
+struct QuickTerminalToggleButton: View {
+    @ObservedObject var settings: TerminalSettings
+    @ObservedObject var profiles: ProfileStore
     var body: some View {
-        Button("Quick Terminal") { openWindow(id: "terminal") }
-            .keyboardShortcut("`", modifiers: .control)
+        Button("Quick Terminal") {
+            QuickTerminalController.shared.toggle(settings: settings, profiles: profiles)
+        }
+        .keyboardShortcut("`", modifiers: .control)
     }
 }
 

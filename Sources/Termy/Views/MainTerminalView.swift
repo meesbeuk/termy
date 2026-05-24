@@ -6,10 +6,10 @@ import SwiftTerm
 struct MainTerminalView: View {
     @EnvironmentObject var sessions: TerminalSessions
     @EnvironmentObject var settings: TerminalSettings
-    @EnvironmentObject var workflows: WorkflowStore
     @State private var showingSettings = false
     @State private var showingRecentDirs = false
     @State private var showingPalette = false
+    @State private var showingFind = false
     @State private var hostedWindow: NSWindow?
     @State private var keyMonitor: Any?
 
@@ -19,7 +19,17 @@ struct MainTerminalView: View {
                 TitleStrip(
                     showingSettings: $showingSettings,
                     showLaunchers: settings.vibecoderMode,
-                    onLaunch: { launch($0) }
+                    onLaunch: { launch($0) },
+                    onToggleFind: toggleFind,
+                    onOpenPalette: { showingPalette = true },
+                    onShowRecentDirs: { showingRecentDirs = true },
+                    onSplitH: { sessions.splitHorizontal() },
+                    onSplitV: { sessions.splitVertical() },
+                    onQuickTerminal: {
+                        if let store = sessions.profileStore {
+                            QuickTerminalController.shared.toggle(settings: settings, profiles: store)
+                        }
+                    }
                 )
                 if settings.showTabBar {
                     TabBar()
@@ -27,7 +37,7 @@ struct MainTerminalView: View {
                     Divider().opacity(0.25)
                 }
 
-                ZStack {
+                ZStack(alignment: .topTrailing) {
                     if let tab = sessions.currentTab {
                         // No .id() — letting SwiftUI diff in place keeps the
                         // terminal NSView alive across renders so the grid
@@ -39,7 +49,32 @@ struct MainTerminalView: View {
                     } else {
                         EmptyView()
                     }
+                    if showingFind {
+                        // Tap-outside dismisser — clicking anywhere in the
+                        // pane that isn't the FindBar itself closes search.
+                        // Standard macOS popover semantics; gives users an
+                        // intuitive cancel path beyond ⌘F / × / Esc.
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                sessions.currentSession?.terminalView?.clearSearch()
+                                showingFind = false
+                            }
+                            .zIndex(4)
+                        FindBar(
+                            view: sessions.currentSession?.terminalView,
+                            onClose: {
+                                sessions.currentSession?.terminalView?.clearSearch()
+                                showingFind = false
+                            }
+                        )
+                        .padding(.top, 10)
+                        .padding(.trailing, 14)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .zIndex(5)
+                    }
                 }
+                .animation(.easeOut(duration: 0.16), value: showingFind)
 
                 if settings.showStatusBar {
                     Divider().opacity(0.25)
@@ -77,7 +112,6 @@ struct MainTerminalView: View {
                     CommandPalette(onDismiss: { showingPalette = false })
                         .environmentObject(sessions)
                         .environmentObject(settings)
-                        .environmentObject(workflows)
                 }
                 .transition(.opacity)
                 .zIndex(11)
@@ -88,12 +122,41 @@ struct MainTerminalView: View {
         .background(WindowBackdrop(hostedWindow: $hostedWindow))
         // Forward the captured NSWindow down so closeTab can target the
         // right window in multi-window setups (NSApp.keyWindow can be a sibling).
-        .onChange(of: hostedWindow) { _, new in sessions.hostedWindow = new }
+        // Also (re)install the broadcast-input key monitor here — at .onAppear
+        // time hostedWindow is still nil (WindowAccessor sets it via an async
+        // dispatch one runloop turn later), so installing in onAppear meant
+        // the monitor's window comparison silently failed until a manual
+        // reinstall. Tying install to hostedWindow availability guarantees we
+        // always have an NSWindow to compare against.
+        .onChange(of: hostedWindow) { _, new in
+            sessions.hostedWindow = new
+            if new != nil {
+                removeKeyMonitor()
+                installKeyMonitor()
+            } else {
+                removeKeyMonitor()
+            }
+        }
+        // Window-level Esc handler — Esc never reaches the focused NSTextField
+        // in the FindBar because something between the window and the field
+        // editor consumes it. Diagnostic logging confirmed
+        // doCommandBy:cancelOperation: never fires. Installing a global
+        // NSEvent monitor at the app level catches Esc reliably; we
+        // additionally store the handle in `KeyMonitorBox` (a class) so the
+        // mutation survives the SwiftUI struct rebuild that broke an earlier
+        // @State-based attempt.
+        .background(EscMonitor(
+            isActive: showingFind,
+            onEscape: {
+                sessions.currentSession?.terminalView?.clearSearch()
+                showingFind = false
+            }
+        ))
         .modifier(TerminalHandlers(
             sessions: sessions,
             isKeyWindow: { isKeyWindow },
             hostedWindow: { hostedWindow },
-            performFind: performFind,
+            performFind: toggleFind,
             handleDrop: handleDrop,
             installKeyMonitor: installKeyMonitor,
             removeKeyMonitor: removeKeyMonitor,
@@ -142,11 +205,17 @@ struct MainTerminalView: View {
     /// Local key monitor that mirrors typed characters to all sibling panes
     /// when the active tab has Broadcast Input enabled. Active pane still gets
     /// the keystroke through normal AppKit routing — we only forward to others.
+    /// Captures the NSWindow weakly at install time so the closure's window
+    /// comparison can't accidentally read a stale (nil) @State value — that
+    /// was the v0.9.6 bug where the monitor was installed in onAppear before
+    /// WindowAccessor's async dispatch had set hostedWindow.
     private func installKeyMonitor() {
         if keyMonitor != nil { return }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            guard event.window == hostedWindow,
-                  let tab = sessions.currentTab, tab.broadcastInput,
+        guard let window = hostedWindow else { return }
+        let sessionsRef = sessions
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak window] event in
+            guard let window, event.window === window,
+                  let tab = sessionsRef.currentTab, tab.broadcastInput,
                   let chars = event.characters, !chars.isEmpty
             else { return event }
             for pane in tab.panes where pane.id != tab.activePaneId {
@@ -163,14 +232,72 @@ struct MainTerminalView: View {
         return host.isKeyWindow
     }
 
-    private func performFind() {
-        // SwiftTerm's TerminalView responds to performFindPanelAction(_:) and
-        // dispatches on sender.tag, looking for NSFindPanelAction.showFindPanel.
-        guard let view = sessions.currentSession?.terminalView else { return }
-        view.window?.makeFirstResponder(view)
-        let sender = NSMenuItem(title: "Find", action: nil, keyEquivalent: "")
-        sender.tag = Int(NSFindPanelAction.showFindPanel.rawValue)
-        view.performFindPanelAction(sender)
+    /// Toggle the inline find bar. If it was already open, close it (and clear
+    /// any active search highlight). Otherwise open it. Replaces the v0.9.6
+    /// NSFindPanel popup which was both ugly and modal.
+    private func toggleFind() {
+        if showingFind {
+            sessions.currentSession?.terminalView?.clearSearch()
+            showingFind = false
+        } else {
+            showingFind = true
+        }
+    }
+}
+
+/// Installs a global NSEvent local monitor for Escape whenever `isActive` is
+/// true, and removes it when false. Coordinator-backed so the monitor handle
+/// lives in reference storage (an @State-backed variant lost the handle to
+/// SwiftUI's struct rebuilds and never tore down).
+private struct EscMonitor: NSViewRepresentable {
+    let isActive: Bool
+    let onEscape: () -> Void
+
+    func makeCoordinator() -> Coord { Coord() }
+
+    func makeNSView(context: Context) -> NSView {
+        context.coordinator.sync(isActive: isActive, onEscape: onEscape)
+        return NSView(frame: .zero)
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.sync(isActive: isActive, onEscape: onEscape)
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coord) {
+        coordinator.tearDown()
+    }
+
+    final class Coord {
+        private var monitor: Any?
+        private var onEscape: (() -> Void) = {}
+
+        func sync(isActive: Bool, onEscape: @escaping () -> Void) {
+            self.onEscape = onEscape
+            if isActive && monitor == nil {
+                monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                    guard let self else { return event }
+                    // keyCode 53 = Esc. Also accept Cmd+. (keyCode 47 with cmd)
+                    // as the macOS-standard "cancel" combo — works in cases
+                    // where bare Esc is being absorbed by the system text-
+                    // input layer for an editing NSTextField.
+                    let isEsc = event.keyCode == 53 && event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty
+                    let isCmdPeriod = event.keyCode == 47 && event.modifierFlags.contains(.command)
+                    guard isEsc || isCmdPeriod else { return event }
+                    DispatchQueue.main.async { self.onEscape() }
+                    return nil
+                }
+            } else if !isActive, let m = monitor {
+                NSEvent.removeMonitor(m)
+                monitor = nil
+            }
+        }
+
+        func tearDown() {
+            if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+        }
+
+        deinit { tearDown() }
     }
 }
 
@@ -257,16 +384,47 @@ private struct TitleStrip: View {
     @Binding var showingSettings: Bool
     let showLaunchers: Bool
     let onLaunch: (AILauncher) -> Void
+    // Action affordances — every keyboard shortcut also gets a visible
+    // clickable icon. Users who don't memorise ⌘F / ⌘D / ⌘⇧P / ⌃` need a way
+    // to discover features by scanning the chrome.
+    let onToggleFind: () -> Void
+    let onOpenPalette: () -> Void
+    let onShowRecentDirs: () -> Void
+    let onSplitH: () -> Void
+    let onSplitV: () -> Void
+    let onQuickTerminal: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             // ~52pt for the three traffic-light buttons + comfortable
             // breathing room before the launcher row so the chrome doesn't
             // look cramped against the window controls.
             Color.clear.frame(width: 72, height: 28)
             if showLaunchers {
                 InlineLaunchersRow(onLaunch: onLaunch)
+                ChromeDivider()
             }
+            // Quick-action icons — same affordances as the keyboard
+            // shortcuts, surfaced so users can scan + click. Each carries a
+            // tooltip with the keyboard equivalent.
+            ChromeIconButton(symbol: "magnifyingglass",
+                             tooltip: "Find in scrollback (⌘F)",
+                             action: onToggleFind)
+            ChromeIconButton(symbol: "command",
+                             tooltip: "Command Palette (⌘⇧P)",
+                             action: onOpenPalette)
+            ChromeIconButton(symbol: "clock.arrow.circlepath",
+                             tooltip: "Recent Directories (⌘⌥/)",
+                             action: onShowRecentDirs)
+            ChromeIconButton(symbol: "rectangle.split.2x1",
+                             tooltip: "Split Horizontally (⌘D)",
+                             action: onSplitH)
+            ChromeIconButton(symbol: "rectangle.split.1x2",
+                             tooltip: "Split Vertically (⌘⇧D)",
+                             action: onSplitV)
+            ChromeIconButton(symbol: "chevron.down.square",
+                             tooltip: "Quick Drop-down Terminal (⌃`)",
+                             action: onQuickTerminal)
             Spacer()
             // cwd lives in the status bar — no need to duplicate it up top.
             Text("\(Int(settings.fontSize))pt")
@@ -280,17 +438,49 @@ private struct TitleStrip: View {
                     .truncationMode(.middle)
                     .layoutPriority(-1) // give up width first on narrow windows
             }
-            Button(action: { showingSettings = true }) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 11))
-                    .frame(width: 20, height: 20)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
+            ChromeIconButton(symbol: "gearshape",
+                             tooltip: "Settings",
+                             action: { showingSettings = true })
         }
         .padding(.horizontal, 12)
         .frame(height: 36)
+    }
+}
+
+private struct ChromeDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.10))
+            .frame(width: 1, height: 14)
+    }
+}
+
+/// Standard chrome icon button. Renders as a flat SF Symbol with a hover
+/// background, 22pt hit target, and tooltip. Every action in the title strip
+/// uses this so weights/sizing/hover treatment stay consistent.
+private struct ChromeIconButton: View {
+    let symbol: String
+    let tooltip: String
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 22, height: 22)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(hovering ? Color.primary.opacity(0.10) : Color.clear)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help(tooltip)
+        .onHover { newValue in
+            withAnimation(.easeOut(duration: 0.10)) { hovering = newValue }
+        }
     }
 }
 

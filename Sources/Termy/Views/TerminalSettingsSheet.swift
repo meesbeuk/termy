@@ -69,7 +69,6 @@ struct TerminalSettingsSheet: View {
                 case .general: GeneralPane()
                 case .profiles: ProfilesPane()
                 case .vibecoder: VibecoderPane()
-                // .cursor removed; no case to handle.
                 case .theme: ThemePane()
                 case .font: FontPane()
                 case .density: DensityPane()
@@ -89,9 +88,6 @@ struct TerminalSettingsSheet: View {
 }
 
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    // Cursor pane removed in v0.8.3 — SwiftTerm doesn't expose a public API to
-    // set cursor style/blink, so the toggles did nothing. Better gone than
-    // misleading users into thinking they had an effect.
     case general, profiles, vibecoder, theme, font, density, chrome, background, updates, about
     var id: String { rawValue }
     var displayName: String {
@@ -292,10 +288,6 @@ private struct FontPane: View {
         return recommended + extras
     }
 }
-
-// CursorPane removed in v0.8.3 — SwiftTerm doesn't expose a public hook to
-// change cursor style/blink, and the DECSCUSR escape we tried corrupted the
-// terminal buffer. We'll bring this back when there's a safe way to wire it.
 
 private struct DensityPane: View {
     @EnvironmentObject var settings: TerminalSettings
@@ -504,8 +496,6 @@ private struct ProfileRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.xs) {
             HStack(spacing: DS.Spacing.s) {
-                // Tapback memoji avatar — random per profile so the user can
-                // pick out their config at a glance without reading names.
                 ProfileAvatar(profile: profile, size: 24)
                 if let dot = profile.tagColor.swiftColor {
                     Circle().fill(dot).frame(width: 8, height: 8)
@@ -592,7 +582,6 @@ private struct ProfileEditor: View {
                 ProfileAvatar(profile: draft, size: 36)
                 Button(action: {
                     draft.avatarSeed = Profile.randomSeed()
-                    draft.avatarColor = Int.random(in: 0...17)
                 }) {
                     HStack(spacing: 3) {
                         Image(systemName: "arrow.triangle.2.circlepath")

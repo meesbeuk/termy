@@ -295,11 +295,6 @@ struct TerminalSurface: NSViewRepresentable {
             ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
         view.font = font
 
-        // Cursor style: SwiftTerm's public surface doesn't expose this in a
-        // way we can reliably set, and the DECSCUSR escape sequence path
-        // corrupted the buffer when fed pre-startProcess. Settings are
-        // persisted but the toggle is currently visual-only.
-
         // Fully transparent — the window's adaptive backdrop is the single
         // source of opacity for the entire app. No per-element backgrounds.
         view.nativeBackgroundColor = NSColor.clear

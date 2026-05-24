@@ -5,7 +5,6 @@ import SwiftUI
 struct CommandPalette: View {
     @EnvironmentObject var sessions: TerminalSessions
     @EnvironmentObject var settings: TerminalSettings
-    @EnvironmentObject var workflows: WorkflowStore
     let onDismiss: () -> Void
 
     @State private var query: String = ""
@@ -143,7 +142,6 @@ struct CommandPalette: View {
         case .tabs: return allItems.filter { $0.kind == .tab }.count
         case .themes: return allItems.filter { $0.kind == .theme }.count
         case .actions: return allItems.filter { $0.kind == .action }.count
-        case .workflows: return allItems.filter { $0.kind == .workflow }.count
         case .ssh: return allItems.filter { $0.kind == .ssh }.count
         }
     }
@@ -179,12 +177,6 @@ struct CommandPalette: View {
         items.append(PaletteItem(kind: .action, title: "Toggle Broadcast Input",
                                  subtitle: "Mirror keys to all panes in this tab",
                                  action: { sessions.currentTab?.broadcastInput.toggle() }))
-        for wf in workflows.workflows {
-            items.append(PaletteItem(kind: .workflow,
-                                     title: "Workflow: \(wf.name)",
-                                     subtitle: wf.command,
-                                     action: { sessions.sendToActivePane(wf.command) }))
-        }
         for host in SSHHostsReader.read() {
             items.append(PaletteItem(kind: .ssh,
                                      title: "SSH: \(host.alias)",
@@ -201,7 +193,6 @@ struct CommandPalette: View {
         case .tabs: scoped = allItems.filter { $0.kind == .tab }
         case .themes: scoped = allItems.filter { $0.kind == .theme }
         case .actions: scoped = allItems.filter { $0.kind == .action }
-        case .workflows: scoped = allItems.filter { $0.kind == .workflow }
         case .ssh: scoped = allItems.filter { $0.kind == .ssh }
         }
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
@@ -219,7 +210,7 @@ struct CommandPalette: View {
 }
 
 enum PaletteFilter: String, CaseIterable, Identifiable {
-    case all, tabs, themes, actions, workflows, ssh
+    case all, tabs, themes, actions, ssh
     var id: String { rawValue }
     var displayName: String {
         switch self {
@@ -227,7 +218,6 @@ enum PaletteFilter: String, CaseIterable, Identifiable {
         case .tabs: return "Tabs"
         case .themes: return "Themes"
         case .actions: return "Actions"
-        case .workflows: return "Workflows"
         case .ssh: return "SSH Hosts"
         }
     }
@@ -237,7 +227,6 @@ enum PaletteFilter: String, CaseIterable, Identifiable {
         case .tabs: return "rectangle.stack"
         case .themes: return "paintpalette"
         case .actions: return "bolt"
-        case .workflows: return "wand.and.stars"
         case .ssh: return "network"
         }
     }
@@ -282,7 +271,7 @@ private struct PaletteSidebarRow: View {
 }
 
 struct PaletteItem {
-    enum Kind { case tab, theme, action, workflow, ssh }
+    enum Kind { case tab, theme, action, ssh }
     let kind: Kind
     let title: String
     let subtitle: String
@@ -293,7 +282,6 @@ struct PaletteItem {
         case .tab: return "rectangle.stack"
         case .theme: return "paintpalette"
         case .action: return "command"
-        case .workflow: return "bolt"
         case .ssh: return "network"
         }
     }
@@ -303,7 +291,6 @@ struct PaletteItem {
         case .tab: return .blue
         case .theme: return .pink
         case .action: return DS.Colors.secondary
-        case .workflow: return .yellow
         case .ssh: return .green
         }
     }

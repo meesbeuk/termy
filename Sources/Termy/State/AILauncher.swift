@@ -2,8 +2,11 @@ import Foundation
 import AppKit
 
 /// AI / coding tool that can be launched into the active pane.
-/// Each tool detects whether it's installed (via `which <cli>`) so we only
-/// surface ones the user actually has.
+/// We deliberately don't filter by "is installed" — the host process doesn't
+/// run with the user's --login PATH (no rc-files have sourced), so any probe
+/// would have false negatives. The shell prints "command not found" when a
+/// tool isn't there, which is honest and one-click recoverable (install +
+/// retry without restarting Termy).
 struct AILauncher: Identifiable, Hashable {
     let id: String          // CLI name, e.g. "claude"
     let displayName: String
@@ -13,14 +16,7 @@ struct AILauncher: Identifiable, Hashable {
     let brandAsset: String? // basename of SVG in Resources/LaunchIcons (no extension)
     let tint: AILauncherTint
 
-    /// Returns the full canonical list. We deliberately don't probe `$PATH`
-    /// because shells inherit paths via `--login` rc files that we can't
-    /// reliably resolve from inside the host process (mise, asdf, brew at
-    /// different prefixes, etc.). If a tool isn't installed, the shell shows
-    /// "command not found" — honest feedback beats hiding the button silently.
-    static func installed() -> [AILauncher] {
-        all
-    }
+    static func installed() -> [AILauncher] { all }
 
     /// Static catalog. Icon is an SF Symbol used as a placeholder — real brand
     /// marks can be dropped into Resources/Logos/ and referenced by `logoAsset`

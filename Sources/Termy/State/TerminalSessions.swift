@@ -126,15 +126,18 @@ final class TerminalSessions: ObservableObject {
     }
 
     /// ⌘W behavior: close the active pane. If it was the last pane in the tab,
-    /// close the tab too. If it was the last tab, close the window — the app
-    /// delegate handles app termination when the last window closes.
+    /// close the tab too. If it was the last tab, `closeTab` opens a rescue
+    /// blank tab without persisting — so we must NOT call persist() here in
+    /// that branch, or we'd immediately write the rescue layout back over the
+    /// user's saved tabs.
     func closeCurrent() {
         guard let tab = currentTab else { return }
         let shouldCloseTab = tab.closeActivePane()
         if shouldCloseTab {
-            closeTab(tab.id)
+            closeTab(tab.id)   // handles its own persist policy
+        } else {
+            persist()           // only a pane closed, tab survives
         }
-        persist()
     }
 
     /// Remove a specific pane from whatever tab contains it. Closes the tab
@@ -170,7 +173,13 @@ final class TerminalSessions: ObservableObject {
             // = true and confirmOnQuit defaults off, so a stray ⌘W on a
             // single-tab window would otherwise quit Termy without warning).
             // The user can still close the window outright with ⌘⇧W.
-            openTab()
+            //
+            // Critically, don't persist the rescue tab — if this close was
+            // accidental, the user's previous layout (which we just wiped
+            // from `tabs`) should survive on next launch via whatever was
+            // already persisted before. Wipe persistence ONLY when the user
+            // explicitly quits with an empty window.
+            openTab(persistChange: false)
             return
         }
         if wasSelected {

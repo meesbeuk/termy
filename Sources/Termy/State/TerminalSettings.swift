@@ -49,9 +49,6 @@ final class TerminalSettings: ObservableObject {
         didSet { UserDefaults.standard.set(vibecoderMode, forKey: Self.vibecoderKey) }
     }
 
-    // cursorStyle + cursorBlink removed in v0.8.3 — SwiftTerm has no public
-    // hook to set them and the DECSCUSR path corrupted the buffer.
-
     @Published var paddingPreset: PaddingPreset {
         didSet { UserDefaults.standard.set(paddingPreset.rawValue, forKey: Self.paddingKey) }
     }

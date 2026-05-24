@@ -12,10 +12,13 @@ struct Profile: Identifiable, Codable, Equatable {
     var themeID: String          // empty = use global theme
     var environmentExtras: [String: String]  // additional env vars to inject
     var tagColor: TabTagColor
-    /// Stable seed for the Tapback memoji avatar. Random on creation so each
-    /// profile reads as visually distinct at a glance.
+    /// Stable seed for the locally-rendered avatar gradient. Random on
+    /// creation so each profile reads as visually distinct. Kept across
+    /// versions for backward compatibility with persisted profiles.
     var avatarSeed: String
-    var avatarColor: Int         // 0…17, Tapback's color palette
+    /// Legacy field (was Tapback color index 0…17). Retained so persisted
+    /// JSON round-trips; new code derives color from avatarSeed only.
+    var avatarColor: Int
 
     init(
         id: UUID = UUID(),
@@ -27,7 +30,7 @@ struct Profile: Identifiable, Codable, Equatable {
         environmentExtras: [String: String] = [:],
         tagColor: TabTagColor = .none,
         avatarSeed: String = Profile.randomSeed(),
-        avatarColor: Int = Int.random(in: 0...17)
+        avatarColor: Int = 0
     ) {
         self.id = id
         self.name = name
@@ -41,15 +44,10 @@ struct Profile: Identifiable, Codable, Equatable {
         self.avatarColor = avatarColor
     }
 
-    /// Random 10-char alphanumeric seed for Tapback. Avoids the user having
-    /// to think up names and guarantees the API caches stably per profile.
+    /// Random 10-char alphanumeric seed. Stable per profile across launches.
     static func randomSeed() -> String {
         let chars = Array("abcdefghijklmnopqrstuvwxyz0123456789")
         return String((0..<10).map { _ in chars.randomElement()! })
-    }
-
-    var avatarURL: URL? {
-        URL(string: "https://tapback.co/api/avatar/\(avatarSeed).webp?color=\(avatarColor)")
     }
 
     /// Resolve the effective shell path (honoring $SHELL if empty).
