@@ -65,6 +65,17 @@ final class TermyTerminalView: LocalProcessTerminalView {
     private var oscBuffer: [UInt8] = []
     private var inOSC = false
 
+    /// Per-pane line accumulator for trigger evaluation. Triggers fire
+    /// per complete line (newline-terminated), not per byte chunk, so
+    /// we hold partial input until a `\n` arrives. Capped at 4KB to
+    /// bound memory for streams without newlines.
+    private var triggerLineBuffer: String = ""
+    /// Active trigger set, refreshed on every dataReceived (cheap —
+    /// reads from a singleton, copies a small array). nil means triggers
+    /// haven't been wired up yet (no TriggerRegistry callback set).
+    var triggerProvider: (() -> [Trigger])?
+    var onTriggerFired: ((Trigger, String) -> Void)?
+
     /// Absolute row positions (in the scrollback line buffer) where
     /// the shell emitted an OSC 133;A (prompt start). Lets `⌘↑/⌘↓`
     /// jump prompt-to-prompt without the user scrolling. Capped at
@@ -167,6 +178,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
         // depend on the actual byte timing, not the paced display.
         recordIfEnabled(slice)
         scanForOSC133(slice)
+        scanForTriggers(slice)
         trackIdleBytes(slice)
 
         // Display path: paced or immediate.
@@ -206,6 +218,44 @@ final class TermyTerminalView: LocalProcessTerminalView {
         let chunk = ArraySlice(typewriterQueue.prefix(take))
         typewriterQueue.removeFirst(take)
         super.dataReceived(slice: chunk)
+    }
+
+    /// Buffers incoming bytes as lines and runs each completed line
+    /// through the active trigger set. Skipped entirely when triggers
+    /// aren't wired up (e.g., on first render before MainTerminalView
+    /// installed the provider). Strips ANSI CSI sequences before
+    /// matching so triggers don't trip on color codes.
+    private func scanForTriggers(_ slice: ArraySlice<UInt8>) {
+        guard let provider = triggerProvider else { return }
+        let triggers = provider()
+        guard !triggers.isEmpty else { return }
+        guard let s = String(bytes: slice, encoding: .utf8) else { return }
+        triggerLineBuffer += s
+        if triggerLineBuffer.count > 4096 {
+            triggerLineBuffer = String(triggerLineBuffer.suffix(2048))
+        }
+        guard triggerLineBuffer.contains("\n") else { return }
+        let parts = triggerLineBuffer.components(separatedBy: "\n")
+        let complete = parts.dropLast()
+        triggerLineBuffer = parts.last ?? ""
+        for line in complete {
+            let stripped = stripAnsiCSI(line)
+            guard !stripped.isEmpty else { continue }
+            let range = NSRange(stripped.startIndex..., in: stripped)
+            for trigger in triggers {
+                if trigger.pattern.firstMatch(in: stripped, range: range) != nil {
+                    onTriggerFired?(trigger, stripped)
+                    break  // one notification per line is plenty
+                }
+            }
+        }
+    }
+
+    private func stripAnsiCSI(_ s: String) -> String {
+        let pattern = "\\x1B\\[[0-?]*[ -/]*[@-~]"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return s }
+        let range = NSRange(s.startIndex..., in: s)
+        return regex.stringByReplacingMatches(in: s, range: range, withTemplate: "")
     }
 
     /// Refactored out of the inline body so cinema mode can call the
@@ -629,6 +679,19 @@ struct TerminalSurface: NSViewRepresentable {
                 window: session.terminalView?.window,
                 cwd: session.cwd,
                 preview: preview
+            )
+        }
+        // Wire the trigger pipeline. Triggers come from a shared
+        // TriggerRegistry singleton so toggling a pack in Settings
+        // immediately affects every live pane.
+        view.triggerProvider = { TriggerRegistry.shared.activeTriggers }
+        view.onTriggerFired = { [weak session] trigger, line in
+            guard let session else { return }
+            TermyNotifications.shared.triggerFired(
+                trigger: trigger,
+                matched: line,
+                window: session.terminalView?.window,
+                cwd: session.cwd
             )
         }
         // Re-apply on window-attach and on first real layout — fixes the

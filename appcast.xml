@@ -6,6 +6,31 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.30</title>
+            <description><![CDATA[
+                <h2>Trigger packs — Bucket A #4 (Termy's take on iTerm2 triggers)</h2>
+                <p>Termy's design choice vs iTerm2's free-form trigger rows: <strong>toggleable packs</strong>, like ad-blocker filter lists. Common cases are one-tap. Settings → General → Triggers.</p>
+                <ul>
+                    <li><strong>Claude Code pack</strong>: notify on "do you want me to proceed", "may i", "compacting context", "all done" etc. The "needs approval" trigger plays sound regardless of global sound setting.</li>
+                    <li><strong>OpenAI Codex pack</strong>: notify on Codex approval prompts ("approve", "y/n", "press enter to continue").</li>
+                    <li><strong>Build / test errors pack</strong>: notify on "error:", "fatal", "panic", "failed", "exception", "tests failed", "assertion failed".</li>
+                </ul>
+                <p>Each pane runs the active trigger set against every newline-terminated line of output (with ANSI stripped); first match per line fires once. All three packs default to OFF — opt in via Settings.</p>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 08:25:00 +0000</pubDate>
+            <sparkle:version>47</sparkle:version>
+            <sparkle:shortVersionString>0.9.30</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.30/Termy.dmg"
+                sparkle:version="47"
+                sparkle:shortVersionString="0.9.30"
+                length="2955517"
+                sparkle:edSignature="RKzq8HnpNev8+ifAsGQ+7uAS83F4Tx51JweN+YBIi05TNO47AE6KDWm78tZkwRSfSefxmzUAmvqMtAollzvkAg=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.29</title>
             <description><![CDATA[
                 <h2>Jump-to-prompt navigation (⌘↑ / ⌘↓) — Bucket A #5</h2>

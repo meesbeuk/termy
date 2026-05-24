@@ -45,6 +45,22 @@ final class TermyNotifications {
         )
     }
 
+    /// Trigger hook — called by TermyTerminalView when an active trigger's
+    /// regex matched a completed line in the pane's output. We honour the
+    /// same focus-scope toggle as bell + idle, and use the trigger's
+    /// `urgent` flag to bump priority (sound on, even if global sound is
+    /// off — urgent triggers deserve to be heard).
+    func triggerFired(trigger: Trigger, matched: String, window: NSWindow?, cwd: String?) {
+        if shouldSuppress(window: window) { return }
+        if case let .notify(title, urgent) = trigger.action {
+            post(
+                title: "Termy — \(title)",
+                body: bodyLine(cwd: cwd, preview: matched),
+                sound: urgent || soundEnabled()
+            )
+        }
+    }
+
     private func shouldSuppress(window: NSWindow?) -> Bool {
         // Honour the "only when window unfocused" toggle. If the user
         // explicitly opted in to all-pane notifications, fire every time.

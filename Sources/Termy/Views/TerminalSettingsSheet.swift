@@ -260,6 +260,14 @@ private struct GeneralPane: View {
                 }
             }
 
+            DSSection("Triggers") {
+                Text("Pattern packs that notify you when your output matches a regex — e.g. Claude asks for approval, build fails. Toggle a pack to enable all its rules.")
+                    .font(DS.Typo.tiny)
+                    .foregroundStyle(DS.Colors.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                TriggerPacksControl()
+            }
+
             DSSection("Session recording") {
                 Toggle("Record every pane's output to a log file", isOn: $settings.recordSessions)
                     .toggleStyle(.checkbox).font(DS.Typo.caption)
@@ -474,6 +482,39 @@ private struct QuakePane: View {
                 .font(DS.Typo.tiny)
                 .foregroundStyle(DS.Colors.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// Inline section listing each TriggerPack with a toggle bound to the
+/// shared TriggerRegistry.
+private struct TriggerPacksControl: View {
+    @ObservedObject private var registry = TriggerRegistry.shared
+
+    var body: some View {
+        VStack(spacing: DS.Spacing.xs) {
+            ForEach(TriggerPack.allCases) { pack in
+                HStack(alignment: .top, spacing: DS.Spacing.s) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(pack.name)
+                            .font(DS.Typo.caption.weight(.medium))
+                            .foregroundStyle(DS.Colors.primary)
+                        Text(pack.description)
+                            .font(DS.Typo.tiny)
+                            .foregroundStyle(DS.Colors.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { registry.enabledPacks.contains(pack) },
+                        set: { registry.setPack(pack, enabled: $0) }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                }
+                .padding(.vertical, 4)
+            }
         }
     }
 }
