@@ -500,70 +500,50 @@ private struct ChromeIconButton: View {
     }
 }
 
-/// Compact launchers row that lives inline in the title strip, no separate band.
-/// On hover, the active tool's display name appears as an inline pill next to
-/// the row — no floating overlay that can get clipped by neighbouring views.
+/// Compact launchers row that lives inline in the title strip. Each launcher
+/// uses the same flat rounded-square chrome treatment as the feature icons
+/// (search / palette / splits / etc.) so the title-strip reads as one
+/// consistent control row rather than a chips-then-icons mix.
 private struct InlineLaunchersRow: View {
     let onLaunch: (AILauncher) -> Void
     @State private var launchers: [AILauncher] = []
-    @State private var hoveredID: String?
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             ForEach(launchers) { launcher in
                 InlineLaunchChip(
                     launcher: launcher,
-                    isHovered: hoveredID == launcher.id,
-                    onTap: { onLaunch(launcher) },
-                    onHoverChanged: { hovering in
-                        if hovering { hoveredID = launcher.id }
-                        else if hoveredID == launcher.id { hoveredID = nil }
-                    }
+                    onTap: { onLaunch(launcher) }
                 )
             }
-            if let id = hoveredID,
-               let l = launchers.first(where: { $0.id == id }) {
-                Text(l.displayName)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(
-                        Capsule().fill(SwiftUI.Color.white.opacity(0.12))
-                    )
-                    .transition(.opacity)
-                    .fixedSize()
-            }
         }
-        .animation(.easeOut(duration: 0.10), value: hoveredID)
         .onAppear { launchers = AILauncher.installed() }
     }
 }
 
 private struct InlineLaunchChip: View {
     let launcher: AILauncher
-    let isHovered: Bool
     let onTap: () -> Void
-    let onHoverChanged: (Bool) -> Void
+    @State private var hovering = false
 
     var body: some View {
         Button(action: onTap) {
             BrandIcon(assetName: launcher.brandAsset,
                       fallbackSymbol: launcher.icon,
                       size: 13)
-                .foregroundStyle(.white)
-                .frame(width: 24, height: 24)
+                .foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
                 .background(
-                    Circle().fill(SwiftUI.Color.white.opacity(isHovered ? 0.18 : 0.08))
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(hovering ? Color.primary.opacity(0.10) : Color.clear)
                 )
-                .overlay(
-                    Circle().strokeBorder(SwiftUI.Color.white.opacity(0.08), lineWidth: 0.5)
-                )
-                .contentShape(Circle())
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help("\(launcher.displayName) — run `\(launcher.cli)` in active pane")
-        .onHover(perform: onHoverChanged)
+        .onHover { newValue in
+            withAnimation(.easeOut(duration: 0.10)) { hovering = newValue }
+        }
     }
 }
 

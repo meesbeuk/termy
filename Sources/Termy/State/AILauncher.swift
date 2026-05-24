@@ -18,9 +18,11 @@ struct AILauncher: Identifiable, Hashable {
 
     static func installed() -> [AILauncher] { all }
 
-    /// Static catalog. Icon is an SF Symbol used as a placeholder — real brand
-    /// marks can be dropped into Resources/Logos/ and referenced by `logoAsset`
-    /// when bundled. UI renders all-white regardless of tint.
+    /// Static catalog — narrowed to the two CLIs Termy targets directly:
+    /// Claude Code and OpenAI Codex. The earlier roster (Cursor, Gemini,
+    /// GitHub Copilot, Aider) was speculative; users asked for a tight
+    /// curated row, and Cursor in particular is a GUI launcher that
+    /// doesn't belong in a CLI quick-launch column.
     static let all: [AILauncher] = [
         AILauncher(id: "claude",  displayName: "Claude Code",     cli: "claude",
                    arguments: [], icon: "sparkle",
@@ -28,18 +30,6 @@ struct AILauncher: Identifiable, Hashable {
         AILauncher(id: "codex",   displayName: "Codex",           cli: "codex",
                    arguments: [], icon: "wand.and.stars.inverse",
                    brandAsset: "openai", tint: .neutral),
-        AILauncher(id: "cursor",  displayName: "Cursor",          cli: "cursor",
-                   arguments: ["."], icon: "cursorarrow.click.2",
-                   brandAsset: "cursor", tint: .neutral),
-        AILauncher(id: "gemini",  displayName: "Gemini CLI",      cli: "gemini",
-                   arguments: [], icon: "diamond.fill",
-                   brandAsset: "geminicli", tint: .neutral),
-        AILauncher(id: "gh",      displayName: "GitHub Copilot",  cli: "gh",
-                   arguments: ["copilot", "suggest"], icon: "circle.hexagongrid.fill",
-                   brandAsset: "githubcopilot", tint: .neutral),
-        AILauncher(id: "aider",   displayName: "Aider",           cli: "aider",
-                   arguments: [], icon: "hammer.fill",
-                   brandAsset: nil, tint: .neutral),
     ]
 }
 

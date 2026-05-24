@@ -6,6 +6,28 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.10</title>
+            <description><![CDATA[
+                <h2>Tight title-strip — Claude + Codex only, unified icon style</h2>
+                <ul>
+                    <li>AI launcher row trimmed to <strong>Claude Code + OpenAI Codex</strong>. Cursor, Gemini CLI, GitHub Copilot, and Aider are removed — Cursor is a GUI launcher and the others were never the actual workflow.</li>
+                    <li>Launcher icons now use the same flat rounded-square chrome treatment as the feature buttons (search, palette, splits, etc.) — the whole title strip reads as one consistent control row, with a thin divider between AI launchers and feature actions.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 00:20:00 +0000</pubDate>
+            <sparkle:version>27</sparkle:version>
+            <sparkle:shortVersionString>0.9.10</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.10/Termy.dmg"
+                sparkle:version="27"
+                sparkle:shortVersionString="0.9.10"
+                length="2641467"
+                sparkle:edSignature="nj38BBuL1zv+o/9EEjFSszKeRGNpwDbtsrD+UQ0ZweJlPiLon+/i5zOU8+MIaRM+aJ5CB+19/wsFhpF4d0wWDA=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.9</title>
             <description><![CDATA[
                 <h2>Multi-window restore that actually works + Quake settings</h2>
