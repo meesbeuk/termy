@@ -6,6 +6,27 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.8.2 (hotfix)</title>
+            <description><![CDATA[
+                <h2>Critical fix on top of 0.8.0</h2>
+                <ul>
+                    <li>0.8.0/0.8.1 broke keyboard input — overriding terminalDelegate disconnected keystrokes from the PTY. Reverted.</li>
+                    <li>All other 0.8.0 improvements (profiles applied to new tabs, multi-window close fix, pane minimums, debounced persist, worktree-safe git, etc.) intact.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 18:55:00 +0000</pubDate>
+            <sparkle:version>12</sparkle:version>
+            <sparkle:shortVersionString>0.8.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.8.2/Termy.dmg"
+                sparkle:version="12"
+                sparkle:shortVersionString="0.8.2"
+                length="2540219"
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.8.0</title>
             <description><![CDATA[
                 <h2>Stability + correctness</h2>
