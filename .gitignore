@@ -1,0 +1,14 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+*.xcodeproj
+Package.resolved
+DerivedData/
+
+# macOS
+.DS_Store
+*.swp
+
+# Build artifacts
+*.dSYM/
+/dist/
