@@ -6,6 +6,7 @@ import SwiftTerm
 struct MainTerminalView: View {
     @EnvironmentObject var sessions: TerminalSessions
     @EnvironmentObject var settings: TerminalSettings
+    @EnvironmentObject var workflows: WorkflowStore
     @State private var showingSettings = false
     @State private var showingRecentDirs = false
     @State private var showingPalette = false
@@ -71,6 +72,7 @@ struct MainTerminalView: View {
                     CommandPalette(onDismiss: { showingPalette = false })
                         .environmentObject(sessions)
                         .environmentObject(settings)
+                        .environmentObject(workflows)
                 }
                 .transition(.opacity)
                 .zIndex(11)
@@ -100,7 +102,8 @@ struct MainTerminalView: View {
         if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
     }
 
-    /// Send the launcher's CLI to the active pane as a typed command.
+    /// Send the launcher's CLI to the active pane + auto-execute it.
+    /// sendToActivePane appends Enter (CR) so the shell actually runs it.
     private func launch(_ launcher: AILauncher) {
         sessions.sendToActivePane(launcher.commandPreview)
     }
@@ -213,25 +216,12 @@ private struct TitleStrip: View {
     @EnvironmentObject var settings: TerminalSettings
     @Binding var showingSettings: Bool
 
-    private var displayCwd: String {
-        guard let path = sessions.currentSession?.cwd else { return "" }
-        let home = NSHomeDirectory()
-        if path.hasPrefix(home) { return "~" + path.dropFirst(home.count) }
-        return path
-    }
-
     var body: some View {
         HStack(spacing: 8) {
+            // Reserve space for traffic-light buttons (top-left).
             Color.clear.frame(width: 70, height: 28)
-            Image(systemName: "folder")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-            Text(displayCwd)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
             Spacer()
+            // cwd lives in the status bar — no need to duplicate it up top.
             Text("\(Int(settings.fontSize))pt")
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(.tertiary)

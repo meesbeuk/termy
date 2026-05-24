@@ -163,37 +163,64 @@ struct CursorPreview: View {
 
 // MARK: - Density / padding preview
 
+/// Mini-terminal preview that scales padding + line spacing to match what the
+/// preset actually applies. Compact = tight, cozy = balanced, spacious = lots
+/// of breathing room. So the user actually sees the difference.
 struct DensityPreview: View {
     let preset: PaddingPreset
     let isSelected: Bool
     let onSelect: () -> Void
 
+    /// Scaled-down line spacing per preset — visible difference in the preview.
+    private var lineGap: CGFloat {
+        switch preset {
+        case .compact: return 1
+        case .cozy: return 3
+        case .spacious: return 6
+        }
+    }
+
     var body: some View {
         Button(action: onSelect) {
             VStack(spacing: 4) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(Color.black.opacity(0.35))
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(0..<3, id: \.self) { _ in
-                            Capsule()
-                                .fill(Color.white.opacity(0.55))
-                                .frame(height: 2)
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.black.opacity(0.55))
+                    VStack(alignment: .leading, spacing: lineGap) {
+                        HStack(spacing: 3) {
+                            Text("$")
+                                .foregroundStyle(.green.opacity(0.9))
+                            Text("ls")
+                                .foregroundStyle(.white)
+                        }
+                        HStack(spacing: 5) {
+                            Text("Sources")
+                                .foregroundStyle(.blue.opacity(0.9))
+                            Text("Tests")
+                                .foregroundStyle(.blue.opacity(0.9))
+                        }
+                        HStack(spacing: 3) {
+                            Text("$")
+                                .foregroundStyle(.green.opacity(0.9))
+                            Rectangle()
+                                .fill(.white)
+                                .frame(width: 4, height: 7)
                         }
                     }
-                    .padding(.horizontal, preset.horizontal / 2)
-                    .padding(.vertical, preset.vertical / 2)
+                    .font(.system(size: 7, design: .monospaced))
+                    .padding(.horizontal, preset.horizontal * 0.55)
+                    .padding(.vertical, preset.vertical * 0.55)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
-                .frame(height: 42)
+                .frame(height: 72)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(isSelected ? DS.Colors.accent : Color.clear, lineWidth: 1.5)
+                )
                 Text(preset.displayName)
                     .font(DS.Typo.tiny)
                     .foregroundStyle(isSelected ? DS.Colors.primary : DS.Colors.secondary)
             }
-            .overlay(
-                RoundedRectangle(cornerRadius: 5)
-                    .strokeBorder(isSelected ? DS.Colors.accent : Color.clear, lineWidth: 1.5)
-                    .padding(.bottom, 14)
-            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

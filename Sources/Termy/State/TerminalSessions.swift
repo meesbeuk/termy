@@ -145,11 +145,12 @@ final class TerminalSessions: ObservableObject {
         currentSession?.terminalView?.feed(text: "\u{001B}[2J\u{001B}[H")
     }
 
-    /// Type a string + newline into the active pane's shell. Used by the AI
-    /// launcher to invoke `claude`, `codex`, etc. as if the user typed it.
+    /// Type a string + Enter into the active pane's shell. Terminals use CR
+    /// (\r) for Enter — \n alone is interpreted as a literal newline without
+    /// executing the command. Used by AI quick-launch + command palette.
     func sendToActivePane(_ command: String) {
         guard let view = currentSession?.terminalView else { return }
-        view.send(txt: command + "\n")
+        view.send(txt: command + "\r")
     }
 
     /// All distinct cwds across all open tabs/panes — used for the Recent

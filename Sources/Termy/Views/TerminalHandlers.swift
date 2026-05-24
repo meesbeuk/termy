@@ -108,16 +108,7 @@ private struct NotificationHandlersB: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .terminalOpenPalette)) { _ in
                 if isKeyWindow() { showPalette() }
             }
-            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResizeNotification)) { note in
-                guard let w = note.object as? NSWindow, w == hostedWindow(),
-                      let tab = sessions.currentTab else { return }
-                for pane in tab.panes {
-                    guard let view = pane.terminalView,
-                          let parent = view.superview else { continue }
-                    view.frame = parent.bounds
-                    view.needsLayout = true
-                    view.needsDisplay = true
-                }
-            }
+            // Window resize is handled by SwiftTerm directly via autoresizing
+            // mask set in TerminalSurface.makeNSView — no manual observer needed.
     }
 }

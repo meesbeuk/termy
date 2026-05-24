@@ -19,8 +19,12 @@ struct TerminalSurface: NSViewRepresentable {
 
         let view = LocalProcessTerminalView(frame: .zero)
         applyAppearance(view)
-        // Register for file URL drops — drop a file from Finder → its escaped
-        // path types into the terminal at the cursor (standard terminal UX).
+        // CRITICAL: autoresizing makes AppKit propagate every superview size
+        // change down to this view, which fires SwiftTerm's setFrameSize →
+        // grid relayout → clean redraw. Without this, the SwiftUI hosting
+        // layer absorbs size changes and SwiftTerm never sees them, leaving
+        // stale rendered text behind on every window drag.
+        view.autoresizingMask = [.width, .height]
         view.registerForDraggedTypes([.fileURL])
 
         // Bridge process state back to the session model — title/cwd updates,
@@ -41,17 +45,7 @@ struct TerminalSurface: NSViewRepresentable {
 
     func updateNSView(_ nsView: LocalProcessTerminalView, context: Context) {
         applyAppearance(nsView)
-        // Defensive: force the SwiftTerm NSView to fill its SwiftUI parent's
-        // bounds. SwiftUI's hosting layout sometimes lags by a frame on
-        // resize, leaving stale rendered text behind. Explicit frame sync +
-        // needsDisplay forces a clean redraw at the new grid size.
-        DispatchQueue.main.async {
-            if let parent = nsView.superview, nsView.frame.size != parent.bounds.size {
-                nsView.frame = parent.bounds
-            }
-            nsView.needsLayout = true
-            nsView.needsDisplay = true
-        }
+        // Autoresizing handles size sync — no manual frame poke needed.
     }
 
     func makeCoordinator() -> Coordinator {

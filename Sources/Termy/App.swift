@@ -6,6 +6,7 @@ struct TermyApp: App {
     @NSApplicationDelegateAdaptor(TerminalAppDelegate.self) var delegate
     @StateObject private var settings = TerminalSettings()
     @StateObject private var profiles = ProfileStore()
+    @StateObject private var workflows = WorkflowStore()
     @StateObject private var updater = Updater()
 
     /// Only the first window restores persisted tabs; further windows are blank.
@@ -19,6 +20,7 @@ struct TermyApp: App {
             TerminalWindowRoot()
                 .environmentObject(settings)
                 .environmentObject(profiles)
+                .environmentObject(workflows)
                 .environmentObject(updater)
         }
         .windowStyle(.hiddenTitleBar)
@@ -27,12 +29,7 @@ struct TermyApp: App {
         .windowResizability(.automatic)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("New Window") {
-                    NSApp.sendAction(#selector(NSDocumentController.newDocument(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("n", modifiers: .command)
-                // Tab actions are dispatched through the focused window's
-                // TerminalSessions via the Notification.Name below.
+                NewWindowButton()
                 Button("New Tab") {
                     NotificationCenter.default.post(name: .terminalNewTab, object: nil)
                 }
@@ -105,6 +102,17 @@ struct TermyApp: App {
                 .keyboardShortcut("p", modifiers: [.command, .shift])
             }
         }
+    }
+}
+
+/// `NSDocumentController.newDocument` doesn't work for SwiftUI `WindowGroup`s.
+/// The right hook is `@Environment(\.openWindow)`. Wrap in a small View so the
+/// environment is available inside `.commands`.
+struct NewWindowButton: View {
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Button("New Window") { openWindow(id: "terminal") }
+            .keyboardShortcut("n", modifiers: .command)
     }
 }
 
