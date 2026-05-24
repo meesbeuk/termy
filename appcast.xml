@@ -6,6 +6,27 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.8.3</title>
+            <description><![CDATA[
+                <h2>Settings honesty pass</h2>
+                <ul>
+                    <li>Removed the Cursor settings pane — SwiftTerm doesn't expose a public hook to apply cursor style/blink, so the toggles were doing nothing. Better gone than misleading.</li>
+                    <li>Audited every other settings pane — General, Profiles, Vibecoder, Theme, Font, Density, Chrome, Background, Updates each have real downstream consumers.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 19:00:00 +0000</pubDate>
+            <sparkle:version>13</sparkle:version>
+            <sparkle:shortVersionString>0.8.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.8.3/Termy.dmg"
+                sparkle:version="13"
+                sparkle:shortVersionString="0.8.3"
+                length="2525972"
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.8.2 (hotfix)</title>
             <description><![CDATA[
                 <h2>Critical fix on top of 0.8.0</h2>
