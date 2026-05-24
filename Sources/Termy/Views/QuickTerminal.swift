@@ -176,7 +176,7 @@ private struct QuickTerminalRoot: View {
             if let tab = sessions.currentTab {
                 PaneLayout(tab: tab, sessions: sessions, settings: settings)
                     .padding(.horizontal, 12)
-                    .padding(.top, 8)
+                    .padding(.top, 14)
                     .padding(.bottom, 6)
             }
             // Slim handle so the panel reads as a drop-down, not a notification.
@@ -188,6 +188,27 @@ private struct QuickTerminalRoot: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity)
+            // Top-right close × so users have a visible exit affordance
+            // beyond ⌃` and ⎋. Without it, the only way to dismiss is
+            // muscle-memory + the hint in the cheatsheet.
+            HStack {
+                Spacer()
+                Button(action: onEscape) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .frame(width: 22, height: 22)
+                        .background(
+                            Circle().fill(.regularMaterial).opacity(0.7)
+                        )
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Dismiss Quick Terminal (⌃` or ⎋)")
+                .accessibilityLabel("Dismiss Quick Terminal")
+                .padding(.top, 6)
+                .padding(.trailing, 12)
+            }
         }
         // ⎋ explicitly dismisses — matches every quake terminal in the wild.
         .background(

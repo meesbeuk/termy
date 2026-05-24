@@ -6,6 +6,29 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.18</title>
+            <description><![CDATA[
+                <h2>Visible close affordances + grouped title-strip dividers</h2>
+                <ul>
+                    <li><strong>Split panes get a close ×.</strong> Hover any pane in a multi-pane tab → a small × appears in the top-right. Click to close just that pane. Previously the only path was "click pane to focus, then ⌘W" — non-obvious. Now reachable by sight.</li>
+                    <li><strong>Quake drop-down gets a close ×.</strong> Top-right of the panel, glass-backed circle. Beyond ⌃` and ⎋ users now have a visible exit affordance.</li>
+                    <li><strong>Title-strip icons grouped with dividers.</strong> Three logical groups (navigation / layout / help) separated by thin vertical dividers so the row reads as clusters instead of a wall of glyphs. Future-proof: new icons drop into the right cluster — users don't have to re-scan when something is added.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 03:45:00 +0000</pubDate>
+            <sparkle:version>35</sparkle:version>
+            <sparkle:shortVersionString>0.9.18</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.18/Termy.dmg"
+                sparkle:version="35"
+                sparkle:shortVersionString="0.9.18"
+                length="2720366"
+                sparkle:edSignature="ftPJwIaWoBiCmaU3s2OfcQZVphkuN3WBbS+SB+KDdjrbsrC6XeSlZQIq0DPigMzEm9TlzYbA1STCSSBqm8piCg=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.17</title>
             <description><![CDATA[
                 <h2>Modal consistency + UX reachability pass</h2>

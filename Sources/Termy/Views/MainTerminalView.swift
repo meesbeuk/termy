@@ -419,9 +419,15 @@ private struct TitleStrip: View {
                 InlineLaunchersRow(onLaunch: onLaunch)
                 ChromeDivider()
             }
-            // Quick-action icons — same affordances as the keyboard
-            // shortcuts, surfaced so users can scan + click. Each carries a
-            // tooltip with the keyboard equivalent.
+            // Quick-action icons grouped by purpose with thin dividers so
+            // the row reads as logical clusters rather than a wall of
+            // glyphs. Group 1: navigation/search. Group 2: layout. Group
+            // 3: help. Future-proof: when we add a new icon, drop it into
+            // the right group (or start a new one + add a divider) — the
+            // user shouldn't have to re-scan the whole row to find what
+            // changed.
+
+            // Navigation & search
             ChromeIconButton(symbol: "magnifyingglass",
                              tooltip: "Find in scrollback (⌘F)",
                              action: onToggleFind)
@@ -431,6 +437,10 @@ private struct TitleStrip: View {
             ChromeIconButton(symbol: "clock.arrow.circlepath",
                              tooltip: "Recent Directories (⌘⌥/)",
                              action: onShowRecentDirs)
+
+            ChromeDivider()
+
+            // Layout / windowing
             ChromeIconButton(symbol: "rectangle.split.2x1",
                              tooltip: "Split Horizontally (⌘D)",
                              action: onSplitH)
@@ -440,8 +450,12 @@ private struct TitleStrip: View {
             ChromeIconButton(symbol: "chevron.down.square",
                              tooltip: "Quick Drop-down Terminal (⌃`)",
                              action: onQuickTerminal)
+
+            ChromeDivider()
+
+            // Help
             ChromeIconButton(symbol: "questionmark.circle",
-                             tooltip: "Keyboard shortcuts cheatsheet",
+                             tooltip: "Keyboard shortcuts cheatsheet (⌘/)",
                              action: onShowCheatsheet)
             Spacer()
             // cwd lives in the status bar — no need to duplicate it up top.
