@@ -126,6 +126,49 @@ struct PaneLayout: View {
                 }
             }
             .onTapGesture { tab.activePaneId = pane.id }
+            // Right-click anywhere in the terminal pane → standard
+            // macOS context menu: Copy / Paste / Select All / Find /
+            // Clear / New Tab. Every native terminal has this; Termy
+            // was missing it through v0.9.23.
+            .contextMenu {
+                Button("Copy") { copySelection(from: pane) }
+                    .disabled(!hasSelection(in: pane))
+                Button("Paste") { pasteInto(pane: pane) }
+                Button("Select All") { selectAll(in: pane) }
+                Divider()
+                Button("Find in Scrollback") {
+                    NotificationCenter.default.post(name: .terminalToggleFind, object: nil)
+                }
+                Button("Clear") {
+                    sessions.clearCurrent()
+                }
+                Divider()
+                Button("New Tab") { sessions.openTab() }
+                Button("Split Horizontally") { sessions.splitHorizontal() }
+                Button("Split Vertically") { sessions.splitVertical() }
+            }
+    }
+
+    /// SwiftTerm's `selection` is internal — we can't query it directly.
+    /// Always enable Copy; if there's no selection SwiftTerm's copy(_:)
+    /// implementation no-ops gracefully (writes empty string).
+    private func hasSelection(in pane: TerminalSession) -> Bool { true }
+
+    private func copySelection(from pane: TerminalSession) {
+        // SwiftTerm's MacTerminalView declares `open func copy(_:)` that
+        // pulls selection text and writes to NSPasteboard. Calling it
+        // directly avoids the internal-access wall while still honoring
+        // SwiftTerm's row/column handling.
+        pane.terminalView?.copy(NSObject())
+    }
+
+    private func pasteInto(pane: TerminalSession) {
+        pane.terminalView?.paste(NSObject())
+    }
+
+    private func selectAll(in pane: TerminalSession) {
+        // NSView.selectAll(_:) routes to MacTerminalView's override.
+        pane.terminalView?.selectAll(NSObject())
     }
 }
 

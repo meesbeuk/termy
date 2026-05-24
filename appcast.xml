@@ -6,6 +6,28 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.24</title>
+            <description><![CDATA[
+                <h2>Right-click in terminal → context menu</h2>
+                <ul>
+                    <li><strong>Native right-click menu in any pane:</strong> Copy, Paste, Select All, Find in Scrollback, Clear, New Tab, Split Horizontally, Split Vertically. Every native terminal has this — Termy was missing it through v0.9.23.</li>
+                    <li>Uses SwiftTerm's public <code>copy(_:)</code> / <code>paste(_:)</code> / <code>selectAll(_:)</code> action methods so selection / pasteboard handling stays consistent with keyboard shortcut paths.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 05:55:00 +0000</pubDate>
+            <sparkle:version>41</sparkle:version>
+            <sparkle:shortVersionString>0.9.24</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.24/Termy.dmg"
+                sparkle:version="41"
+                sparkle:shortVersionString="0.9.24"
+                length="2853480"
+                sparkle:edSignature="LiAUlWoiihtqWZmPcKqp2xy8apLumv42ab7+bdVP1zSEOTZ4gGPJEaaTkGJV81MY5cIvf0mODJ9eakuCWF++Cg=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.23</title>
             <description><![CDATA[
                 <h2>Small UX polish</h2>
