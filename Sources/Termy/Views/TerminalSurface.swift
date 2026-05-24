@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ObjectiveC.runtime
 import SwiftTerm
 
 /// SwiftUI wrapper around SwiftTerm's `LocalProcessTerminalView`.
@@ -16,6 +17,59 @@ final class TermyTerminalView: LocalProcessTerminalView {
     override func bell(source: Terminal) {
         super.bell(source: source)
         onBell?()
+    }
+
+    // MARK: - Live-resize coalescing
+    //
+    // SwiftTerm's setFrameSize calls `processSizeChange` → `terminal.resize` →
+    // `reflowWider` on every AppKit setFrameSize tick. During a window-corner
+    // drag AppKit fires that hundreds of times per second with intermediate
+    // widths, and SwiftTerm's reflowWider corrupts scrollback when called
+    // repeatedly — wrapped-continuation lines get dropped without their
+    // contents being merged into the surviving line, so when you scroll back
+    // up after resize you see disconnected text fragments at random columns.
+    //
+    // Skip SwiftTerm's reflow during live resize and run it exactly once when
+    // the drag ends. NSView's own setFrameSize still runs so AppKit's layout
+    // pass is consistent — we hand-dispatch to it via the objc runtime to
+    // bypass SwiftTerm's override.
+
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        // Re-run SwiftTerm's setFrameSize once at the final size so it does
+        // a single reflow from old cols → new cols, instead of N tiny ones.
+        // SwiftTerm's processSizeChange early-returns when the size matches
+        // the current frame, so nudge by half a point first to force the
+        // reflow to run, then settle on the real size.
+        let final = frame.size
+        super.setFrameSize(NSSize(width: final.width + 0.5, height: final.height))
+        super.setFrameSize(final)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        guard inLiveResize else {
+            super.setFrameSize(newSize)
+            return
+        }
+        // In a live resize: update NSView's frame directly, skipping
+        // SwiftTerm's per-tick terminal.resize. The cell grid stays at its
+        // previous (cols × rows) for the duration of the drag — the rendered
+        // text shifts slightly in the window while the user is dragging, but
+        // the scrollback buffer is not mutated.
+        callNSViewSetFrameSize(newSize)
+        needsDisplay = true
+    }
+
+    private func callNSViewSetFrameSize(_ newSize: NSSize) {
+        typealias Fn = @convention(c) (NSView, Selector, NSSize) -> Void
+        let sel = #selector(NSView.setFrameSize(_:))
+        guard let impl = class_getMethodImplementation(NSView.self, sel) else {
+            // Shouldn't happen — NSView always responds to setFrameSize.
+            // Fall back to super so we at least don't crash on resize.
+            super.setFrameSize(newSize)
+            return
+        }
+        unsafeBitCast(impl, to: Fn.self)(self, sel, newSize)
     }
 }
 
