@@ -69,6 +69,7 @@ struct TerminalSettingsSheet: View {
                 case .general: GeneralPane()
                 case .profiles: ProfilesPane()
                 case .vibecoder: VibecoderPane()
+                case .quake: QuakePane()
                 case .theme: ThemePane()
                 case .font: FontPane()
                 case .density: DensityPane()
@@ -88,13 +89,14 @@ struct TerminalSettingsSheet: View {
 }
 
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    case general, profiles, vibecoder, theme, font, density, chrome, background, updates, about
+    case general, profiles, vibecoder, quake, theme, font, density, chrome, background, updates, about
     var id: String { rawValue }
     var displayName: String {
         switch self {
         case .general: return "General"
         case .profiles: return "Profiles"
         case .vibecoder: return "Vibecoder"
+        case .quake: return "Quake"
         case .theme: return "Theme"
         case .font: return "Font"
         case .density: return "Density"
@@ -109,6 +111,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .general: return "gearshape"
         case .profiles: return "person.crop.rectangle.stack"
         case .vibecoder: return "sparkles"
+        case .quake: return "chevron.down.square"
         case .theme: return "paintpalette"
         case .font: return "textformat"
         case .density: return "rectangle.compress.vertical"
@@ -286,6 +289,36 @@ private struct FontPane: View {
                 && seen.insert(name).inserted
         }
         return recommended + extras
+    }
+}
+
+private struct QuakePane: View {
+    @EnvironmentObject var settings: TerminalSettings
+    var body: some View {
+        DSSection("Quake drop-down") {
+            Toggle("Hide on focus loss", isOn: $settings.quakeHideOnFocusLoss)
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
+            Text("Classic Quake behaviour — clicking outside the panel slides it back up. Turn off to keep it pinned while you reference it from another window.")
+                .font(DS.Typo.tiny)
+                .foregroundStyle(DS.Colors.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Text("Height")
+                    .font(DS.Typo.caption)
+                    .foregroundStyle(DS.Colors.secondary)
+                Slider(value: $settings.quakeHeightFraction, in: 0.20...0.95)
+                    .controlSize(.small)
+                Text("\(Int(settings.quakeHeightFraction * 100))%")
+                    .font(DS.Typo.monoCaption)
+                    .foregroundStyle(DS.Colors.secondary)
+                    .frame(width: 40, alignment: .trailing)
+            }
+            Text("Vertical fraction of the active display the panel takes when toggled. Applies next time you press ⌃`.")
+                .font(DS.Typo.tiny)
+                .foregroundStyle(DS.Colors.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

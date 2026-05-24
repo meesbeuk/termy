@@ -24,6 +24,7 @@ final class QuickTerminalController {
     private var hideOnFocusLossObserver: Any?
     private var settingsRef: TerminalSettings?
     private var profilesRef: ProfileStore?
+    private var heightObserver: NSKeyValueObservation?
 
     /// Toggle visibility. First call lazily builds the panel; subsequent calls
     /// just show/hide the same instance.
@@ -84,8 +85,9 @@ final class QuickTerminalController {
         p.contentView = container
         self.panel = p
 
-        // Auto-hide on focus loss. We can disable later via a settings
-        // toggle; for now this is the standard Quake behavior.
+        // Auto-hide on focus loss. Controlled by Settings → Quake →
+        // "Hide on focus loss" (default on, classic Quake behavior). When
+        // off, the panel stays put even when the user clicks elsewhere.
         let nc = NotificationCenter.default
         hideOnFocusLossObserver = nc.addObserver(
             forName: NSWindow.didResignKeyNotification,
@@ -97,7 +99,9 @@ final class QuickTerminalController {
             // hides itself mid-interaction.
             DispatchQueue.main.async { [weak self] in
                 guard let self, let panel = self.panel, panel.isVisible,
-                      !panel.isKeyWindow else { return }
+                      !panel.isKeyWindow,
+                      self.settingsRef?.quakeHideOnFocusLoss ?? true
+                else { return }
                 self.slideOut()
             }
         }
@@ -117,7 +121,8 @@ final class QuickTerminalController {
     private func expandedFrame() -> NSRect {
         let s = screen()
         let v = s.visibleFrame
-        let height = round(v.height * 0.45)
+        let fraction = settingsRef?.quakeHeightFraction ?? 0.45
+        let height = round(v.height * fraction)
         return NSRect(x: v.minX, y: s.frame.maxY - height, width: v.width, height: height)
     }
 

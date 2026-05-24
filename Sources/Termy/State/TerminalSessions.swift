@@ -82,7 +82,50 @@ final class TerminalSessions: ObservableObject {
     /// without an explicit profile (⌘T, command palette, etc.).
     weak var profileStore: ProfileStore?
 
-    private static let restoreKey = "mees.terminal.restoreTabs.v2"
+    /// UserDefaults key for THIS window's persisted tab/pane layout. Each
+    /// window now owns its own key (UUID-suffixed) so multi-window setups
+    /// stop trampling each other's saved state — through v0.9.8 every
+    /// window wrote to the same key, and the last save won.
+    let restoreKey: String
+
+    /// Master list of every known window's restoreKey. Persisted so we can
+    /// rehydrate every saved window on launch, not just the most recently
+    /// touched one.
+    static let windowKeysKey = "mees.terminal.windowKeys.v1"
+
+    /// Queue of restoreKeys waiting to be claimed by newly-opened windows
+    /// on launch. The first window pops the most-recently-active key; each
+    /// programmatic openWindow call drains the next one. New windows
+    /// opened by the user (via ⌘N etc.) after the queue empties generate a
+    /// fresh key.
+    nonisolated(unsafe) static var pendingRestoreKeys: [String] = []
+
+    /// Set once a window has consumed the legacy single-key restore
+    /// payload, so no sibling window restores the same state.
+    nonisolated(unsafe) static var legacyKeyConsumed: Bool = false
+
+    init(restoreKey: String = UUID().uuidString) {
+        self.restoreKey = restoreKey
+        Self.registerWindowKey(restoreKey)
+    }
+
+    private static func registerWindowKey(_ key: String) {
+        var existing = UserDefaults.standard.stringArray(forKey: windowKeysKey) ?? []
+        if !existing.contains(key) {
+            existing.append(key)
+            UserDefaults.standard.set(existing, forKey: windowKeysKey)
+        }
+    }
+
+    /// Remove this window's key from the master list — called when the
+    /// window is closed by the user (⌘⇧W or last-tab cascade off). Without
+    /// this, abandoned window keys accumulate forever.
+    func unregisterWindow() {
+        UserDefaults.standard.removeObject(forKey: restoreKey)
+        var existing = UserDefaults.standard.stringArray(forKey: Self.windowKeysKey) ?? []
+        existing.removeAll { $0 == restoreKey }
+        UserDefaults.standard.set(existing, forKey: Self.windowKeysKey)
+    }
 
     var currentTab: TerminalTab? {
         guard let id = selectedTabId else { return tabs.first }
@@ -275,15 +318,32 @@ final class TerminalSessions: ObservableObject {
 
     // MARK: - Persistence
 
-    /// Persist current tabs (panes' cwds + orientation) for restoration.
+    /// Persist current tabs (panes' cwds + orientation + per-pane profile)
+    /// for restoration. The profile is stored as its UUID string so we can
+    /// re-resolve through `profileStore` on launch and reapply the right
+    /// shell / env / tag color — splits no longer lose their profile after
+    /// a relaunch. Writes go to this window's per-window restoreKey so
+    /// multi-window setups don't trample each other.
     func persist() {
         let payload: [[String: Any]] = tabs.map { tab in
-            [
+            let panePayload: [[String: Any]] = tab.panes.map { pane in
+                var entry: [String: Any] = ["cwd": pane.cwd]
+                if let pid = pane.profileID { entry["profileID"] = pid.uuidString }
+                return entry
+            }
+            var dict: [String: Any] = [
                 "orientation": tab.orientation.rawValue,
+                "panes": panePayload,
+                // Legacy "cwds" key — older Termy builds read this. Keep
+                // writing it so a fresh build → downgrade round-trips
+                // without losing all tabs. Newer code reads "panes" first.
                 "cwds": tab.panes.map { $0.cwd },
             ]
+            if tab.tagColor != .none { dict["tagColor"] = tab.tagColor.rawValue }
+            if tab.broadcastInput { dict["broadcastInput"] = true }
+            return dict
         }
-        UserDefaults.standard.set(payload, forKey: Self.restoreKey)
+        UserDefaults.standard.set(payload, forKey: restoreKey)
     }
 
     /// Outcome of an attempted restore. The distinction between `.noSavedState`
@@ -299,18 +359,59 @@ final class TerminalSessions: ObservableObject {
     }
 
     func restorePersisted() -> RestoreOutcome {
-        guard let raw = UserDefaults.standard.array(forKey: Self.restoreKey) as? [[String: Any]],
-              !raw.isEmpty
-        else { return .noSavedState }
+        // Read this window's own per-window key. Falls back to the legacy
+        // v0.9.8 shared key for upgraders — but only ONCE per launch and
+        // only for the first window, otherwise every fresh window on an
+        // upgrade would restore the same legacy state into a duplicate.
+        var raw = UserDefaults.standard.array(forKey: restoreKey) as? [[String: Any]]
+        if (raw == nil || raw?.isEmpty == true) && !Self.legacyKeyConsumed {
+            let legacyKey = "mees.terminal.restoreTabs.v2"
+            raw = UserDefaults.standard.array(forKey: legacyKey) as? [[String: Any]]
+            if raw != nil {
+                // Drain it so no sibling window can also claim the legacy
+                // state. Once consumed, subsequent launches stop consulting
+                // it entirely (the entry is removed).
+                UserDefaults.standard.removeObject(forKey: legacyKey)
+                Self.legacyKeyConsumed = true
+            }
+        }
+        guard let raw, !raw.isEmpty else { return .noSavedState }
         var restored: [TerminalTab] = []
         for entry in raw {
             let orientationStr = entry["orientation"] as? String ?? "horizontal"
             let orientation = PaneOrientation(rawValue: orientationStr) ?? .horizontal
-            let cwds = (entry["cwds"] as? [String]) ?? []
-            let validCwds = cwds.filter { FileManager.default.fileExists(atPath: $0) }
-            guard !validCwds.isEmpty else { continue }
-            let panes = validCwds.map { TerminalSession(initialCwd: $0) }
-            restored.append(TerminalTab(panes: panes, orientation: orientation))
+
+            // New format: panes carry cwd + profileID per entry. Fall back
+            // to legacy "cwds" array for pre-0.9.9 saves.
+            let panePayloads: [(cwd: String, profileID: UUID?)]
+            if let panes = entry["panes"] as? [[String: Any]] {
+                panePayloads = panes.compactMap { p in
+                    guard let cwd = p["cwd"] as? String else { return nil }
+                    let pid = (p["profileID"] as? String).flatMap(UUID.init(uuidString:))
+                    return (cwd, pid)
+                }
+            } else {
+                let cwds = (entry["cwds"] as? [String]) ?? []
+                panePayloads = cwds.map { ($0, nil) }
+            }
+
+            let validPanes = panePayloads.filter { FileManager.default.fileExists(atPath: $0.cwd) }
+            guard !validPanes.isEmpty else { continue }
+            let sessions = validPanes.map { p -> TerminalSession in
+                let profile = p.profileID.flatMap { id in
+                    profileStore?.profiles.first(where: { $0.id == id })
+                }
+                return TerminalSession(initialCwd: p.cwd, profile: profile)
+            }
+            let tab = TerminalTab(panes: sessions, orientation: orientation)
+            if let colorRaw = entry["tagColor"] as? String,
+               let color = TabTagColor(rawValue: colorRaw) {
+                tab.tagColor = color
+            }
+            if let broadcast = entry["broadcastInput"] as? Bool, broadcast {
+                tab.broadcastInput = true
+            }
+            restored.append(tab)
         }
         guard !restored.isEmpty else { return .staleSaved }
         self.tabs = restored

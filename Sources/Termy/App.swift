@@ -165,39 +165,54 @@ extension Notification.Name {
 }
 
 /// Per-window root. Owns its own TerminalSessions so multi-window works.
+/// Each window claims its own restoreKey — either popped off the
+/// `pendingRestoreKeys` queue (one slot per previously-saved window on a
+/// cold launch) or generated fresh (a brand-new window created by ⌘N
+/// after the queue is drained).
 struct TerminalWindowRoot: View {
-    @StateObject private var sessions = TerminalSessions()
+    @StateObject private var sessions: TerminalSessions = {
+        // First window pops the most-recently-active key off the queue so
+        // it restores the layout the user was last looking at. Subsequent
+        // restored windows pop the rest in order; fresh ⌘N windows get a
+        // new UUID and won't collide.
+        if !TerminalSessions.pendingRestoreKeys.isEmpty {
+            let key = TerminalSessions.pendingRestoreKeys.removeFirst()
+            return TerminalSessions(restoreKey: key)
+        }
+        return TerminalSessions()
+    }()
     @EnvironmentObject var profiles: ProfileStore
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         MainTerminalView()
             .environmentObject(sessions)
+            .onDisappear {
+                // The user closed this window explicitly (⌘⇧W or X). Forget
+                // its restoreKey so we don't reopen a window for it on next
+                // launch. App-quit paths set isTerminating first so this
+                // skips and every window's key is preserved.
+                if !TerminalAppDelegate.isTerminating {
+                    sessions.unregisterWindow()
+                }
+            }
             .onAppear {
                 // Wire profile resolution into the session model so new tabs
                 // honor the user's default profile (shell, env, tag color).
                 sessions.profileStore = profiles
                 if sessions.tabs.isEmpty {
-                    // Restore last session's tabs in the first window only —
-                    // additional windows (⌘N) open with a single blank tab.
                     if !TermyApp.didRestoreFirstWindow {
                         TermyApp.didRestoreFirstWindow = true
-                        switch sessions.restorePersisted() {
-                        case .restored:
-                            break
-                        case .noSavedState:
-                            // Fresh user: open a default tab and persist it as
-                            // the new starting layout.
-                            sessions.openTab()
-                        case .staleSaved:
-                            // Saved layout exists but its cwds aren't reachable
-                            // right now (likely an unmounted external drive).
-                            // Open a default tab so the user has a working
-                            // shell, but DON'T persist — let the saved layout
-                            // come back on the next launch when paths exist.
-                            sessions.openTab(persistChange: false)
+                        restoreOrSeed()
+                        // Spawn one additional window per remaining saved
+                        // key so every previously-open window comes back on
+                        // launch. Each spawn pops the next key in the queue
+                        // via the @StateObject initializer above.
+                        for _ in TerminalSessions.pendingRestoreKeys {
+                            openWindow(id: "terminal")
                         }
                     } else {
-                        sessions.openTab()
+                        restoreOrSeed()
                     }
                 }
                 // Drain any files LaunchServices queued before this window
@@ -209,6 +224,20 @@ struct TerminalWindowRoot: View {
                     for url in urls { sessions.openFile(url) }
                 }
             }
+    }
+
+    private func restoreOrSeed() {
+        switch sessions.restorePersisted() {
+        case .restored:
+            break
+        case .noSavedState:
+            sessions.openTab()
+        case .staleSaved:
+            // Saved layout exists but its cwds aren't reachable right now
+            // (likely an unmounted external drive). Open a default tab
+            // without persisting so the saved layout comes back next launch.
+            sessions.openTab(persistChange: false)
+        }
     }
 }
 
@@ -227,10 +256,20 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
     /// window's onAppear (cold-launch case) or the key window's
     /// `.terminalOpenFiles` handler (already-running case).
     static var pendingOpenURLs: [URL] = []
+    /// Set when the app is shutting down so window .onDisappear handlers
+    /// don't unregister their restoreKey — we want them preserved so each
+    /// window comes back on the next launch.
+    static var isTerminating = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let hide = UserDefaults.standard.bool(forKey: "termy.hideFromDock")
         NSApp.setActivationPolicy(hide ? .accessory : .regular)
+        // Load every saved window key so each can spawn its own window in
+        // launch order. The first window pops the head; the per-window
+        // root opens additional windows for the tail. Limited to 8 to
+        // bound runaway accumulation if the dedup logic ever leaks.
+        let saved = UserDefaults.standard.stringArray(forKey: TerminalSessions.windowKeysKey) ?? []
+        TerminalSessions.pendingRestoreKeys = Array(saved.prefix(8))
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -257,13 +296,24 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let confirm = UserDefaults.standard.bool(forKey: "termy.confirmOnQuit")
-        guard confirm else { return .terminateNow }
+        guard confirm else {
+            Self.isTerminating = true
+            return .terminateNow
+        }
         let alert = NSAlert()
         alert.messageText = "Quit Termy?"
         alert.informativeText = "Are you sure you want to quit Termy? All sessions will end."
         alert.addButton(withTitle: "Quit")
         alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+        let confirmed = alert.runModal() == .alertFirstButtonReturn
+        if confirmed { Self.isTerminating = true }
+        return confirmed ? .terminateNow : .terminateCancel
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Belt-and-braces — some quit paths skip applicationShouldTerminate
+        // (e.g. system shutdown / log out).
+        Self.isTerminating = true
     }
 
     /// Right-click Termy in the Dock → this menu. macOS appends its own

@@ -88,6 +88,25 @@ final class TerminalSettings: ObservableObject {
         didSet { UserDefaults.standard.set(notifyOnBell, forKey: Self.notifyOnBellKey) }
     }
 
+    // MARK: - Quake (drop-down terminal) settings
+
+    /// Auto-hide the Quake drop-down when it loses focus. Standard Quake
+    /// behavior; turn off if you want it to stay visible while you reference
+    /// it from another window.
+    @Published var quakeHideOnFocusLoss: Bool {
+        didSet { UserDefaults.standard.set(quakeHideOnFocusLoss, forKey: Self.quakeHideOnFocusLossKey) }
+    }
+
+    /// Vertical fraction of the active screen the Quake panel occupies.
+    /// 0.30 → tight, 0.45 → default, 0.80 → almost full screen.
+    @Published var quakeHeightFraction: Double {
+        didSet {
+            let clamped = max(0.20, min(0.95, quakeHeightFraction))
+            if clamped != quakeHeightFraction { quakeHeightFraction = clamped; return }
+            UserDefaults.standard.set(quakeHeightFraction, forKey: Self.quakeHeightKey)
+        }
+    }
+
     var theme: TerminalTheme { TerminalTheme.find(id: themeID) }
 
     static let `default`: CGFloat = 13
@@ -110,6 +129,8 @@ final class TerminalSettings: ObservableObject {
     private static let hideFromDockKey = "termy.hideFromDock"
     private static let confirmOnQuitKey = "termy.confirmOnQuit"
     private static let notifyOnBellKey = "termy.notifyOnBell"
+    private static let quakeHideOnFocusLossKey = "termy.quakeHideOnFocusLoss"
+    private static let quakeHeightKey = "termy.quakeHeightFraction"
 
     init() {
         let saved = UserDefaults.standard.double(forKey: Self.fontSizeKey)
@@ -154,6 +175,13 @@ final class TerminalSettings: ObservableObject {
         // Default-off so we don't pop a notification-permission dialog at
         // first launch with no user context.
         self.notifyOnBell = UserDefaults.standard.bool(forKey: Self.notifyOnBellKey)
+        if UserDefaults.standard.object(forKey: Self.quakeHideOnFocusLossKey) == nil {
+            self.quakeHideOnFocusLoss = true
+        } else {
+            self.quakeHideOnFocusLoss = UserDefaults.standard.bool(forKey: Self.quakeHideOnFocusLossKey)
+        }
+        let savedHeight = UserDefaults.standard.double(forKey: Self.quakeHeightKey)
+        self.quakeHeightFraction = savedHeight > 0 ? savedHeight : 0.45
         refreshEffectiveOpacity(screen: NSScreen.main)
         applyDockVisibility()
         installBrightnessObservers()

@@ -6,6 +6,30 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.9</title>
+            <description><![CDATA[
+                <h2>Multi-window restore that actually works + Quake settings</h2>
+                <ul>
+                    <li><strong>Multi-window state survives launches.</strong> Each window now owns its own UserDefaults restore key (UUID-scoped). Through v0.9.8 every window wrote to the same key and the last save won, so multi-window users lost state on relaunch. Now every window comes back, its tabs/panes intact. Legacy single-key data is migrated on first launch.</li>
+                    <li><strong>Per-pane profile persistence.</strong> Splits remember which profile each pane was opened with, not just the cwd — restoring a split now reapplies the right shell/env/tag color.</li>
+                    <li><strong>Per-tab broadcast-input and tag color persistence</strong> — survive restarts.</li>
+                    <li><strong>Quake settings pane.</strong> New Settings → Quake section: toggle hide-on-focus-loss (keep the panel pinned while you reference it from elsewhere), and a height slider 20%–95% of the active screen.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 23:55:00 +0000</pubDate>
+            <sparkle:version>26</sparkle:version>
+            <sparkle:shortVersionString>0.9.9</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.9/Termy.dmg"
+                sparkle:version="26"
+                sparkle:shortVersionString="0.9.9"
+                length="2644658"
+                sparkle:edSignature="p4TXUAG8SmxNJ2clgBY5Smk3I1AojPHMMP3AK2JgYH7F9J9va6onLFCcgTJJXvetl0HdlhaPLXAO4+H9A706CA=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.8</title>
             <description><![CDATA[
                 <h2>Polish: live git branch, multi-monitor Quake, shortcuts cheatsheet</h2>
