@@ -6,6 +6,27 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.0</title>
+            <description><![CDATA[
+                <h2>Dock right-click menu + bell notifications</h2>
+                <ul>
+                    <li>Right-click Termy in the Dock: New Window, New Tab, Quick Terminal, plus a "New Tab with Profile" submenu when you've saved more than one profile.</li>
+                    <li>"Notify when an unfocused window beeps" toggle (General settings) — pair with a zsh precmd that rings the bell and you get system notifications when long commands finish in background windows.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 19:35:00 +0000</pubDate>
+            <sparkle:version>17</sparkle:version>
+            <sparkle:shortVersionString>0.9.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.0/Termy.dmg"
+                sparkle:version="17"
+                sparkle:shortVersionString="0.9.0"
+                length="2550596"
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.8.6</title>
             <description><![CDATA[
                 <h2>Profile deletion safety</h2>
