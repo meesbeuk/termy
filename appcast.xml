@@ -6,6 +6,30 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.28</title>
+            <description><![CDATA[
+                <h2>Paste history (⌘⇧V) — Bucket A #7 from the roadmap</h2>
+                <ul>
+                    <li><strong>⌘⇧V opens a paste-history picker.</strong> Last 20 strings copied to your pasteboard, recent on top, filter field at top. Pick → typed into the active pane. Standard pattern lifted from 1Password / Paste / Raycast, but scoped to Termy and never persisted to disk (in-memory only, vibecoders pasting API keys benefit).</li>
+                    <li>Polled changeCount-driven capture (500ms tick) so it picks up copies from anywhere on the system, not just inside Termy.</li>
+                    <li>"Clear" button in the picker; right-click any row to re-copy or paste directly.</li>
+                    <li>Same chrome (640×480, .regularMaterial, accent header) as Settings / Command Palette / Cheatsheet / Session Logs — all five primary modals are visually identical.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 07:35:00 +0000</pubDate>
+            <sparkle:version>45</sparkle:version>
+            <sparkle:shortVersionString>0.9.28</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.28/Termy.dmg"
+                sparkle:version="45"
+                sparkle:shortVersionString="0.9.28"
+                length="2932189"
+                sparkle:edSignature="+YFpiOwBzYJftzEr87dgoPerUsciG7rXp5Mo2Rz+MY8Bpdu6fQRbLMz7tIMvtihbQ7wGkiF1yafTaOGXgHNhCg=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.27</title>
             <description><![CDATA[
                 <h2>Acting on the competitor research: OSC 8 → editor + YAML workflows</h2>

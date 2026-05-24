@@ -13,6 +13,7 @@ struct MainTerminalView: View {
     @State private var showingFind = false
     @State private var showingCheatsheet = false
     @State private var showingSessionLogs = false
+    @State private var showingPasteHistory = false
     @State private var findInitialQuery: String?
     @State private var hostedWindow: NSWindow?
     @State private var keyMonitor: Any?
@@ -151,7 +152,8 @@ struct MainTerminalView: View {
             showPalette: { showingPalette = true },
             showCheatsheet: { showingCheatsheet = true },
             showSettings: { showingSettings = true },
-            showSessionLogs: { showingSessionLogs = true }
+            showSessionLogs: { showingSessionLogs = true },
+            showPasteHistory: { showingPasteHistory = true }
         ))
         .sheet(isPresented: $showingSettings) {
             TerminalSettingsSheet(onClose: { showingSettings = false })
@@ -213,6 +215,15 @@ struct MainTerminalView: View {
             }
             .transition(.opacity)
             .zIndex(13)
+        }
+        if showingPasteHistory {
+            ZStack {
+                Color.black.opacity(0.10).ignoresSafeArea()
+                    .onTapGesture { showingPasteHistory = false }
+                PasteHistoryPicker(onDismiss: { showingPasteHistory = false })
+            }
+            .transition(.opacity)
+            .zIndex(14)
         }
     }
 

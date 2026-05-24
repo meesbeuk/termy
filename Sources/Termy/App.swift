@@ -7,6 +7,7 @@ struct TermyApp: App {
     @StateObject private var settings = TerminalSettings()
     @StateObject private var profiles = ProfileStore()
     @StateObject private var workflows = WorkflowStore()
+    @StateObject private var pasteHistory = PasteHistoryStore()
     @StateObject private var updater = Updater()
 
     /// Only the first window restores persisted tabs; further windows are blank.
@@ -26,6 +27,7 @@ struct TermyApp: App {
             .environmentObject(settings)
             .environmentObject(profiles)
             .environmentObject(workflows)
+            .environmentObject(pasteHistory)
             .environmentObject(updater)
         }
         .windowStyle(.hiddenTitleBar)
@@ -161,6 +163,10 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalOpenSessionLogs, object: nil)
                 }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
+                Button("Paste from History…") {
+                    NotificationCenter.default.post(name: .terminalOpenPasteHistory, object: nil)
+                }
+                .keyboardShortcut("v", modifiers: [.command, .shift])
                 QuickTerminalToggleButton(settings: settings, profiles: profiles)
             }
             CommandGroup(after: .windowArrangement) {
@@ -210,6 +216,7 @@ extension Notification.Name {
     static let terminalOpenSettings = Notification.Name("mees.terminal.openSettings")
     static let terminalOpenSessionLogs = Notification.Name("mees.terminal.openSessionLogs")
     static let terminalFindSelection = Notification.Name("mees.terminal.findSelection")
+    static let terminalOpenPasteHistory = Notification.Name("mees.terminal.openPasteHistory")
     static let terminalClear = Notification.Name("mees.terminal.clear")
     static let terminalToggleFind = Notification.Name("mees.terminal.toggleFind")
     static let terminalSplitHorizontal = Notification.Name("mees.terminal.splitH")
