@@ -10,19 +10,23 @@ struct CommandPalette: View {
 
     @State private var query: String = ""
     @State private var selected: Int = 0
+    @State private var filter: PaletteFilter = .all
     @FocusState private var focused: Bool
 
     var body: some View {
+        // Chrome mirrors the Settings sheet exactly: same size, single divider
+        // after the header, no internal dividers. Footer hint sits inline at
+        // the bottom of the body as muted text (Settings has no footer bar).
         VStack(spacing: 0) {
             header
             Divider().opacity(0.3)
-            searchField
-            Divider().opacity(0.3)
-            list
-            Divider().opacity(0.3)
-            footer
+            HStack(spacing: 0) {
+                sidebar
+                Divider().opacity(0.3)
+                content
+            }
         }
-        .frame(width: 560, height: 460)
+        .frame(width: 640, height: 480)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.modal))
         .shadow(color: .black.opacity(DS.Modal.shadowOpacity),
@@ -49,7 +53,7 @@ struct CommandPalette: View {
             HStack(spacing: DS.Spacing.s) {
                 Image(systemName: "command")
                     .font(.system(size: 13))
-                    .foregroundStyle(DS.Colors.accent)
+                    .foregroundStyle(DS.Colors.secondary)
                 Text("Command Palette")
                     .font(DS.Typo.title)
             }
@@ -59,45 +63,79 @@ struct CommandPalette: View {
         .padding(DS.Spacing.l)
     }
 
-    private var searchField: some View {
-        HStack(spacing: DS.Spacing.s) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11))
-                .foregroundStyle(DS.Colors.tertiary)
-            TextField("Type a command…", text: $query)
-                .textFieldStyle(.plain)
-                .font(DS.Typo.body)
-                .focused($focused)
+    /// Sidebar mirrors the Settings sheet — list of result-kind filters with
+    /// the same row treatment, width, and material so the two modals read as
+    /// the same shell with different content.
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            ForEach(PaletteFilter.allCases) { f in
+                PaletteSidebarRow(
+                    title: f.displayName,
+                    icon: f.icon,
+                    count: countFor(f),
+                    isSelected: filter == f,
+                    onTap: { filter = f }
+                )
+            }
+            Spacer()
         }
-        .padding(.horizontal, DS.Spacing.l)
-        .padding(.vertical, DS.Spacing.s)
+        .padding(.vertical, DS.Spacing.m)
+        .padding(.horizontal, DS.Spacing.s)
+        .frame(width: 170)
+        .background(.thickMaterial.opacity(0.3))
     }
 
-    private var list: some View {
-        ScrollView {
-            VStack(spacing: 1) {
-                ForEach(Array(filtered.enumerated()), id: \.offset) { idx, item in
-                    CommandRow(item: item, isSelected: idx == selected, onPick: { commit(item) })
+    private var content: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.m) {
+            // Search field styled as inline row, no surrounding divider —
+            // Settings doesn't use internal dividers.
+            HStack(spacing: DS.Spacing.s) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DS.Colors.tertiary)
+                TextField("Type a command…", text: $query)
+                    .textFieldStyle(.plain)
+                    .font(DS.Typo.body)
+                    .focused($focused)
+            }
+            .padding(.horizontal, DS.Spacing.m)
+            .padding(.vertical, DS.Spacing.s)
+            .background(
+                RoundedRectangle(cornerRadius: DS.Radius.s)
+                    .fill(DS.Colors.chipBg)
+            )
+
+            ScrollView {
+                VStack(spacing: 1) {
+                    ForEach(Array(filtered.enumerated()), id: \.offset) { idx, item in
+                        CommandRow(item: item,
+                                   isSelected: idx == selected,
+                                   onPick: { commit(item) })
+                    }
                 }
             }
-            .padding(.vertical, DS.Spacing.xs)
+
+            HStack(spacing: DS.Spacing.m) {
+                Text("↑↓ navigate · ↵ run · ⎋ close")
+                Spacer()
+                Text("\(filtered.count) results")
+            }
+            .font(DS.Typo.tiny)
+            .foregroundStyle(DS.Colors.tertiary)
         }
+        .padding(DS.Spacing.xl)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    private var footer: some View {
-        HStack(spacing: DS.Spacing.m) {
-            Text("↑↓ navigate")
-            Text("·")
-            Text("↵ run")
-            Text("·")
-            Text("⎋ close")
-            Spacer()
-            Text("\(filtered.count) results")
+    private func countFor(_ f: PaletteFilter) -> Int {
+        switch f {
+        case .all: return allItems.count
+        case .tabs: return allItems.filter { $0.kind == .tab }.count
+        case .themes: return allItems.filter { $0.kind == .theme }.count
+        case .actions: return allItems.filter { $0.kind == .action }.count
+        case .workflows: return allItems.filter { $0.kind == .workflow }.count
+        case .ssh: return allItems.filter { $0.kind == .ssh }.count
         }
-        .font(DS.Typo.tiny)
-        .foregroundStyle(DS.Colors.tertiary)
-        .padding(.horizontal, DS.Spacing.l)
-        .padding(.vertical, DS.Spacing.s)
     }
 
     private var allItems: [PaletteItem] {
@@ -147,9 +185,18 @@ struct CommandPalette: View {
     }
 
     private var filtered: [PaletteItem] {
+        let scoped: [PaletteItem]
+        switch filter {
+        case .all: scoped = allItems
+        case .tabs: scoped = allItems.filter { $0.kind == .tab }
+        case .themes: scoped = allItems.filter { $0.kind == .theme }
+        case .actions: scoped = allItems.filter { $0.kind == .action }
+        case .workflows: scoped = allItems.filter { $0.kind == .workflow }
+        case .ssh: scoped = allItems.filter { $0.kind == .ssh }
+        }
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return Array(allItems.prefix(40)) }
-        return allItems.filter { item in
+        guard !q.isEmpty else { return Array(scoped.prefix(60)) }
+        return scoped.filter { item in
             item.title.lowercased().contains(q) ||
             item.subtitle.lowercased().contains(q)
         }
@@ -158,6 +205,69 @@ struct CommandPalette: View {
     private func commit(_ item: PaletteItem) {
         item.action()
         onDismiss()
+    }
+}
+
+enum PaletteFilter: String, CaseIterable, Identifiable {
+    case all, tabs, themes, actions, workflows, ssh
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .all: return "All"
+        case .tabs: return "Tabs"
+        case .themes: return "Themes"
+        case .actions: return "Actions"
+        case .workflows: return "Workflows"
+        case .ssh: return "SSH Hosts"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .all: return "command"
+        case .tabs: return "rectangle.stack"
+        case .themes: return "paintpalette"
+        case .actions: return "bolt"
+        case .workflows: return "wand.and.stars"
+        case .ssh: return "network"
+        }
+    }
+}
+
+private struct PaletteSidebarRow: View {
+    let title: String
+    let icon: String
+    let count: Int
+    let isSelected: Bool
+    let onTap: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: DS.Spacing.s) {
+                Image(systemName: icon)
+                    .font(.system(size: 11))
+                    .foregroundStyle(isSelected ? DS.Colors.accent : DS.Colors.secondary)
+                    .frame(width: 16)
+                Text(title)
+                    .font(DS.Typo.body)
+                    .foregroundStyle(isSelected ? DS.Colors.primary : DS.Colors.secondary)
+                Spacer()
+                Text("\(count)")
+                    .font(DS.Typo.tiny)
+                    .foregroundStyle(DS.Colors.tertiary)
+            }
+            .padding(.horizontal, DS.Spacing.s)
+            .padding(.vertical, DS.Spacing.s)
+            .background(
+                RoundedRectangle(cornerRadius: DS.Radius.s)
+                    .fill(isSelected ? DS.Colors.chipBgActive : (hovering ? DS.Colors.chipBgHover : Color.clear))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { newValue in
+            withAnimation(.easeOut(duration: 0.10)) { hovering = newValue }
+        }
     }
 }
 

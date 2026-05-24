@@ -9,7 +9,8 @@ struct AILauncher: Identifiable, Hashable {
     let displayName: String
     let cli: String         // command to execute
     let arguments: [String]
-    let icon: String        // SF Symbol
+    let icon: String        // SF Symbol fallback
+    let brandAsset: String? // basename of SVG in Resources/LaunchIcons (no extension)
     let tint: AILauncherTint
 
     /// Always returns the canonical set so users never lose access to a tool
@@ -26,17 +27,23 @@ struct AILauncher: Identifiable, Hashable {
     /// when bundled. UI renders all-white regardless of tint.
     static let all: [AILauncher] = [
         AILauncher(id: "claude",  displayName: "Claude Code",     cli: "claude",
-                   arguments: [], icon: "sparkle", tint: .neutral),
+                   arguments: [], icon: "sparkle",
+                   brandAsset: "claudecode", tint: .neutral),
         AILauncher(id: "codex",   displayName: "Codex",           cli: "codex",
-                   arguments: [], icon: "wand.and.stars.inverse", tint: .neutral),
+                   arguments: [], icon: "wand.and.stars.inverse",
+                   brandAsset: "openai", tint: .neutral),
         AILauncher(id: "cursor",  displayName: "Cursor",          cli: "cursor",
-                   arguments: ["."], icon: "cursorarrow.click.2", tint: .neutral),
-        AILauncher(id: "code",    displayName: "VS Code",         cli: "code",
-                   arguments: ["."], icon: "chevron.left.forwardslash.chevron.right", tint: .neutral),
+                   arguments: ["."], icon: "cursorarrow.click.2",
+                   brandAsset: "cursor", tint: .neutral),
+        AILauncher(id: "gemini",  displayName: "Gemini CLI",      cli: "gemini",
+                   arguments: [], icon: "diamond.fill",
+                   brandAsset: "geminicli", tint: .neutral),
         AILauncher(id: "gh",      displayName: "GitHub Copilot",  cli: "gh",
-                   arguments: ["copilot", "suggest"], icon: "circle.hexagongrid.fill", tint: .neutral),
+                   arguments: ["copilot", "suggest"], icon: "circle.hexagongrid.fill",
+                   brandAsset: "githubcopilot", tint: .neutral),
         AILauncher(id: "aider",   displayName: "Aider",           cli: "aider",
-                   arguments: [], icon: "hammer.fill", tint: .neutral),
+                   arguments: [], icon: "hammer.fill",
+                   brandAsset: nil, tint: .neutral),
     ]
 }
 

@@ -16,12 +16,11 @@ struct MainTerminalView: View {
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
-                TitleStrip(showingSettings: $showingSettings)
-                if settings.vibecoderMode {
-                    VibecoderQuickLaunchRow(onLaunch: { launch($0) })
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                }
+                TitleStrip(
+                    showingSettings: $showingSettings,
+                    showLaunchers: settings.vibecoderMode,
+                    onLaunch: { launch($0) }
+                )
                 if settings.showTabBar {
                     TabBar()
                         .frame(height: 32)
@@ -215,11 +214,18 @@ private struct TitleStrip: View {
     @EnvironmentObject var sessions: TerminalSessions
     @EnvironmentObject var settings: TerminalSettings
     @Binding var showingSettings: Bool
+    let showLaunchers: Bool
+    let onLaunch: (AILauncher) -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            // Reserve space for traffic-light buttons (top-left).
-            Color.clear.frame(width: 70, height: 28)
+        HStack(spacing: 6) {
+            // Reserve only what the three traffic-light buttons actually need
+            // (~52pt + tight breathing room). Anything bigger leaves a visible
+            // gap before the launcher row, which feels disconnected.
+            Color.clear.frame(width: 58, height: 28)
+            if showLaunchers {
+                InlineLaunchersRow(onLaunch: onLaunch)
+            }
             Spacer()
             // cwd lives in the status bar — no need to duplicate it up top.
             Text("\(Int(settings.fontSize))pt")
@@ -240,69 +246,75 @@ private struct TitleStrip: View {
             .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
-        .frame(height: 30)
+        .frame(height: 36)
     }
 }
 
-// MARK: - Vibecoder quick-launch row
-
-private struct VibecoderQuickLaunchRow: View {
+/// Compact launchers row that lives inline in the title strip, no separate band.
+private struct InlineLaunchersRow: View {
     let onLaunch: (AILauncher) -> Void
     @State private var launchers: [AILauncher] = []
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             ForEach(launchers) { launcher in
-                LaunchChip(launcher: launcher, tint: tintFor(launcher.tint), onTap: { onLaunch(launcher) })
-            }
-            Spacer()
-            if launchers.isEmpty {
-                Text("No AI CLIs detected — install `claude`, `cursor`, etc.")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
+                InlineLaunchChip(launcher: launcher, onTap: { onLaunch(launcher) })
             }
         }
         .onAppear { launchers = AILauncher.installed() }
     }
+}
 
-    /// Icon-only circular launch button. Single white tint, tooltip on hover.
-    /// SF Symbol approximation today — swap for bundled brand SVG when ready.
-    private struct LaunchChip: View {
-        let launcher: AILauncher
-        let tint: SwiftUI.Color   // unused in icon-only mode but kept for API compat
-        let onTap: () -> Void
-        @State private var hovering = false
+private struct InlineLaunchChip: View {
+    let launcher: AILauncher
+    let onTap: () -> Void
+    @State private var hovering = false
 
-        var body: some View {
-            Button(action: onTap) {
-                Image(systemName: launcher.icon)
-                    .font(.system(size: 12, weight: .medium))
+    var body: some View {
+        Button(action: onTap) {
+            BrandIcon(assetName: launcher.brandAsset,
+                      fallbackSymbol: launcher.icon,
+                      size: 13)
+                .foregroundStyle(.white)
+                .frame(width: 24, height: 24)
+                .background(
+                    Circle().fill(SwiftUI.Color.white.opacity(hovering ? 0.18 : 0.08))
+                )
+                .overlay(
+                    Circle().strokeBorder(SwiftUI.Color.white.opacity(0.08), lineWidth: 0.5)
+                )
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help("\(launcher.displayName) — run `\(launcher.cli)` in active pane")
+        .onHover { newValue in
+            withAnimation(.easeOut(duration: 0.10)) { hovering = newValue }
+        }
+        // Inline name label that fades in on hover so people who don't
+        // recognise the brand mark get an immediate label without waiting on
+        // the OS tooltip delay. Positioned as a floating overlay so it never
+        // shifts the row layout.
+        .overlay(alignment: .top) {
+            if hovering {
+                Text(launcher.displayName)
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.white)
-                    .frame(width: 26, height: 26)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
                     .background(
-                        Circle().fill(SwiftUI.Color.white.opacity(hovering ? 0.16 : 0.08))
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(SwiftUI.Color.black.opacity(0.85))
                     )
                     .overlay(
-                        Circle().strokeBorder(SwiftUI.Color.white.opacity(0.08), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .strokeBorder(SwiftUI.Color.white.opacity(0.08), lineWidth: 0.5)
                     )
-                    .contentShape(Circle())
+                    .fixedSize()
+                    .offset(y: 30)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+                    .zIndex(50)
             }
-            .buttonStyle(.plain)
-            .help("\(launcher.displayName) — run `\(launcher.cli)` in active pane")
-            .onHover { newValue in
-                withAnimation(.easeOut(duration: 0.10)) { hovering = newValue }
-            }
-        }
-    }
-
-    private func tintFor(_ tint: AILauncherTint) -> SwiftUI.Color {
-        switch tint {
-        case .orange: return .orange
-        case .green: return .green
-        case .blue: return .blue
-        case .purple: return .purple
-        case .red: return .red
-        case .neutral: return .secondary
         }
     }
 }

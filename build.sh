@@ -35,6 +35,11 @@ if [[ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]]; then
     cp "$PROJECT_DIR/Resources/AppIcon.icns" "$TMP_APP/Contents/Resources/AppIcon.icns"
 fi
 
+# Bundle LobeHub brand SVG icons for the vibecoder quick launchers.
+if [[ -d "$PROJECT_DIR/Resources/LaunchIcons" ]]; then
+    cp -R "$PROJECT_DIR/Resources/LaunchIcons" "$TMP_APP/Contents/Resources/"
+fi
+
 # Bundle any frameworks built via SPM artifacts (Sparkle, etc.) so the binary
 # resolves its @rpath references at runtime. Without this the app crashes
 # on launch trying to load Sparkle.framework.

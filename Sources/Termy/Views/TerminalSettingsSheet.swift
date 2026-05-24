@@ -6,6 +6,7 @@ import SwiftUI
 struct TerminalSettingsSheet: View {
     @EnvironmentObject var settings: TerminalSettings
     @EnvironmentObject var updater: Updater
+    @EnvironmentObject var profiles: ProfileStore
     let onClose: () -> Void
 
     @State private var selectedCategory: SettingsCategory = .theme
@@ -66,6 +67,7 @@ struct TerminalSettingsSheet: View {
             VStack(alignment: .leading, spacing: DS.Spacing.l) {
                 switch selectedCategory {
                 case .general: GeneralPane()
+                case .profiles: ProfilesPane()
                 case .vibecoder: VibecoderPane()
                 case .theme: ThemePane()
                 case .font: FontPane()
@@ -82,15 +84,17 @@ struct TerminalSettingsSheet: View {
         }
         .environmentObject(settings)
         .environmentObject(updater)
+        .environmentObject(profiles)
     }
 }
 
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    case general, vibecoder, theme, font, cursor, density, chrome, background, updates, about
+    case general, profiles, vibecoder, theme, font, cursor, density, chrome, background, updates, about
     var id: String { rawValue }
     var displayName: String {
         switch self {
         case .general: return "General"
+        case .profiles: return "Profiles"
         case .vibecoder: return "Vibecoder"
         case .theme: return "Theme"
         case .font: return "Font"
@@ -105,6 +109,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .general: return "gearshape"
+        case .profiles: return "person.crop.rectangle.stack"
         case .vibecoder: return "sparkles"
         case .theme: return "paintpalette"
         case .font: return "textformat"
@@ -320,16 +325,35 @@ private struct UpdatesPane: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Termy \(currentVersion)")
                         .font(DS.Typo.body.weight(.semibold))
-                    Text("Auto-checks for new versions on launch via Sparkle.")
-                        .font(DS.Typo.tiny)
-                        .foregroundStyle(DS.Colors.tertiary)
+                    if let last = updater.lastCheckedDescription {
+                        Text("Last checked \(last)")
+                            .font(DS.Typo.tiny)
+                            .foregroundStyle(DS.Colors.tertiary)
+                    } else {
+                        Text("Never checked for updates yet.")
+                            .font(DS.Typo.tiny)
+                            .foregroundStyle(DS.Colors.tertiary)
+                    }
                 }
                 Spacer()
                 Button("Check Now") { updater.checkForUpdates() }
                     .disabled(!updater.canCheck)
                     .controlSize(.small)
             }
-            Text("Updates pull from the GitHub Releases feed. You'll be prompted before downloading.")
+
+            Toggle("Automatically check for updates",
+                   isOn: Binding(get: { updater.autoCheck },
+                                 set: { updater.autoCheck = $0 }))
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
+
+            Toggle("Automatically download + install updates in background",
+                   isOn: Binding(get: { updater.autoDownload },
+                                 set: { updater.autoDownload = $0 }))
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
+                .disabled(!updater.autoCheck)
+                .opacity(updater.autoCheck ? 1.0 : 0.5)
+
+            Text("Updates come from the GitHub release feed. When background install is on, the new version applies the next time you launch Termy — no reinstall needed.")
                 .font(DS.Typo.tiny)
                 .foregroundStyle(DS.Colors.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -376,6 +400,174 @@ private struct AboutPane: View {
                 }
                 Spacer()
             }
+        }
+    }
+}
+
+// MARK: - Profiles
+
+private struct ProfilesPane: View {
+    @EnvironmentObject var profiles: ProfileStore
+    @State private var editingID: UUID?
+
+    var body: some View {
+        DSSection("Profiles") {
+            Text("Saved shell configurations — open a new tab with a profile to use its shell, args, cwd, theme, and tag color. Pick one as default to apply on every new tab.")
+                .font(DS.Typo.tiny)
+                .foregroundStyle(DS.Colors.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(spacing: DS.Spacing.xs) {
+                ForEach(profiles.profiles) { profile in
+                    ProfileRow(
+                        profile: profile,
+                        isDefault: profiles.defaultProfileID == profile.id,
+                        isEditing: editingID == profile.id,
+                        onSetDefault: { profiles.setDefault(profile.id) },
+                        onEdit: { editingID = editingID == profile.id ? nil : profile.id },
+                        onDelete: {
+                            profiles.remove(profile.id)
+                            if editingID == profile.id { editingID = nil }
+                        },
+                        onSave: { updated in
+                            profiles.update(updated)
+                            editingID = nil
+                        }
+                    )
+                }
+            }
+
+            Button(action: {
+                let new = Profile(name: "New Profile")
+                profiles.add(new)
+                editingID = new.id
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus.circle")
+                    Text("Add Profile")
+                }
+                .font(DS.Typo.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(DS.Colors.accent)
+        }
+    }
+}
+
+private struct ProfileRow: View {
+    let profile: Profile
+    let isDefault: Bool
+    let isEditing: Bool
+    let onSetDefault: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    let onSave: (Profile) -> Void
+
+    @State private var draft: Profile
+
+    init(profile: Profile, isDefault: Bool, isEditing: Bool,
+         onSetDefault: @escaping () -> Void, onEdit: @escaping () -> Void,
+         onDelete: @escaping () -> Void, onSave: @escaping (Profile) -> Void) {
+        self.profile = profile
+        self.isDefault = isDefault
+        self.isEditing = isEditing
+        self.onSetDefault = onSetDefault
+        self.onEdit = onEdit
+        self.onDelete = onDelete
+        self.onSave = onSave
+        _draft = State(initialValue: profile)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+            HStack(spacing: DS.Spacing.s) {
+                if let dot = profile.tagColor.swiftColor {
+                    Circle().fill(dot).frame(width: 8, height: 8)
+                } else {
+                    Circle().stroke(DS.Colors.tertiary.opacity(0.4), lineWidth: 1)
+                        .frame(width: 8, height: 8)
+                }
+                Text(profile.name)
+                    .font(DS.Typo.body.weight(.medium))
+                    .foregroundStyle(DS.Colors.primary)
+                if isDefault {
+                    Text("default")
+                        .font(DS.Typo.micro.weight(.semibold))
+                        .foregroundStyle(DS.Colors.accent)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(
+                            Capsule().fill(DS.Colors.accent.opacity(0.15))
+                        )
+                }
+                Spacer()
+                if !isDefault {
+                    Button("Make Default", action: onSetDefault)
+                        .buttonStyle(.plain)
+                        .font(DS.Typo.tiny)
+                        .foregroundStyle(DS.Colors.tertiary)
+                }
+                Button(action: onEdit) {
+                    Image(systemName: isEditing ? "chevron.up" : "pencil")
+                        .font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.Colors.secondary)
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.Colors.tertiary)
+            }
+
+            if isEditing {
+                ProfileEditor(draft: $draft)
+                HStack {
+                    Spacer()
+                    Button("Save") { onSave(draft) }
+                        .controlSize(.small)
+                }
+            }
+        }
+        .padding(DS.Spacing.s)
+        .background(
+            RoundedRectangle(cornerRadius: DS.Radius.s)
+                .fill(DS.Colors.chipBg)
+        )
+    }
+}
+
+private struct ProfileEditor: View {
+    @Binding var draft: Profile
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+            field("Name", text: $draft.name)
+            field("Shell", text: $draft.shellPath, placeholder: "/bin/zsh (or leave blank to use $SHELL)")
+            field("Initial cwd", text: $draft.initialCwd, placeholder: "~  (blank = HOME)")
+            HStack(spacing: 6) {
+                Text("Tag").font(DS.Typo.tiny).foregroundStyle(DS.Colors.tertiary).frame(width: 70, alignment: .leading)
+                Picker("", selection: $draft.tagColor) {
+                    ForEach(TabTagColor.allCases) { c in
+                        Text(c.displayName).tag(c)
+                    }
+                }
+                .labelsHidden().pickerStyle(.menu).controlSize(.small)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func field(_ label: String, text: Binding<String>, placeholder: String = "") -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(DS.Typo.tiny)
+                .foregroundStyle(DS.Colors.tertiary)
+                .frame(width: 70, alignment: .leading)
+            TextField(placeholder, text: text)
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
+                .font(DS.Typo.monoCaption)
         }
     }
 }
