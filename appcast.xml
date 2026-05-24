@@ -6,6 +6,32 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.8.0</title>
+            <description><![CDATA[
+                <h2>Stability + correctness</h2>
+                <ul>
+                    <li>Profiles now actually apply to new tabs (shell, args, env, cwd, tag color) — were previously decorative</li>
+                    <li>Cursor style + blink toggles work via DECSCUSR escape sequences</li>
+                    <li>Multi-window close fixed: closes the right window, not whichever one is keyWindow</li>
+                    <li>Pane minimums (200×100pt) so splits stay usable at minimum window width</li>
+                    <li>Hyperlink clicks: terminalDelegate ours now, scheme-filtered to http/https/file</li>
+                    <li>Status bar git detection handles worktrees + submodules (no more "gitdir:" branch name)</li>
+                    <li>Performance: appearance + cwd persist debounced</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 18:45:00 +0000</pubDate>
+            <sparkle:version>10</sparkle:version>
+            <sparkle:shortVersionString>0.8.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.8.0/Termy.dmg"
+                sparkle:version="10"
+                sparkle:shortVersionString="0.8.0"
+                length="2541578"
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.7.2</title>
             <description><![CDATA[
                 <h2>Quick Terminal + polish</h2>
