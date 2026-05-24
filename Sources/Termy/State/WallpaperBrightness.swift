@@ -41,13 +41,13 @@ enum WallpaperBrightness {
         return 0.2126 * r + 0.7152 * g + 0.0722 * b
     }
 
-    /// Map a wallpaper luminance to a terminal background opacity.
-    /// Range is intentionally TIGHT and LOW — anything ≥ ~0.4 kills the glass
-    /// aesthetic and turns the terminal into a dark block. Tuned to keep the
-    /// glass front-and-centre while nudging text contrast on bright backdrops.
+    /// Map a wallpaper luminance to the window's single-layer dark tint.
+    /// This is the ONLY opacity in the app now — covers the entire window,
+    /// including the terminal area. Needs enough opacity at the high end for
+    /// readable text over white backdrops; stays glass-like at the low end.
     static func opacity(forBrightness lum: Double) -> Double {
-        let minOpacity = 0.08   // dark wallpaper — barely any tint, full glass
-        let maxOpacity = 0.30   // light wallpaper — just enough tint to read
+        let minOpacity = 0.10   // dark wallpaper — let the glass show through
+        let maxOpacity = 0.55   // light wallpaper — opaque enough to read
         return minOpacity + lum * (maxOpacity - minOpacity)
     }
 }

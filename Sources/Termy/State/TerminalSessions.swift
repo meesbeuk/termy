@@ -145,6 +145,50 @@ final class TerminalSessions: ObservableObject {
         currentSession?.terminalView?.feed(text: "\u{001B}[2J\u{001B}[H")
     }
 
+    /// Type a string + newline into the active pane's shell. Used by the AI
+    /// launcher to invoke `claude`, `codex`, etc. as if the user typed it.
+    func sendToActivePane(_ command: String) {
+        guard let view = currentSession?.terminalView else { return }
+        view.send(txt: command + "\n")
+    }
+
+    /// All distinct cwds across all open tabs/panes — used for the Recent
+    /// Directories quick switcher. Most-recently-active first.
+    func uniqueCwds() -> [String] {
+        var seen = Set<String>()
+        var out: [String] = []
+        let ordered = (currentTab.map { [$0] } ?? []) + tabs.filter { $0.id != currentTab?.id }
+        for tab in ordered {
+            let activeFirst = (tab.activePane.map { [$0] } ?? []) +
+                              tab.panes.filter { $0.id != tab.activePane?.id }
+            for pane in activeFirst {
+                if seen.insert(pane.cwd).inserted { out.append(pane.cwd) }
+            }
+        }
+        return out
+    }
+
+    /// Duplicate the current tab — same orientation, copy of every pane,
+    /// each starting in its source pane's cwd.
+    func duplicateCurrentTab() {
+        guard let tab = currentTab else { return }
+        let copies = tab.panes.map { TerminalSession(initialCwd: $0.cwd) }
+        let newTab = TerminalTab(panes: copies, orientation: tab.orientation)
+        tabs.append(newTab)
+        selectedTabId = newTab.id
+        persist()
+    }
+
+    /// Open a new tab whose initial cwd is the given path (rather than
+    /// inheriting from the current pane). Used by Recent Directories.
+    func openTabIn(cwd: String) {
+        let session = TerminalSession(initialCwd: cwd)
+        let tab = TerminalTab(panes: [session])
+        tabs.append(tab)
+        selectedTabId = tab.id
+        persist()
+    }
+
     // MARK: - Splits
 
     func splitHorizontal() {

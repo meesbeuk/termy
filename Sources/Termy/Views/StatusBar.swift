@@ -51,7 +51,6 @@ struct StatusBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
-        .background(.black.opacity(0.20))
         .onAppear { resolveGit() }
         .onChange(of: cwd) { _, _ in resolveGit() }
         .onReceive(clockTimer) { now = $0 }

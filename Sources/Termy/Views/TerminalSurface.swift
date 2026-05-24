@@ -55,12 +55,14 @@ struct TerminalSurface: NSViewRepresentable {
             ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
         view.font = font
 
-        // Semi-opaque dark BG so text has the contrast it needs to be readable,
-        // while still letting some glass blur through. Pure-clear backgrounds
-        // over glass look cool but are unreadable in practice.
-        view.nativeBackgroundColor = NSColor(
-            red: 0.10, green: 0.10, blue: 0.13, alpha: CGFloat(settings.effectiveOpacity)
-        )
+        // TODO(cursor): SwiftTerm's caret style isn't in its public API surface
+        // yet — `caretView` and `style` are internal. Settings.cursorStyle is
+        // persisted and will plug in when SwiftTerm exposes it, or via OSC
+        // sequences emitted by the shell prompt.
+
+        // Fully transparent — the window's adaptive backdrop is the single
+        // source of opacity for the entire app. No per-element backgrounds.
+        view.nativeBackgroundColor = NSColor.clear
         let (fr, fg, fb) = settings.theme.foreground
         view.nativeForegroundColor = NSColor(
             red: CGFloat(fr) / 255, green: CGFloat(fg) / 255, blue: CGFloat(fb) / 255, alpha: 1.0

@@ -42,6 +42,36 @@ final class TerminalSettings: ObservableObject {
     /// The opacity actually applied — auto when enabled, manual otherwise.
     @Published var effectiveOpacity: Double = 0.70
 
+    /// Vibecoder mode: surfaces an AI launcher row in the title strip so quick-
+    /// launching Claude / Codex / Cursor is one click. Doesn't hide any features.
+    @Published var vibecoderMode: Bool {
+        didSet { UserDefaults.standard.set(vibecoderMode, forKey: Self.vibecoderKey) }
+    }
+
+    @Published var cursorStyle: CursorStyle {
+        didSet { UserDefaults.standard.set(cursorStyle.rawValue, forKey: Self.cursorStyleKey) }
+    }
+
+    @Published var cursorBlink: Bool {
+        didSet { UserDefaults.standard.set(cursorBlink, forKey: Self.cursorBlinkKey) }
+    }
+
+    @Published var paddingPreset: PaddingPreset {
+        didSet { UserDefaults.standard.set(paddingPreset.rawValue, forKey: Self.paddingKey) }
+    }
+
+    @Published var lineSpacing: Double {
+        didSet { UserDefaults.standard.set(lineSpacing, forKey: Self.lineSpacingKey) }
+    }
+
+    @Published var showStatusBar: Bool {
+        didSet { UserDefaults.standard.set(showStatusBar, forKey: Self.showStatusBarKey) }
+    }
+
+    @Published var showTabBar: Bool {
+        didSet { UserDefaults.standard.set(showTabBar, forKey: Self.showTabBarKey) }
+    }
+
     var theme: TerminalTheme { TerminalTheme.find(id: themeID) }
 
     static let `default`: CGFloat = 13
@@ -56,6 +86,13 @@ final class TerminalSettings: ObservableObject {
     private static let themeKey = "termy.themeID"
     private static let opacityKey = "termy.opacity"
     private static let autoOpacityKey = "termy.autoOpacity"
+    private static let vibecoderKey = "termy.vibecoderMode"
+    private static let cursorStyleKey = "termy.cursorStyle"
+    private static let cursorBlinkKey = "termy.cursorBlink"
+    private static let paddingKey = "termy.padding"
+    private static let lineSpacingKey = "termy.lineSpacing"
+    private static let showStatusBarKey = "termy.showStatusBar"
+    private static let showTabBarKey = "termy.showTabBar"
 
     init() {
         let saved = UserDefaults.standard.double(forKey: Self.fontSizeKey)
@@ -72,6 +109,33 @@ final class TerminalSettings: ObservableObject {
         } else {
             self.autoOpacity = UserDefaults.standard.bool(forKey: Self.autoOpacityKey)
         }
+        // Vibecoder mode default-on — Termy's primary audience.
+        if UserDefaults.standard.object(forKey: Self.vibecoderKey) == nil {
+            self.vibecoderMode = true
+        } else {
+            self.vibecoderMode = UserDefaults.standard.bool(forKey: Self.vibecoderKey)
+        }
+        let cursorRaw = UserDefaults.standard.string(forKey: Self.cursorStyleKey) ?? CursorStyle.block.rawValue
+        self.cursorStyle = CursorStyle(rawValue: cursorRaw) ?? .block
+        if UserDefaults.standard.object(forKey: Self.cursorBlinkKey) == nil {
+            self.cursorBlink = true
+        } else {
+            self.cursorBlink = UserDefaults.standard.bool(forKey: Self.cursorBlinkKey)
+        }
+        let padRaw = UserDefaults.standard.string(forKey: Self.paddingKey) ?? PaddingPreset.cozy.rawValue
+        self.paddingPreset = PaddingPreset(rawValue: padRaw) ?? .cozy
+        let savedLineSpacing = UserDefaults.standard.double(forKey: Self.lineSpacingKey)
+        self.lineSpacing = savedLineSpacing > 0 ? savedLineSpacing : 1.0
+        if UserDefaults.standard.object(forKey: Self.showStatusBarKey) == nil {
+            self.showStatusBar = true
+        } else {
+            self.showStatusBar = UserDefaults.standard.bool(forKey: Self.showStatusBarKey)
+        }
+        if UserDefaults.standard.object(forKey: Self.showTabBarKey) == nil {
+            self.showTabBar = true
+        } else {
+            self.showTabBar = UserDefaults.standard.bool(forKey: Self.showTabBarKey)
+        }
         refreshEffectiveOpacity(screen: NSScreen.main)
     }
 
@@ -87,4 +151,42 @@ final class TerminalSettings: ObservableObject {
     func bumpFontSize() { fontSize += 1 }
     func reduceFontSize() { fontSize -= 1 }
     func resetFontSize() { fontSize = Self.default }
+}
+
+enum CursorStyle: String, CaseIterable, Identifiable {
+    case block, bar, underline
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .block: return "Block"
+        case .bar: return "Bar"
+        case .underline: return "Underline"
+        }
+    }
+}
+
+enum PaddingPreset: String, CaseIterable, Identifiable {
+    case compact, cozy, spacious
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .compact: return "Compact"
+        case .cozy: return "Cozy"
+        case .spacious: return "Spacious"
+        }
+    }
+    var horizontal: CGFloat {
+        switch self {
+        case .compact: return 4
+        case .cozy: return 10
+        case .spacious: return 18
+        }
+    }
+    var vertical: CGFloat {
+        switch self {
+        case .compact: return 4
+        case .cozy: return 8
+        case .spacious: return 14
+        }
+    }
 }

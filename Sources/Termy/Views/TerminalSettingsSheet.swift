@@ -1,103 +1,162 @@
 import SwiftUI
 
-/// Sheet for terminal preferences — theme, font family, font size.
-/// Settings persist via TerminalSettings and re-apply to all open tabs.
+/// Termy settings — uses DSModal so it stays visually identical to every other
+/// panel (AI launcher, recent dirs, future ones).
 struct TerminalSettingsSheet: View {
     @EnvironmentObject var settings: TerminalSettings
     let onClose: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("Terminal Settings")
-                    .font(.system(size: 14, weight: .semibold))
-                Spacer()
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 22, height: 22)
-                        .contentShape(Rectangle())
+        DSModal(
+            title: "Termy Settings",
+            titleIcon: "gearshape.fill",
+            titleIconColor: DS.Colors.secondary,
+            onClose: onClose
+        ) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: DS.Spacing.l) {
+                    vibecoderSection
+                    themeSection
+                    fontSection
+                    cursorSection
+                    densitySection
+                    chromeSection
+                    opacitySection
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
             }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Theme")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Picker("Theme", selection: $settings.themeID) {
-                    ForEach(TerminalTheme.all) { theme in
-                        Text(theme.name).tag(theme.id)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Font Family")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Picker("Font", selection: $settings.fontFamily) {
-                    ForEach(availableInstalledFonts(), id: \.self) { family in
-                        Text(family).tag(family)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                Text("Only fonts you have installed are shown.")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("Font Size")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text("\(Int(settings.fontSize))pt")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-                Slider(value: $settings.fontSize, in: 8...28, step: 1)
-                    .controlSize(.small)
-                Text("⌘+ / ⌘- / ⌘0 also work as shortcuts.")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("Background Opacity")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text("\(Int(settings.effectiveOpacity * 100))%")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-                Toggle("Adapt to wallpaper brightness", isOn: $settings.autoOpacity)
-                    .toggleStyle(.checkbox)
-                    .font(.system(size: 11))
-                Slider(value: $settings.opacity, in: 0.20...1.00)
-                    .controlSize(.small)
-                    .disabled(settings.autoOpacity)
-                    .opacity(settings.autoOpacity ? 0.4 : 1.0)
-                Text(settings.autoOpacity
-                     ? "Light wallpapers → more opaque, dark → more glass."
-                     : "Manual opacity — drag to taste.")
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
-            }
+            .frame(maxHeight: 480)
         }
-        .padding(20)
-        .frame(width: 360)
-        .background(.regularMaterial)
     }
 
-    /// Filter the candidate font list to only fonts actually installed on this Mac.
+    private var vibecoderSection: some View {
+        DSSection("Vibecoder") {
+            Toggle(isOn: $settings.vibecoderMode) {
+                HStack(spacing: 4) {
+                    Image(systemName: "sparkles")
+                        .font(DS.Typo.caption)
+                        .foregroundStyle(DS.Colors.aiAccent)
+                    Text("Vibecoder Mode")
+                        .font(DS.Typo.body.weight(.medium))
+                }
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            Text("Quick-launch row for Claude / Codex / Cursor in the title strip. ⌘L opens the full launcher anytime.")
+                .font(DS.Typo.tiny)
+                .foregroundStyle(DS.Colors.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var themeSection: some View {
+        DSSection("Theme") {
+            Picker("Theme", selection: $settings.themeID) {
+                ForEach(ThemeCategory.allCases, id: \.self) { cat in
+                    Section(header: Text(cat.rawValue)) {
+                        ForEach(TerminalTheme.all.filter { $0.category == cat }) { theme in
+                            Text(theme.name).tag(theme.id)
+                        }
+                    }
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+        }
+    }
+
+    private var fontSection: some View {
+        DSSection("Font") {
+            Picker("Font Family", selection: $settings.fontFamily) {
+                ForEach(availableInstalledFonts(), id: \.self) { family in
+                    Text(family).tag(family)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+
+            HStack {
+                Text("Size")
+                    .font(DS.Typo.caption)
+                    .foregroundStyle(DS.Colors.secondary)
+                Slider(value: $settings.fontSize, in: 8...28, step: 1)
+                    .controlSize(.small)
+                Text("\(Int(settings.fontSize))pt")
+                    .font(DS.Typo.monoCaption)
+                    .foregroundStyle(DS.Colors.secondary)
+                    .frame(width: 32, alignment: .trailing)
+            }
+            Text("⌘+ / ⌘- / ⌘0 also work as shortcuts.")
+                .font(DS.Typo.tiny)
+                .foregroundStyle(DS.Colors.tertiary)
+        }
+    }
+
+    private var cursorSection: some View {
+        DSSection("Cursor") {
+            HStack(spacing: DS.Spacing.m) {
+                Picker("Cursor Style", selection: $settings.cursorStyle) {
+                    ForEach(CursorStyle.allCases) { style in
+                        Text(style.displayName).tag(style)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                Toggle("Blink", isOn: $settings.cursorBlink)
+                    .toggleStyle(.checkbox)
+                    .font(DS.Typo.caption)
+            }
+        }
+    }
+
+    private var densitySection: some View {
+        DSSection("Density") {
+            Picker("Padding", selection: $settings.paddingPreset) {
+                ForEach(PaddingPreset.allCases) { p in
+                    Text(p.displayName).tag(p)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+        }
+    }
+
+    private var chromeSection: some View {
+        DSSection("Chrome") {
+            Toggle("Show tab bar", isOn: $settings.showTabBar)
+                .toggleStyle(.checkbox)
+                .font(DS.Typo.caption)
+            Toggle("Show status bar (cwd, git, clock)", isOn: $settings.showStatusBar)
+                .toggleStyle(.checkbox)
+                .font(DS.Typo.caption)
+        }
+    }
+
+    private var opacitySection: some View {
+        DSSection("Background") {
+            HStack {
+                Text("Opacity")
+                    .font(DS.Typo.caption)
+                    .foregroundStyle(DS.Colors.secondary)
+                Spacer()
+                Text("\(Int(settings.effectiveOpacity * 100))%")
+                    .font(DS.Typo.monoCaption)
+                    .foregroundStyle(DS.Colors.secondary)
+            }
+            Toggle("Adapt to wallpaper brightness", isOn: $settings.autoOpacity)
+                .toggleStyle(.checkbox)
+                .font(DS.Typo.caption)
+            Slider(value: $settings.opacity, in: 0...1.0)
+                .controlSize(.small)
+                .disabled(settings.autoOpacity)
+                .opacity(settings.autoOpacity ? 0.4 : 1.0)
+            Text(settings.autoOpacity
+                 ? "Light wallpapers → more opaque, dark → more glass."
+                 : "Manual opacity — drag to taste.")
+                .font(DS.Typo.tiny)
+                .foregroundStyle(DS.Colors.tertiary)
+        }
+    }
+
     private func availableInstalledFonts() -> [String] {
         TerminalSettings.availableFontFamilies.filter { name in
             NSFont(name: name, size: 12) != nil

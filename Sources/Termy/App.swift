@@ -72,6 +72,15 @@ struct TermyApp: App {
                 }
                 .keyboardShortcut("[", modifiers: [.command, .option])
                 Divider()
+                Button("Duplicate Tab") {
+                    NotificationCenter.default.post(name: .terminalDuplicateTab, object: nil)
+                }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
+                Button("Recent Directories…") {
+                    NotificationCenter.default.post(name: .terminalRecentDirs, object: nil)
+                }
+                .keyboardShortcut("/", modifiers: [.command, .option])
+                Divider()
                 Button("Clear") {
                     NotificationCenter.default.post(name: .terminalClear, object: nil)
                 }
@@ -80,6 +89,12 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalToggleFind, object: nil)
                 }
                 .keyboardShortcut("f", modifiers: .command)
+            }
+            CommandMenu("AI") {
+                Button("Launch AI Tool…") {
+                    NotificationCenter.default.post(name: .terminalOpenAILauncher, object: nil)
+                }
+                .keyboardShortcut("l", modifiers: .command)
             }
         }
     }
@@ -96,6 +111,9 @@ extension Notification.Name {
     static let terminalSplitVertical = Notification.Name("mees.terminal.splitV")
     static let terminalFocusNextPane = Notification.Name("mees.terminal.focusNext")
     static let terminalFocusPreviousPane = Notification.Name("mees.terminal.focusPrev")
+    static let terminalDuplicateTab = Notification.Name("mees.terminal.dupTab")
+    static let terminalRecentDirs = Notification.Name("mees.terminal.recentDirs")
+    static let terminalOpenAILauncher = Notification.Name("mees.terminal.aiLauncher")
 }
 
 /// Per-window root. Owns its own TerminalSessions so multi-window works.
