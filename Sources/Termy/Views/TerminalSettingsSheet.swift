@@ -222,6 +222,24 @@ private struct GeneralPane: View {
                     .toggleStyle(.checkbox).font(DS.Typo.caption)
             }
 
+            DSSection("Session recording") {
+                Toggle("Record every pane's output to a log file", isOn: $settings.recordSessions)
+                    .toggleStyle(.checkbox).font(DS.Typo.caption)
+                Text("Each pane writes a `.log` file under `~/Library/Application Support/Termy/sessions/`. Useful for going back to a past `claude` conversation, or auditing what a command actually printed. Off by default — the log files include everything in scrollback verbatim.")
+                    .font(DS.Typo.tiny)
+                    .foregroundStyle(DS.Colors.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Reveal log folder in Finder") {
+                    let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+                    let dir = support?.appendingPathComponent("Termy/sessions", isDirectory: true)
+                    if let dir {
+                        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                        NSWorkspace.shared.activateFileViewerSelecting([dir])
+                    }
+                }
+                .controlSize(.small)
+            }
+
             DSSection("Updates") {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {

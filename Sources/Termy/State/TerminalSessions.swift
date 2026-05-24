@@ -60,6 +60,16 @@ final class TerminalSession: ObservableObject, Identifiable {
         env["COLORTERM"] = "truecolor"
         env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
         env["LC_ALL"] = env["LC_ALL"] ?? "en_US.UTF-8"
+        // Advertise ourselves so tools like imgcat / viu / yazi can detect
+        // they're running in a host that renders OSC 1337 / Sixel / Kitty
+        // images (SwiftTerm supports all three). Without this, those tools
+        // detect a generic xterm and fall back to ASCII-art rendering.
+        env["TERM_PROGRAM"] = "Termy"
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        env["TERM_PROGRAM_VERSION"] = version
+        // Tools like `chafa --format=auto` look for this iTerm2-compatible
+        // marker; setting it makes them assume OSC 1337 support.
+        env["TERM_FEATURES"] = "title,sixel,kitty,iterm2"
         for (k, v) in envExtras { env[k] = v }
         return env.map { "\($0.key)=\($0.value)" }
     }
@@ -154,6 +164,17 @@ final class TerminalSessions: ObservableObject {
 
     func selectTab(_ id: UUID) {
         selectedTabId = id
+    }
+
+    /// Move the tab with the given id to a new position in the tab list.
+    /// `toIndex` is the destination index in the array AFTER removing the
+    /// dragged tab. Bounds-clamped so a stale drop destination can't trap.
+    func moveTab(_ id: UUID, to toIndex: Int) {
+        guard let from = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let removed = tabs.remove(at: from)
+        let target = max(0, min(toIndex, tabs.count))
+        tabs.insert(removed, at: target)
+        persist()
     }
 
     /// Jump to the tab at the given 1-indexed position. Returns silently if

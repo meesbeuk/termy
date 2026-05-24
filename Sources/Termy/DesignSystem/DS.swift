@@ -137,6 +137,11 @@ struct DSIconButton: View {
     let action: () -> Void
     var size: CGFloat = 11
     var color: Color = DS.Colors.secondary
+    /// Accessibility label for VoiceOver. Falls back to the SF Symbol's
+    /// own description when nil; setting an explicit label is preferred
+    /// because SwiftUI's default reads e.g. "xmark, button" which is
+    /// less informative than "Close, button".
+    var accessibilityLabel: String? = nil
 
     @State private var hovering = false
 
@@ -153,8 +158,22 @@ struct DSIconButton: View {
                 .foregroundStyle(color)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel ?? defaultLabel)
         .onHover { newValue in
             withAnimation(.easeOut(duration: 0.10)) { hovering = newValue }
+        }
+    }
+
+    private var defaultLabel: String {
+        // Friendly defaults for the icons we use everywhere.
+        switch icon {
+        case "xmark": return "Close"
+        case "chevron.up": return "Previous"
+        case "chevron.down": return "Next"
+        case "pencil": return "Edit"
+        case "trash": return "Delete"
+        case "plus": return "Add"
+        default: return icon
         }
     }
 }

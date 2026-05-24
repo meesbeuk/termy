@@ -474,6 +474,8 @@ private struct ChromeDivider: View {
 /// Standard chrome icon button. Renders as a flat SF Symbol with a hover
 /// background, 22pt hit target, and tooltip. Every action in the title strip
 /// uses this so weights/sizing/hover treatment stay consistent.
+/// Tooltip text doubles as the VoiceOver label — same string, two
+/// audiences (hovering pointer users + screen-reader users).
 private struct ChromeIconButton: View {
     let symbol: String
     let tooltip: String
@@ -494,6 +496,7 @@ private struct ChromeIconButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
         .help(tooltip)
+        .accessibilityLabel(tooltip)
         .onHover { newValue in
             withAnimation(.easeOut(duration: 0.10)) { hovering = newValue }
         }
@@ -640,12 +643,22 @@ private struct TabBar: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
-                ForEach(sessions.tabs) { tab in
+                ForEach(Array(sessions.tabs.enumerated()), id: \.element.id) { idx, tab in
                     TabChip(tab: tab,
                             isActive: tab.id == sessions.selectedTabId,
                             onSelect: { sessions.selectTab(tab.id) },
                             onClose: { sessions.closeTab(tab.id) },
                             onCloseOthers: { sessions.closeOtherTabs(keeping: tab.id) })
+                        .onDrag {
+                            // The tab's UUID as the drag payload — kept
+                            // as a plain string so .onDrop can match any
+                            // recipient without dragging-type plumbing.
+                            return NSItemProvider(object: tab.id.uuidString as NSString)
+                        }
+                        .onDrop(of: [.text], delegate: TabDropDelegate(
+                            destinationIndex: idx,
+                            sessions: sessions
+                        ))
                 }
                 Button(action: { sessions.openTab() }) {
                     Image(systemName: "plus")
@@ -659,6 +672,28 @@ private struct TabBar: View {
             }
             .padding(.horizontal, 10)
         }
+    }
+}
+
+/// Receives a tab UUID payload and reorders the tab list to slot in at
+/// the destination index. Built as a DropDelegate so dropEntered/exited
+/// could later drive a live insertion-line preview; for now we just
+/// commit on drop. Tab UUID strings are routed as `.text` to avoid the
+/// `.url` parser SwiftUI uses for `.fileURL`.
+private struct TabDropDelegate: DropDelegate {
+    let destinationIndex: Int
+    let sessions: TerminalSessions
+
+    func performDrop(info: DropInfo) -> Bool {
+        let providers = info.itemProviders(for: [.text])
+        guard let provider = providers.first else { return false }
+        provider.loadObject(ofClass: NSString.self) { obj, _ in
+            guard let str = obj as? String, let id = UUID(uuidString: str) else { return }
+            DispatchQueue.main.async {
+                sessions.moveTab(id, to: destinationIndex)
+            }
+        }
+        return true
     }
 }
 
@@ -721,7 +756,11 @@ private struct TabChip: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
+            .accessibilityLabel("Close tab \(displayTitle)")
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(isActive ? "Active tab: \(displayTitle)" : "Tab: \(displayTitle)")
+        .accessibilityAddTraits(isActive ? [.isSelected, .isButton] : .isButton)
         .padding(.leading, 10)
         .padding(.trailing, 4)
         .padding(.vertical, 4)

@@ -6,6 +6,30 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.15</title>
+            <description><![CDATA[
+                <h2>Drag-drop tab reorder, session recording, accessibility, image-tool compat</h2>
+                <ul>
+                    <li><strong>Drag tabs to reorder.</strong> Pick up any tab chip and drop it anywhere in the row. Order persists across launches.</li>
+                    <li><strong>Optional session recording.</strong> Settings → General → Session recording. Each pane writes its raw output to <code>~/Library/Application Support/Termy/sessions/</code> while enabled. Reveal-folder button in the same pane.</li>
+                    <li><strong>VoiceOver labels.</strong> Every chrome icon button and tab chip now exposes a friendly screen-reader label (Search, Settings, Active tab: foo, etc.) instead of raw SF Symbol names.</li>
+                    <li><strong>Image-tool compatibility.</strong> Termy now sets TERM_PROGRAM + TERM_FEATURES env vars so tools like <code>imgcat</code>, <code>chafa</code>, <code>yazi</code>, <code>viu</code> can detect they're running in a host with OSC 1337 / Sixel / Kitty image-protocol support (SwiftTerm renders all three).</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 02:45:00 +0000</pubDate>
+            <sparkle:version>32</sparkle:version>
+            <sparkle:shortVersionString>0.9.15</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.15/Termy.dmg"
+                sparkle:version="32"
+                sparkle:shortVersionString="0.9.15"
+                length="2687386"
+                sparkle:edSignature="ZmeEiLWoxCDT3SAB9q/oAFJynYs/BNrnhcNlPDyKjheCAiJ7TXTtJeyrQtQ2DXogFnG47+F3WRWYDr8fBOPJAQ=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.14</title>
             <description><![CDATA[
                 <h2>Custom tab titles + always-on-top window</h2>

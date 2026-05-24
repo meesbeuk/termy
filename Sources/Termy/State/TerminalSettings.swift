@@ -130,6 +130,16 @@ final class TerminalSettings: ObservableObject {
         didSet { UserDefaults.standard.set(notifyShowPreview, forKey: Self.notifyShowPreviewKey) }
     }
 
+    /// Record each pane's raw output to a file under
+    /// `~/Library/Application Support/Termy/sessions/`. Off by default —
+    /// disk write + privacy implications mean it must be explicitly opted
+    /// into. One file per session, named with the start timestamp and a
+    /// short pane id; rotates implicitly because each new pane gets a
+    /// fresh file.
+    @Published var recordSessions: Bool {
+        didSet { UserDefaults.standard.set(recordSessions, forKey: Self.recordSessionsKey) }
+    }
+
     // MARK: - Quake (drop-down terminal) settings
 
     /// Auto-hide the Quake drop-down when it loses focus. Standard Quake
@@ -176,6 +186,7 @@ final class TerminalSettings: ObservableObject {
     private static let notifyOnlyBackgroundKey = "termy.notifyOnlyBackground"
     private static let notifySoundKey = "termy.notifySound"
     private static let notifyShowPreviewKey = "termy.notifyShowPreview"
+    private static let recordSessionsKey = "termy.recordSessions"
     private static let quakeHideOnFocusLossKey = "termy.quakeHideOnFocusLoss"
     private static let quakeHeightKey = "termy.quakeHeightFraction"
 
@@ -236,6 +247,7 @@ final class TerminalSettings: ObservableObject {
         } else {
             self.notifyShowPreview = UserDefaults.standard.bool(forKey: Self.notifyShowPreviewKey)
         }
+        self.recordSessions = UserDefaults.standard.bool(forKey: Self.recordSessionsKey)
         if UserDefaults.standard.object(forKey: Self.quakeHideOnFocusLossKey) == nil {
             self.quakeHideOnFocusLoss = true
         } else {

@@ -65,6 +65,17 @@ final class TermyTerminalView: LocalProcessTerminalView {
     private var oscBuffer: [UInt8] = []
     private var inOSC = false
 
+    // MARK: - Session recording (optional, off by default)
+    //
+    // When the user opts in via Settings → General → Notifications →
+    // "Record session output", every pane writes its received bytes to a
+    // per-session log file under ~/Library/Application Support/Termy/
+    // sessions/. One file per pane lifecycle, named with start
+    // timestamp + short pane id. FileHandle stays open for the pane's
+    // lifetime; closed in deinit.
+    private var recordingHandle: FileHandle?
+    private var recordingChecked = false
+
     /// Bytes accumulated within a single burst before the pane is
     /// considered "active". One-byte rerenders (just a prompt refresh)
     /// shouldn't count. 64B is enough to filter prompt redraws but small
@@ -78,6 +89,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
 
     override func dataReceived(slice: ArraySlice<UInt8>) {
         super.dataReceived(slice: slice)
+        recordIfEnabled(slice)
         scanForOSC133(slice)
         let now = Date()
         // Treat a >2s gap as a fresh burst — anything within 2s is one
@@ -232,6 +244,39 @@ final class TermyTerminalView: LocalProcessTerminalView {
 
     deinit {
         idleTimer?.invalidate()
+        try? recordingHandle?.close()
+    }
+
+    /// If the user has the "Record session output" preference on, append
+    /// the raw byte slice to this pane's log file. First call per pane
+    /// lazily opens the file. Failures are swallowed — recording is a
+    /// best-effort QoL feature, not load-bearing.
+    private func recordIfEnabled(_ slice: ArraySlice<UInt8>) {
+        let enabled = UserDefaults.standard.bool(forKey: "termy.recordSessions")
+        guard enabled else {
+            if recordingHandle != nil { try? recordingHandle?.close(); recordingHandle = nil }
+            return
+        }
+        if recordingHandle == nil {
+            if recordingChecked { return }  // failed once → don't keep trying
+            recordingChecked = true
+            recordingHandle = Self.openSessionLog()
+        }
+        guard let handle = recordingHandle else { return }
+        try? handle.write(contentsOf: Data(slice))
+    }
+
+    private static func openSessionLog() -> FileHandle? {
+        let support = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first)
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let dir = support.appendingPathComponent("Termy/sessions", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd_HHmmss"
+        let name = "\(f.string(from: Date()))_\(UUID().uuidString.prefix(6)).log"
+        let fileURL = dir.appendingPathComponent(name)
+        FileManager.default.createFile(atPath: fileURL.path, contents: nil)
+        return try? FileHandle(forWritingTo: fileURL)
     }
 
     override func viewDidMoveToWindow() {
