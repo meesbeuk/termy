@@ -6,6 +6,28 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.7.2</title>
+            <description><![CDATA[
+                <h2>Quick Terminal + polish</h2>
+                <ul>
+                    <li>New Termy → Quick Terminal (⌃\`) — opens a fresh floating window without disturbing your main session</li>
+                    <li>Profile editor remembers the right state when reopened (no more stale drafts)</li>
+                    <li>Narrow windows no longer truncate the launcher row — session title gives up width first</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 18:30:00 +0000</pubDate>
+            <sparkle:version>9</sparkle:version>
+            <sparkle:shortVersionString>0.7.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.7.2/Termy.dmg"
+                sparkle:version="9"
+                sparkle:shortVersionString="0.7.2"
+                length="2538544"
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.7.1</title>
             <description><![CDATA[
                 <h2>Layout fixes + memoji profile avatars</h2>
