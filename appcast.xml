@@ -6,6 +6,28 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.14</title>
+            <description><![CDATA[
+                <h2>Custom tab titles + always-on-top window</h2>
+                <ul>
+                    <li><strong>Rename any tab.</strong> Double-click a tab chip (or right-click → Rename Tab…) to give it a stable name like "claude code", "metrics", "build". Persists across launches. Right-click → Reset to auto title to revert.</li>
+                    <li><strong>Always-on-top window.</strong> Window menu → Toggle Always on Top — keeps the active Termy window pinned above all other apps. Toggle off to return to normal z-order. Useful for keeping a reference shell visible while you work elsewhere.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 02:10:00 +0000</pubDate>
+            <sparkle:version>31</sparkle:version>
+            <sparkle:shortVersionString>0.9.14</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.14/Termy.dmg"
+                sparkle:version="31"
+                sparkle:shortVersionString="0.9.14"
+                length="2670387"
+                sparkle:edSignature="NY1WCC8isGXQeSNW0IW0wBZX8sXU9TBb2PGVFTmagTRhQndh4T78KTy+OY5CZe2SB9iv7JqNff5RaS2RxAV7DQ=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.13</title>
             <description><![CDATA[
                 <h2>OSC 133 shell integration + orphan-key GC</h2>

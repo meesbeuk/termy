@@ -133,6 +133,12 @@ private struct NotificationHandlersB: ViewModifier {
                 TerminalAppDelegate.pendingOpenURLs.removeAll()
                 for url in urls { sessions.openFile(url) }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalToggleAlwaysOnTop)) { _ in
+                guard isKeyWindow(), let window = hostedWindow() else { return }
+                // .floating keeps the window above all normal windows;
+                // .normal sends it back into the standard z-order. Toggle.
+                window.level = (window.level == .floating) ? .normal : .floating
+            }
             // Window resize is handled by SwiftTerm directly via autoresizing
             // mask set in TerminalSurface.makeNSView — no manual observer needed.
     }

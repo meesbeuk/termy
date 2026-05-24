@@ -126,6 +126,11 @@ struct TermyApp: App {
                 .keyboardShortcut("p", modifiers: [.command, .shift])
                 QuickTerminalToggleButton(settings: settings, profiles: profiles)
             }
+            CommandGroup(after: .windowArrangement) {
+                Button("Toggle Always on Top") {
+                    NotificationCenter.default.post(name: .terminalToggleAlwaysOnTop, object: nil)
+                }
+            }
         }
     }
 }
@@ -163,6 +168,7 @@ extension Notification.Name {
     static let terminalNextTab = Notification.Name("mees.terminal.nextTab")
     static let terminalPreviousTab = Notification.Name("mees.terminal.previousTab")
     static let terminalSelectTab = Notification.Name("mees.terminal.selectTab")
+    static let terminalToggleAlwaysOnTop = Notification.Name("mees.terminal.toggleAlwaysOnTop")
     static let terminalClear = Notification.Name("mees.terminal.clear")
     static let terminalToggleFind = Notification.Name("mees.terminal.toggleFind")
     static let terminalSplitHorizontal = Notification.Name("mees.terminal.splitH")

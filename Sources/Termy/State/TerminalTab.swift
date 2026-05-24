@@ -26,6 +26,11 @@ final class TerminalTab: ObservableObject, Identifiable {
     @Published var tagColor: TabTagColor = .none
     /// Mirror keystrokes typed into the active pane to all panes (iTerm2-style).
     @Published var broadcastInput: Bool = false
+    /// User-set name override. When non-nil, the tab chip shows this
+    /// instead of the cwd-derived auto-title. Useful for long-running
+    /// panes ("claude code", "metrics", "logs") that benefit from a
+    /// stable human label. Persisted across launches.
+    @Published var customTitle: String?
 
     init(initialCwd: String = NSHomeDirectory(), profile: Profile? = nil) {
         let first = TerminalSession(initialCwd: initialCwd, profile: profile)

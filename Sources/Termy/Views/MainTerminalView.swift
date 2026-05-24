@@ -670,6 +670,9 @@ private struct TabChip: View {
     let onCloseOthers: () -> Void
 
     @State private var isHovering = false
+    @State private var isRenaming = false
+    @State private var renameDraft = ""
+    @FocusState private var renameFocused: Bool
 
     var body: some View {
         HStack(spacing: 6) {
@@ -688,10 +691,22 @@ private struct TabChip: View {
                     .foregroundStyle(.orange)
                     .help("Broadcast input on — keystrokes go to all panes")
             }
-            Text(displayTitle)
-                .font(.system(size: 11, weight: .medium))
-                .lineLimit(1)
-                .foregroundStyle(isActive ? .primary : .secondary)
+            if isRenaming {
+                TextField("Tab name", text: $renameDraft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11, weight: .medium))
+                    .focused($renameFocused)
+                    .frame(minWidth: 60, idealWidth: 100)
+                    .onSubmit { commitRename() }
+                    // Esc cancels via .onExitCommand which fires inside
+                    // a non-modal field reliably in macOS 15+.
+                    .onExitCommand { isRenaming = false }
+            } else {
+                Text(displayTitle)
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
+                    .foregroundStyle(isActive ? .primary : .secondary)
+            }
             if tab.panes.count > 1 {
                 Text("·\(tab.panes.count)")
                     .font(.system(size: 9, design: .monospaced))
@@ -716,13 +731,18 @@ private struct TabChip: View {
         )
         .contentShape(Rectangle())
         .onTapGesture { onSelect() }
+        .onTapGesture(count: 2) { startRename() }
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.12)) { isHovering = hovering }
         }
         .contextMenu {
+            Button("Rename Tab…") { startRename() }
             Button("Reveal cwd in Finder") {
                 let url = URL(fileURLWithPath: tab.displayCwd)
                 NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+            if tab.customTitle != nil {
+                Button("Reset to auto title") { tab.customTitle = nil }
             }
             Divider()
             Menu("Tab Color") {
@@ -737,7 +757,22 @@ private struct TabChip: View {
         }
     }
 
+    private func startRename() {
+        renameDraft = tab.customTitle ?? displayTitle
+        isRenaming = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            renameFocused = true
+        }
+    }
+
+    private func commitRename() {
+        let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        tab.customTitle = trimmed.isEmpty ? nil : trimmed
+        isRenaming = false
+    }
+
     private var displayTitle: String {
+        if let custom = tab.customTitle, !custom.isEmpty { return custom }
         let base = (tab.displayCwd as NSString).lastPathComponent
         let title = tab.displayTitle
         if !base.isEmpty, title == "zsh" || title.isEmpty { return base }

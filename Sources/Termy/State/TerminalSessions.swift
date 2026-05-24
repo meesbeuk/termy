@@ -368,6 +368,7 @@ final class TerminalSessions: ObservableObject {
             ]
             if tab.tagColor != .none { dict["tagColor"] = tab.tagColor.rawValue }
             if tab.broadcastInput { dict["broadcastInput"] = true }
+            if let title = tab.customTitle, !title.isEmpty { dict["customTitle"] = title }
             return dict
         }
         UserDefaults.standard.set(payload, forKey: restoreKey)
@@ -437,6 +438,9 @@ final class TerminalSessions: ObservableObject {
             }
             if let broadcast = entry["broadcastInput"] as? Bool, broadcast {
                 tab.broadcastInput = true
+            }
+            if let title = entry["customTitle"] as? String, !title.isEmpty {
+                tab.customTitle = title
             }
             restored.append(tab)
         }
