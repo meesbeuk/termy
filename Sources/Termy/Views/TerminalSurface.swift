@@ -14,12 +14,18 @@ import SwiftTerm
 final class TermyTerminalView: LocalProcessTerminalView {
     var onBell: (() -> Void)?
     /// Re-applies theme + caret colors. Set by TerminalSurface so we can
-    /// re-run it from `viewDidMoveToWindow` — caret colors set before the
-    /// view is in a window don't render the cursor on first paint, so we
-    /// have to nudge them once AppKit has us in the hierarchy. (Theme
-    /// switches accidentally fix this because `updateNSView` re-applies
-    /// appearance at a point when the view is already attached.)
-    var onMovedToWindow: (() -> Void)?
+    /// re-run it both when the view first lands in a window AND on first
+    /// non-zero layout. SwiftTerm's caret is positioned by updateDisplay,
+    /// and updateDisplay reads frame.height — so an applyAppearance fired
+    /// while frame is .zero positions the caret off-screen and it never
+    /// paints. Theme switches accidentally fix this because updateNSView
+    /// re-fires applyAppearance once the view has a real frame.
+    var onNeedsAppearanceRefresh: (() -> Void)?
+
+    /// Tracks whether we've ever laid out at a non-zero size. Used to fire
+    /// `onNeedsAppearanceRefresh` exactly once after the first real layout
+    /// so the caret renders without requiring a theme switch.
+    private var hasLaidOutAtRealSize = false
 
     override func bell(source: Terminal) {
         super.bell(source: source)
@@ -29,7 +35,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil else { return }
-        onMovedToWindow?()
+        onNeedsAppearanceRefresh?()
     }
 
     // MARK: - Live-resize coalescing
@@ -59,11 +65,17 @@ final class TermyTerminalView: LocalProcessTerminalView {
         // Settle the grid at the final size with reflow disabled, so the
         // single resize that crosses cols/rows doesn't run reflowWider.
         // Nudge by half a point first to force processSizeChange (which
-        // early-returns when the size matches the current frame).
+        // early-returns when the size matches the current frame). Only do
+        // this when the grid would actually change — a sub-cell drag (user
+        // wiggled the corner by < 1 column) doesn't need a reflow flush,
+        // and going through withReflowDisabled there would needlessly trim
+        // scrollback above the viewport.
         let final = frame.size
-        withReflowDisabled {
-            super.setFrameSize(NSSize(width: final.width + 0.5, height: final.height))
-            super.setFrameSize(final)
+        if wouldChangeCellGrid(newSize: final) {
+            withReflowDisabled {
+                super.setFrameSize(NSSize(width: final.width + 0.5, height: final.height))
+                super.setFrameSize(final)
+            }
         }
         // Full refresh from the buffer so any stale draw region clears.
         getTerminal().refresh(startRow: 0, endRow: getTerminal().rows - 1)
@@ -71,11 +83,32 @@ final class TermyTerminalView: LocalProcessTerminalView {
     }
 
     override func setFrameSize(_ newSize: NSSize) {
+        let wasZeroSized = frame.size.width <= 0 || frame.size.height <= 0
         guard inLiveResize else {
-            // Even non-live resizes (programmatic, split-pane drag end,
-            // font-size changes that mutate cell dimensions) can trip the
-            // reflow bug. Always route through the reflow-off path.
-            withReflowDisabled { super.setFrameSize(newSize) }
+            // Reflow only mutates the buffer when (cols × rows) would change.
+            // For sub-cell layout adjustments (SwiftUI hover state, fractional
+            // pixel snaps, etc.) the grid is identical before and after — so
+            // we can skip the reflow-off wrapper. Wrapping every layout pass
+            // in withReflowDisabled was the v0.9.3 cure-worse-than-disease:
+            // every call trimmed and re-installed the scrollback buffer,
+            // permanently losing history. Now we only pay that cost when an
+            // actual cell-grid change is about to happen.
+            if wouldChangeCellGrid(newSize: newSize) {
+                withReflowDisabled { super.setFrameSize(newSize) }
+            } else {
+                super.setFrameSize(newSize)
+            }
+            // First time we land at a real size, ask the host to re-apply
+            // appearance. updateDisplay (and therefore caret positioning)
+            // reads frame.height — an applyAppearance fired while frame was
+            // zero left the caret positioned off-screen. Dispatch async so
+            // the dispatch runs after AppKit has finished this layout pass.
+            if wasZeroSized && newSize.width > 0 && newSize.height > 0 && !hasLaidOutAtRealSize {
+                hasLaidOutAtRealSize = true
+                DispatchQueue.main.async { [weak self] in
+                    self?.onNeedsAppearanceRefresh?()
+                }
+            }
             return
         }
         // In a live resize: update NSView's frame directly, skipping
@@ -85,6 +118,47 @@ final class TermyTerminalView: LocalProcessTerminalView {
         // the scrollback buffer is not mutated.
         callNSViewSetFrameSize(newSize)
         needsDisplay = true
+    }
+
+    /// Estimates whether super.setFrameSize(newSize) would change SwiftTerm's
+    /// (cols × rows). We mirror SwiftTerm's own computeFontDimensions + the
+    /// scroller-width subtraction in getEffectiveWidth so the prediction
+    /// matches what processSizeChange would compute. Internal API access
+    /// isn't possible from this module, so we replicate the math.
+    private func wouldChangeCellGrid(newSize: NSSize) -> Bool {
+        let cell = cachedCellDimension()
+        guard cell.width > 0, cell.height > 0 else { return true }
+        let scrollerWidth = NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
+        let effectiveWidth = max(0, newSize.width - scrollerWidth)
+        let newCols = Int(effectiveWidth / cell.width)
+        let newRows = Int(newSize.height / cell.height)
+        let term = getTerminal()
+        return newCols != term.cols || newRows != term.rows
+    }
+
+    /// Cached (font, scale) → cell dimension. Recomputed when either changes.
+    private var cellDimensionCache: (font: NSFont, scale: CGFloat, dimension: CGSize)?
+
+    private func cachedCellDimension() -> CGSize {
+        let f = self.font
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        if let cached = cellDimensionCache,
+           cached.font === f,
+           abs(cached.scale - scale) < 0.001 {
+            return cached.dimension
+        }
+        let glyph = f.glyph(withName: "W")
+        let advance = f.advancement(forGlyph: glyph).width
+        let ctFont = f as CTFont
+        let ascent = CTFontGetAscent(ctFont)
+        let descent = CTFontGetDescent(ctFont)
+        let leading = CTFontGetLeading(ctFont)
+        let height = ceil(ascent + descent + leading)
+        let snappedW = ceil(advance * scale) / scale
+        let snappedH = ceil(height * scale) / scale
+        let dim = CGSize(width: max(1, snappedW), height: max(1, min(snappedH, 8192)))
+        cellDimensionCache = (f, scale, dim)
+        return dim
     }
 
     /// Runs `body` with the terminal's scrollback temporarily set to nil so
@@ -132,14 +206,21 @@ struct TerminalSurface: NSViewRepresentable {
                 cwd: session.cwd
             )
         }
-        // Re-apply once we land in a window — fixes the missing-cursor-at-
-        // launch case. The struct's `applyAppearance` is value-safe to
-        // capture; `self` here is the NSViewRepresentable.
-        view.onMovedToWindow = { [weak view] in
-            guard let view else { return }
-            self.applyAppearance(view)
+        // Re-apply on window-attach and on first real layout — fixes the
+        // missing-caret-at-launch case. The first applyAppearance below
+        // runs while the view's frame is .zero, so SwiftTerm positions the
+        // caret off-screen and it never paints. Both hooks re-run
+        // applyAppearance once the view is in the hierarchy with a real
+        // size, which retriggers installColors → updateDisplay →
+        // updateCursorPosition with a frame the caret can actually live in.
+        // Bump the coordinator's appearance stamp on each apply so the next
+        // updateNSView (fired by an unrelated parent re-render) doesn't
+        // redundantly re-apply the same theme/font.
+        view.onNeedsAppearanceRefresh = { [weak view, weak coord = context.coordinator] in
+            guard let view, let coord else { return }
+            self.applyAppearance(view, coordinator: coord)
         }
-        applyAppearance(view)
+        applyAppearance(view, coordinator: context.coordinator)
         // CRITICAL: autoresizing makes AppKit propagate every superview size
         // change down to this view, which fires SwiftTerm's setFrameSize →
         // grid relayout → clean redraw. Without this, the SwiftUI hosting
@@ -184,11 +265,17 @@ struct TerminalSurface: NSViewRepresentable {
         // Skip the full re-apply when nothing the view cares about has
         // changed. Avoids reallocating 16 NSColors per parent re-render
         // (hover-state changes in the title strip trigger updateNSView).
-        let stamp = "\(settings.themeID)|\(Int(settings.fontSize))|\(settings.fontFamily)"
-        if context.coordinator.lastAppearanceStamp != stamp {
-            applyAppearance(nsView)
-            context.coordinator.lastAppearanceStamp = stamp
+        if context.coordinator.lastAppearanceStamp != currentAppearanceStamp {
+            applyAppearance(nsView, coordinator: context.coordinator)
         }
+    }
+
+    /// Single source of truth for what counts as a meaningful appearance
+    /// change. Bump this string's input set if you add a new visual setting
+    /// — both the gate in `updateNSView` and the stamp written by
+    /// `applyAppearance` read this so they can never disagree.
+    private var currentAppearanceStamp: String {
+        "\(settings.themeID)|\(Int(settings.fontSize))|\(settings.fontFamily)"
     }
 
     func makeCoordinator() -> Coordinator {
@@ -197,8 +284,10 @@ struct TerminalSurface: NSViewRepresentable {
 
     /// Visual tuning to match the rest of the suite — dark glass background,
     /// SF Mono, generous line spacing, transparent fill so the window's glass
-    /// shows through the terminal area.
-    private func applyAppearance(_ view: LocalProcessTerminalView) {
+    /// shows through the terminal area. The coordinator param lets every
+    /// apply site update the appearance stamp in one place, so the
+    /// updateNSView gate never re-applies what we just applied.
+    private func applyAppearance(_ view: LocalProcessTerminalView, coordinator: Coordinator? = nil) {
         let size = settings.fontSize
         let font = NSFont(name: settings.fontFamily, size: size)
             ?? NSFont(name: "SFMono-Regular", size: size)
@@ -234,6 +323,8 @@ struct TerminalSurface: NSViewRepresentable {
         )
 
         view.installColors(settings.theme.swiftTermColors)
+
+        coordinator?.lastAppearanceStamp = currentAppearanceStamp
     }
 
     final class Coordinator: NSObject, LocalProcessTerminalViewDelegate {

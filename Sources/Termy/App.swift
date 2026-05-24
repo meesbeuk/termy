@@ -178,8 +178,20 @@ struct TerminalWindowRoot: View {
                     // additional windows (⌘N) open with a single blank tab.
                     if !TermyApp.didRestoreFirstWindow {
                         TermyApp.didRestoreFirstWindow = true
-                        if !sessions.restorePersisted() {
+                        switch sessions.restorePersisted() {
+                        case .restored:
+                            break
+                        case .noSavedState:
+                            // Fresh user: open a default tab and persist it as
+                            // the new starting layout.
                             sessions.openTab()
+                        case .staleSaved:
+                            // Saved layout exists but its cwds aren't reachable
+                            // right now (likely an unmounted external drive).
+                            // Open a default tab so the user has a working
+                            // shell, but DON'T persist — let the saved layout
+                            // come back on the next launch when paths exist.
+                            sessions.openTab(persistChange: false)
                         }
                     } else {
                         sessions.openTab()

@@ -176,8 +176,6 @@ private struct GeneralPane: View {
                 .font(DS.Typo.tiny)
                 .foregroundStyle(DS.Colors.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
-            // `copyOnSelect` removed — SwiftTerm doesn't expose a selection
-            // hook we can wire it through, so the toggle did nothing.
         }
     }
 }
@@ -263,8 +261,35 @@ private struct FontPane: View {
         return Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255)
     }
 
+    /// Every installed monospaced font, with our small "recommended"
+    /// shortlist surfaced at the top. Replaces the v0.9.5 behavior of
+    /// filtering a hardcoded 7-entry list, which silently hid the user's
+    /// favorite Nerd Fonts / Berkeley Mono / JetBrains Mono variants
+    /// behind a "font not available" no-op.
     private func installedFonts() -> [String] {
-        TerminalSettings.availableFontFamilies.filter { NSFont(name: $0, size: 12) != nil }
+        let recommended = TerminalSettings.availableFontFamilies
+            .filter { NSFont(name: $0, size: 12) != nil }
+        // Enumerate via NSFontDescriptor (the non-deprecated path) — match
+        // every descriptor whose symbolic traits include monoSpace.
+        let descriptor = NSFontDescriptor()
+            .withSymbolicTraits(.monoSpace)
+        let matches = descriptor.matchingFontDescriptors(withMandatoryKeys: nil)
+        let all = matches
+            .compactMap { $0.object(forKey: .name) as? String }
+            .sorted()
+        // De-dup while preserving the recommended-first order. SF Mono
+        // variants come from PostScript names that don't always match
+        // .monoSpace; the recommended list catches them.
+        var seen = Set(recommended)
+        let extras = all.filter { name in
+            // Skip ".SFNS..." system aliases and obvious italic/bold variants;
+            // SwiftTerm renders bold/italic via its own attribute path.
+            !name.hasPrefix(".")
+                && !name.lowercased().contains("italic")
+                && !name.lowercased().contains("oblique")
+                && seen.insert(name).inserted
+        }
+        return recommended + extras
     }
 }
 

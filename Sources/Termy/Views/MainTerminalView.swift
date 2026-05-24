@@ -116,15 +116,23 @@ struct MainTerminalView: View {
         sessions.sendToActivePane(launcher.commandPreview)
     }
 
-    /// Drop a file/folder from Finder → escaped path types into the active pane.
+    /// Drop a file/folder from Finder → quoted path types into the active pane.
+    /// ALWAYS single-quotes the path, even if it has no spaces. A dropped path
+    /// like `/tmp/$(rm -rf ~)/file` would otherwise be passed unquoted and
+    /// the shell would execute the substitution before the user even read the
+    /// command. Single-quoting + escaping any embedded single quotes makes the
+    /// whole path a literal under POSIX shells.
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        // Capture the target session NOW, not at dispatch time — if the user
+        // switches panes between drop and dispatch, the text otherwise lands
+        // in whatever pane is active later.
+        let target = sessions.currentSession
         for provider in providers {
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                guard let url else { return }
-                let path = url.path
-                let escaped = path.contains(" ") ? "'\(path)'" : path
+                guard let url, let target else { return }
+                let escaped = "'" + url.path.replacingOccurrences(of: "'", with: "'\\''") + "'"
                 DispatchQueue.main.async {
-                    sessions.currentSession?.terminalView?.send(txt: escaped + " ")
+                    target.terminalView?.send(txt: escaped + " ")
                 }
             }
         }

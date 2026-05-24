@@ -97,7 +97,7 @@ final class TerminalSessions: ObservableObject {
     // MARK: - Tab lifecycle
 
     @discardableResult
-    func openTab(profile: Profile? = nil) -> TerminalTab {
+    func openTab(profile: Profile? = nil, persistChange: Bool = true) -> TerminalTab {
         let cwd = currentSession?.cwd ?? NSHomeDirectory()
         // Fall back to the default profile so new tabs honor profile settings
         // (shell, args, env, tag color) without callers needing to thread it.
@@ -105,7 +105,7 @@ final class TerminalSessions: ObservableObject {
         let tab = TerminalTab(initialCwd: cwd, profile: resolvedProfile)
         tabs.append(tab)
         selectedTabId = tab.id
-        persist()
+        if persistChange { persist() }
         return tab
     }
 
@@ -164,10 +164,13 @@ final class TerminalSessions: ObservableObject {
         let wasSelected = selectedTabId == id
         tabs.remove(at: idx)
         if tabs.isEmpty {
-            persist()
-            // Close THIS sessions' window specifically — not whichever window
-            // happens to be NSApp.keyWindow, which could be a sibling window.
-            (hostedWindow ?? NSApp.keyWindow)?.close()
+            // Don't close the window — opening a fresh blank tab keeps a
+            // misclicked ⌘W from cascading into "close window → terminate
+            // app" (we set applicationShouldTerminateAfterLastWindowClosed
+            // = true and confirmOnQuit defaults off, so a stray ⌘W on a
+            // single-tab window would otherwise quit Termy without warning).
+            // The user can still close the window outright with ⌘⇧W.
+            openTab()
             return
         }
         if wasSelected {
@@ -274,11 +277,22 @@ final class TerminalSessions: ObservableObject {
         UserDefaults.standard.set(payload, forKey: Self.restoreKey)
     }
 
-    @discardableResult
-    func restorePersisted() -> Bool {
+    /// Outcome of an attempted restore. The distinction between `.noSavedState`
+    /// and `.staleSaved` matters: on `.staleSaved` we open a blank tab WITHOUT
+    /// persisting, so the saved layout survives a launch where its cwds are
+    /// temporarily unreachable (external drive unmounted, repo cloned to a
+    /// different host). Persisting an empty tab there would permanently wipe
+    /// the layout the user expects to come back next time the paths exist.
+    enum RestoreOutcome {
+        case restored
+        case noSavedState
+        case staleSaved
+    }
+
+    func restorePersisted() -> RestoreOutcome {
         guard let raw = UserDefaults.standard.array(forKey: Self.restoreKey) as? [[String: Any]],
               !raw.isEmpty
-        else { return false }
+        else { return .noSavedState }
         var restored: [TerminalTab] = []
         for entry in raw {
             let orientationStr = entry["orientation"] as? String ?? "horizontal"
@@ -289,9 +303,9 @@ final class TerminalSessions: ObservableObject {
             let panes = validCwds.map { TerminalSession(initialCwd: $0) }
             restored.append(TerminalTab(panes: panes, orientation: orientation))
         }
-        guard !restored.isEmpty else { return false }
+        guard !restored.isEmpty else { return .staleSaved }
         self.tabs = restored
         self.selectedTabId = restored.first?.id
-        return true
+        return .restored
     }
 }

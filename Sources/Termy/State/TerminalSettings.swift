@@ -56,10 +56,6 @@ final class TerminalSettings: ObservableObject {
         didSet { UserDefaults.standard.set(paddingPreset.rawValue, forKey: Self.paddingKey) }
     }
 
-    @Published var lineSpacing: Double {
-        didSet { UserDefaults.standard.set(lineSpacing, forKey: Self.lineSpacingKey) }
-    }
-
     @Published var showStatusBar: Bool {
         didSet { UserDefaults.standard.set(showStatusBar, forKey: Self.showStatusBarKey) }
     }
@@ -95,10 +91,6 @@ final class TerminalSettings: ObservableObject {
         didSet { UserDefaults.standard.set(notifyOnBell, forKey: Self.notifyOnBellKey) }
     }
 
-    @Published var copyOnSelect: Bool {
-        didSet { UserDefaults.standard.set(copyOnSelect, forKey: Self.copyOnSelectKey) }
-    }
-
     var theme: TerminalTheme { TerminalTheme.find(id: themeID) }
 
     static let `default`: CGFloat = 13
@@ -115,13 +107,11 @@ final class TerminalSettings: ObservableObject {
     private static let autoOpacityKey = "termy.autoOpacity"
     private static let vibecoderKey = "termy.vibecoderMode"
     private static let paddingKey = "termy.padding"
-    private static let lineSpacingKey = "termy.lineSpacing"
     private static let showStatusBarKey = "termy.showStatusBar"
     private static let showTabBarKey = "termy.showTabBar"
     private static let launchAtLoginKey = "termy.launchAtLogin"
     private static let hideFromDockKey = "termy.hideFromDock"
     private static let confirmOnQuitKey = "termy.confirmOnQuit"
-    private static let copyOnSelectKey = "termy.copyOnSelect"
     private static let notifyOnBellKey = "termy.notifyOnBell"
 
     init() {
@@ -147,8 +137,6 @@ final class TerminalSettings: ObservableObject {
         }
         let padRaw = UserDefaults.standard.string(forKey: Self.paddingKey) ?? PaddingPreset.cozy.rawValue
         self.paddingPreset = PaddingPreset(rawValue: padRaw) ?? .cozy
-        let savedLineSpacing = UserDefaults.standard.double(forKey: Self.lineSpacingKey)
-        self.lineSpacing = savedLineSpacing > 0 ? savedLineSpacing : 1.0
         if UserDefaults.standard.object(forKey: Self.showStatusBarKey) == nil {
             self.showStatusBar = true
         } else {
@@ -166,7 +154,6 @@ final class TerminalSettings: ObservableObject {
         } else {
             self.confirmOnQuit = UserDefaults.standard.bool(forKey: Self.confirmOnQuitKey)
         }
-        self.copyOnSelect = UserDefaults.standard.bool(forKey: Self.copyOnSelectKey)
         // Default-off so we don't pop a notification-permission dialog at
         // first launch with no user context.
         self.notifyOnBell = UserDefaults.standard.bool(forKey: Self.notifyOnBellKey)
