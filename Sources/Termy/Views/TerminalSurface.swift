@@ -103,6 +103,58 @@ final class TermyTerminalView: LocalProcessTerminalView {
         onBell?()
     }
 
+    /// Intercept link clicks (OSC 8 hyperlinks + implicit URL detection)
+    /// to route file paths through the user's preferred editor when
+    /// possible. `link` may be:
+    ///   - `http(s)://...` — open in default browser (NSWorkspace default)
+    ///   - `file:///...` — open the file (Finder-default-app or our editor)
+    ///   - `file:///path#line=N` (iTerm/Kitty convention) — open at line N
+    ///   - plain path `src/foo.ts:42` — opening picker resolves cwd
+    ///
+    /// The "Open in Editor" path uses a small registry of common editor
+    /// schemes (vscode://, cursor://, zed://) and falls back to
+    /// NSWorkspace.shared.open for anything else.
+    func requestOpenLink (source: TerminalView, link: String, params: [String:String]) {
+        let trimmed = link.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        if let url = URL(string: trimmed) {
+            // file:// links — try the user's editor first if it has a
+            // line= param, otherwise fall back to NSWorkspace.
+            if url.isFileURL, let line = params["line"] ?? params["lineNumber"], let lineNum = Int(line) {
+                openInEditor(filePath: url.path, line: lineNum)
+                return
+            }
+            NSWorkspace.shared.open(url)
+            return
+        }
+        // Plain `path:line:col` style — try to resolve relative to the
+        // session's current working directory and open in editor.
+        let parts = trimmed.split(separator: ":", maxSplits: 2)
+        if parts.count >= 2, let line = Int(parts[1]) {
+            openInEditor(filePath: String(parts[0]), line: line)
+        }
+    }
+
+    /// Tiny editor opener — prefers the user's configured editor
+    /// (UserDefaults `termy.editorScheme`) if set; otherwise tries each
+    /// known editor in order (cursor → vscode → zed) and falls back to
+    /// the system default for the file type.
+    private func openInEditor(filePath: String, line: Int) {
+        let scheme = UserDefaults.standard.string(forKey: "termy.editorScheme")
+        let editors: [String] = scheme.map { [$0] } ?? ["cursor", "vscode", "zed"]
+        let absolute = filePath.hasPrefix("/") ? filePath : NSHomeDirectory() + "/" + filePath
+        for editor in editors {
+            let urlString = "\(editor)://file/\(absolute):\(line)"
+            if let url = URL(string: urlString),
+               NSWorkspace.shared.urlForApplication(toOpen: url) != nil {
+                NSWorkspace.shared.open(url)
+                return
+            }
+        }
+        // Last resort — open the file in the default app for its type.
+        NSWorkspace.shared.open(URL(fileURLWithPath: absolute))
+    }
+
     override func dataReceived(slice: ArraySlice<UInt8>) {
         // Tracking always runs at real-time arrival, regardless of
         // cinema-mode pacing. Notifications / OSC 133 / recording all

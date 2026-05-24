@@ -6,6 +6,33 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.27</title>
+            <description><![CDATA[
+                <h2>Acting on the competitor research: OSC 8 → editor + YAML workflows</h2>
+                <p>From the Bucket A roadmap (Warp / iTerm2 / WezTerm / Ghostty / Wave research). First two ship here:</p>
+                <ul>
+                    <li><strong>OSC 8 hyperlinks open in your editor.</strong> When a tool emits a clickable file path (Claude/Codex output, <code>rg --hyperlink-format=kitty</code>, <code>eza</code>, <code>delta</code>, <code>bat</code>) or even a plain <code>path:line:col</code>, Termy now routes the click to your preferred editor (Cursor / VSCode / Zed / Sublime / TextMate) at the right line. Picker in Settings → Appearance → "Editor for clickable file paths".</li>
+                    <li><strong>YAML workflows.</strong> Drop <code>~/.termy/workflows/*.yaml</code> snippets with <code>{{argument}}</code> placeholders; they show up in the Command Palette under a new Workflows filter. Project-local <code>.termy/workflows/</code> overrides global. Minimal parser handles the Warp YAML shape. Default values fire on selection (interactive arg-fill is the next iteration). Example:
+                        <pre>name: Resume Claude
+command: claude --resume
+description: Reattach to the most recent session</pre>
+                    </li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 07:10:00 +0000</pubDate>
+            <sparkle:version>44</sparkle:version>
+            <sparkle:shortVersionString>0.9.27</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.27/Termy.dmg"
+                sparkle:version="44"
+                sparkle:shortVersionString="0.9.27"
+                length="2893838"
+                sparkle:edSignature="kw+IDei9sb5dqNUa4tFOrnXQtScIbxtNQPDCIz35+CYC2as2MgIES7P3TDGlX6JYeNrotn+ZAWM0kighsZTrCw=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.26</title>
             <description><![CDATA[
                 <h2>Dynamic window titles</h2>

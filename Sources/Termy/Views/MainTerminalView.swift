@@ -6,6 +6,7 @@ import SwiftTerm
 struct MainTerminalView: View {
     @EnvironmentObject var sessions: TerminalSessions
     @EnvironmentObject var settings: TerminalSettings
+    @EnvironmentObject var workflows: WorkflowStore
     @State private var showingSettings = false
     @State private var showingRecentDirs = false
     @State private var showingPalette = false
@@ -91,54 +92,7 @@ struct MainTerminalView: View {
             // launchers end up in a band beneath them.
             .ignoresSafeArea(.container, edges: .top)
 
-            if showingRecentDirs {
-                ZStack {
-                    Color.black.opacity(0.10).ignoresSafeArea()
-                        .onTapGesture { showingRecentDirs = false }
-                    RecentDirsPanel(
-                        cwds: sessions.uniqueCwds(),
-                        onDismiss: { showingRecentDirs = false },
-                        onPick: { path in
-                            sessions.openTabIn(cwd: path)
-                            showingRecentDirs = false
-                        }
-                    )
-                }
-                .transition(.opacity)
-                .zIndex(10)
-            }
-
-            if showingPalette {
-                ZStack {
-                    Color.black.opacity(0.10).ignoresSafeArea()
-                        .onTapGesture { showingPalette = false }
-                    CommandPalette(onDismiss: { showingPalette = false })
-                        .environmentObject(sessions)
-                        .environmentObject(settings)
-                }
-                .transition(.opacity)
-                .zIndex(11)
-            }
-
-            if showingCheatsheet {
-                ZStack {
-                    Color.black.opacity(0.10).ignoresSafeArea()
-                        .onTapGesture { showingCheatsheet = false }
-                    CheatsheetPanel(onDismiss: { showingCheatsheet = false })
-                }
-                .transition(.opacity)
-                .zIndex(12)
-            }
-
-            if showingSessionLogs {
-                ZStack {
-                    Color.black.opacity(0.10).ignoresSafeArea()
-                        .onTapGesture { showingSessionLogs = false }
-                    SessionLogBrowser(onDismiss: { showingSessionLogs = false })
-                }
-                .transition(.opacity)
-                .zIndex(13)
-            }
+            overlays
         }
         .frame(minWidth: 480, idealWidth: 920, maxWidth: .infinity,
                minHeight: 320, idealHeight: 620, maxHeight: .infinity)
@@ -207,6 +161,59 @@ struct MainTerminalView: View {
 
     private func removeKeyMonitor() {
         if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
+    }
+
+    /// Modal overlays extracted into a single ViewBuilder so the main
+    /// body stays under the SwiftUI type-checker's complexity budget.
+    /// Adding a 4th conditional caused "expression is too complex" errors
+    /// when the @EnvironmentObject roster grew.
+    @ViewBuilder private var overlays: some View {
+        if showingRecentDirs {
+            ZStack {
+                Color.black.opacity(0.10).ignoresSafeArea()
+                    .onTapGesture { showingRecentDirs = false }
+                RecentDirsPanel(
+                    cwds: sessions.uniqueCwds(),
+                    onDismiss: { showingRecentDirs = false },
+                    onPick: { path in
+                        sessions.openTabIn(cwd: path)
+                        showingRecentDirs = false
+                    }
+                )
+            }
+            .transition(.opacity)
+            .zIndex(10)
+        }
+        if showingPalette {
+            ZStack {
+                Color.black.opacity(0.10).ignoresSafeArea()
+                    .onTapGesture { showingPalette = false }
+                CommandPalette(onDismiss: { showingPalette = false })
+                    .environmentObject(sessions)
+                    .environmentObject(settings)
+                    .environmentObject(workflows)
+            }
+            .transition(.opacity)
+            .zIndex(11)
+        }
+        if showingCheatsheet {
+            ZStack {
+                Color.black.opacity(0.10).ignoresSafeArea()
+                    .onTapGesture { showingCheatsheet = false }
+                CheatsheetPanel(onDismiss: { showingCheatsheet = false })
+            }
+            .transition(.opacity)
+            .zIndex(12)
+        }
+        if showingSessionLogs {
+            ZStack {
+                Color.black.opacity(0.10).ignoresSafeArea()
+                    .onTapGesture { showingSessionLogs = false }
+                SessionLogBrowser(onDismiss: { showingSessionLogs = false })
+            }
+            .transition(.opacity)
+            .zIndex(13)
+        }
     }
 
     /// Map the active pane state to NSWindow.title. Format prefers, in

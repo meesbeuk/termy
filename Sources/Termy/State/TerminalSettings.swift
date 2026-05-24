@@ -163,6 +163,13 @@ final class TerminalSettings: ObservableObject {
         }
     }
 
+    /// Preferred editor URL scheme for OSC 8 / Cmd-click on `path:line`
+    /// references. Empty string = auto-detect (cursor → vscode → zed).
+    /// Common values: "cursor", "vscode", "zed", "subl", "mate".
+    @Published var editorScheme: String {
+        didSet { UserDefaults.standard.set(editorScheme, forKey: Self.editorSchemeKey) }
+    }
+
     // MARK: - Quake (drop-down terminal) settings
 
     /// Auto-hide the Quake drop-down when it loses focus. Standard Quake
@@ -212,6 +219,7 @@ final class TerminalSettings: ObservableObject {
     private static let recordSessionsKey = "termy.recordSessions"
     private static let cinemaModeKey = "termy.cinemaMode"
     private static let cinemaCpsKey = "termy.cinemaCps"
+    private static let editorSchemeKey = "termy.editorScheme"
     private static let quakeHideOnFocusLossKey = "termy.quakeHideOnFocusLoss"
     private static let quakeHeightKey = "termy.quakeHeightFraction"
 
@@ -276,6 +284,7 @@ final class TerminalSettings: ObservableObject {
         self.cinemaMode = UserDefaults.standard.bool(forKey: Self.cinemaModeKey)
         let savedCps = UserDefaults.standard.double(forKey: Self.cinemaCpsKey)
         self.cinemaCps = savedCps > 0 ? savedCps : 80
+        self.editorScheme = UserDefaults.standard.string(forKey: Self.editorSchemeKey) ?? ""
         if UserDefaults.standard.object(forKey: Self.quakeHideOnFocusLossKey) == nil {
             self.quakeHideOnFocusLoss = true
         } else {

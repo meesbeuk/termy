@@ -5,6 +5,11 @@ import SwiftUI
 struct CommandPalette: View {
     @EnvironmentObject var sessions: TerminalSessions
     @EnvironmentObject var settings: TerminalSettings
+    // NEW WorkflowStore (Sources/Termy/State/Workflows.swift) — NOT the
+    // 2025-deleted Workflow.swift seeded store. This one only reads
+    // YAML files from ~/.termy/workflows/ and project-local
+    // .termy/workflows/, never injects defaults.
+    @EnvironmentObject var workflows: WorkflowStore
     let onDismiss: () -> Void
 
     @State private var query: String = ""
@@ -143,6 +148,7 @@ struct CommandPalette: View {
         case .themes: return allItems.filter { $0.kind == .theme }.count
         case .actions: return allItems.filter { $0.kind == .action }.count
         case .ssh: return allItems.filter { $0.kind == .ssh }.count
+        case .workflows: return allItems.filter { $0.kind == .workflow }.count
         }
     }
 
@@ -188,6 +194,21 @@ struct CommandPalette: View {
                                      subtitle: host.sshCommand,
                                      action: { sessions.sendToActivePane(host.sshCommand) }))
         }
+        // YAML-defined workflows from ~/.termy/workflows/. Argument
+        // placeholders use their default values when fired from the
+        // palette — UI for interactive arg-fill is the next iteration.
+        for wf in workflows.workflows {
+            let subtitle = wf.description.isEmpty
+                ? wf.command
+                : "\(wf.description) — \(wf.command)"
+            items.append(PaletteItem(kind: .workflow,
+                                     title: "Workflow: \(wf.name)",
+                                     subtitle: subtitle,
+                                     action: {
+                let resolved = WorkflowStore.resolve(wf, values: [:])
+                sessions.sendToActivePane(resolved)
+            }))
+        }
         return items
     }
 
@@ -199,6 +220,7 @@ struct CommandPalette: View {
         case .themes: scoped = allItems.filter { $0.kind == .theme }
         case .actions: scoped = allItems.filter { $0.kind == .action }
         case .ssh: scoped = allItems.filter { $0.kind == .ssh }
+        case .workflows: scoped = allItems.filter { $0.kind == .workflow }
         }
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return Array(scoped.prefix(60)) }
@@ -215,7 +237,7 @@ struct CommandPalette: View {
 }
 
 enum PaletteFilter: String, CaseIterable, Identifiable {
-    case all, tabs, themes, actions, ssh
+    case all, tabs, themes, actions, ssh, workflows
     var id: String { rawValue }
     var displayName: String {
         switch self {
@@ -224,6 +246,7 @@ enum PaletteFilter: String, CaseIterable, Identifiable {
         case .themes: return "Themes"
         case .actions: return "Actions"
         case .ssh: return "SSH Hosts"
+        case .workflows: return "Workflows"
         }
     }
     var icon: String {
@@ -233,6 +256,7 @@ enum PaletteFilter: String, CaseIterable, Identifiable {
         case .themes: return "paintpalette"
         case .actions: return "bolt"
         case .ssh: return "network"
+        case .workflows: return "wand.and.stars"
         }
     }
 }
@@ -276,7 +300,7 @@ private struct PaletteSidebarRow: View {
 }
 
 struct PaletteItem {
-    enum Kind { case tab, theme, action, ssh }
+    enum Kind { case tab, theme, action, ssh, workflow }
     let kind: Kind
     let title: String
     let subtitle: String
@@ -288,6 +312,7 @@ struct PaletteItem {
         case .theme: return "paintpalette"
         case .action: return "command"
         case .ssh: return "network"
+        case .workflow: return "wand.and.stars"
         }
     }
 
@@ -297,6 +322,7 @@ struct PaletteItem {
         case .theme: return .pink
         case .action: return DS.Colors.secondary
         case .ssh: return .green
+        case .workflow: return .orange
         }
     }
 }

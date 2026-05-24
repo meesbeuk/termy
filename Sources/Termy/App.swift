@@ -6,6 +6,7 @@ struct TermyApp: App {
     @NSApplicationDelegateAdaptor(TerminalAppDelegate.self) var delegate
     @StateObject private var settings = TerminalSettings()
     @StateObject private var profiles = ProfileStore()
+    @StateObject private var workflows = WorkflowStore()
     @StateObject private var updater = Updater()
 
     /// Only the first window restores persisted tabs; further windows are blank.
@@ -24,6 +25,7 @@ struct TermyApp: App {
             }
             .environmentObject(settings)
             .environmentObject(profiles)
+            .environmentObject(workflows)
             .environmentObject(updater)
         }
         .windowStyle(.hiddenTitleBar)

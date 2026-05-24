@@ -222,6 +222,22 @@ private struct GeneralPane: View {
                     .toggleStyle(.checkbox).font(DS.Typo.caption)
             }
 
+            DSSection("Editor for clickable file paths") {
+                Picker("Editor", selection: $settings.editorScheme) {
+                    Text("Auto-detect (Cursor → VSCode → Zed)").tag("")
+                    Text("Cursor").tag("cursor")
+                    Text("VSCode").tag("vscode")
+                    Text("Zed").tag("zed")
+                    Text("Sublime Text").tag("subl")
+                    Text("TextMate").tag("mate")
+                }
+                .pickerStyle(.menu).labelsHidden()
+                Text("When you click an OSC 8 hyperlink or a `path:line` reference in scrollback (e.g. error messages, Claude's file refs), Termy opens it in this editor at the right line. Auto-detect uses whichever is installed first.")
+                    .font(DS.Typo.tiny)
+                    .foregroundStyle(DS.Colors.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             DSSection("Cinema mode") {
                 Toggle("Pace incoming output for screen recording", isOn: $settings.cinemaMode)
                     .toggleStyle(.checkbox).font(DS.Typo.caption)
