@@ -6,6 +6,29 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.33 — Bucket A complete</title>
+            <description><![CDATA[
+                <h2>QuickSelect (⌘⇧/) — final Bucket A item</h2>
+                <ul>
+                    <li><strong>⌘⇧/ opens Quick Select.</strong> Scans the active pane's recent output for URLs, file paths, git hashes, and IPs. Picker shows them with kind labels; ↵ copies, ⌘↵ opens (URL via browser, file via your configured editor). Filter field for narrowing.</li>
+                    <li>Termy's variant trades WezTerm's overlay-on-the-terminal for a focused modal — easier to scan when you have 20+ matches and the picker can dedup repeated paths (a path appearing 10 times in scrollback shows once).</li>
+                </ul>
+                <p><strong>Bucket A from the competitor research roadmap is now complete (8/8).</strong> All shipped across v0.9.27 → v0.9.33 in this session: OSC 8 → editor, Diagnostics, YAML workflows, Trigger packs, Jump-to-prompt, QuickSelect, Paste history, Agent Panel.</p>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 09:35:00 +0000</pubDate>
+            <sparkle:version>50</sparkle:version>
+            <sparkle:shortVersionString>0.9.33</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.33/Termy.dmg"
+                sparkle:version="50"
+                sparkle:shortVersionString="0.9.33"
+                length="3106440"
+                sparkle:edSignature="Ani6utiRK267zH3BzXy7pSw1CLWdotcOPR6d+dpXJRBHkE65FRXQiKeZs25QlhIXUSTT0GpkMJV0yEVUf+IdCw=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.32</title>
             <description><![CDATA[
                 <h2>Agent Panel — Bucket A #8 (Termy's take on Warp's agent manager)</h2>

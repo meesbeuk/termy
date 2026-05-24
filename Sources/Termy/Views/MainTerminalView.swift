@@ -15,6 +15,7 @@ struct MainTerminalView: View {
     @State private var showingSessionLogs = false
     @State private var showingPasteHistory = false
     @State private var showingAgentPanel = false
+    @State private var showingQuickSelect = false
     @State private var findInitialQuery: String?
     @State private var hostedWindow: NSWindow?
     @State private var keyMonitor: Any?
@@ -155,7 +156,8 @@ struct MainTerminalView: View {
             showSettings: { showingSettings = true },
             showSessionLogs: { showingSessionLogs = true },
             showPasteHistory: { showingPasteHistory = true },
-            showAgentPanel: { showingAgentPanel = true }
+            showAgentPanel: { showingAgentPanel = true },
+            showQuickSelect: { showingQuickSelect = true }
         ))
         .sheet(isPresented: $showingSettings) {
             TerminalSettingsSheet(onClose: { showingSettings = false })
@@ -236,6 +238,16 @@ struct MainTerminalView: View {
             }
             .transition(.opacity)
             .zIndex(15)
+        }
+        if showingQuickSelect {
+            ZStack {
+                Color.black.opacity(0.10).ignoresSafeArea()
+                    .onTapGesture { showingQuickSelect = false }
+                QuickSelectPicker(onDismiss: { showingQuickSelect = false })
+                    .environmentObject(sessions)
+            }
+            .transition(.opacity)
+            .zIndex(16)
         }
     }
 

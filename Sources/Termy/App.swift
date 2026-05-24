@@ -179,6 +179,10 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalOpenAgentPanel, object: nil)
                 }
                 .keyboardShortcut("a", modifiers: [.command, .shift])
+                Button("Quick Select…") {
+                    NotificationCenter.default.post(name: .terminalOpenQuickSelect, object: nil)
+                }
+                .keyboardShortcut("/", modifiers: [.command, .shift])
                 QuickTerminalToggleButton(settings: settings, profiles: profiles)
             }
             CommandGroup(after: .windowArrangement) {
@@ -232,6 +236,7 @@ extension Notification.Name {
     static let terminalJumpPrevPrompt = Notification.Name("mees.terminal.jumpPrevPrompt")
     static let terminalJumpNextPrompt = Notification.Name("mees.terminal.jumpNextPrompt")
     static let terminalOpenAgentPanel = Notification.Name("mees.terminal.openAgentPanel")
+    static let terminalOpenQuickSelect = Notification.Name("mees.terminal.openQuickSelect")
     static let terminalClear = Notification.Name("mees.terminal.clear")
     static let terminalToggleFind = Notification.Name("mees.terminal.toggleFind")
     static let terminalSplitHorizontal = Notification.Name("mees.terminal.splitH")

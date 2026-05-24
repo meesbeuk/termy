@@ -76,6 +76,19 @@ final class TermyTerminalView: LocalProcessTerminalView {
     var triggerProvider: (() -> [Trigger])?
     var onTriggerFired: ((Trigger, String) -> Void)?
 
+    /// Returns the recent text buffer (with ANSI stripped) for use by
+    /// QuickSelect to scan visible-ish output for URLs / paths / hashes.
+    /// Bounded by lastPreviewBuffer's cap so a 1GB transcript doesn't
+    /// scan forever.
+    func recentVisibleText() -> String {
+        let pattern = "\\x1B\\[[0-?]*[ -/]*[@-~]"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return lastPreviewBuffer
+        }
+        let range = NSRange(lastPreviewBuffer.startIndex..., in: lastPreviewBuffer)
+        return regex.stringByReplacingMatches(in: lastPreviewBuffer, range: range, withTemplate: "")
+    }
+
     /// Absolute row positions (in the scrollback line buffer) where
     /// the shell emitted an OSC 133;A (prompt start). Lets `⌘↑/⌘↓`
     /// jump prompt-to-prompt without the user scrolling. Capped at
