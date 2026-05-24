@@ -86,6 +86,9 @@ struct MainTerminalView: View {
         .frame(minWidth: 480, idealWidth: 920, maxWidth: .infinity,
                minHeight: 320, idealHeight: 620, maxHeight: .infinity)
         .background(WindowBackdrop(hostedWindow: $hostedWindow))
+        // Forward the captured NSWindow down so closeTab can target the
+        // right window in multi-window setups (NSApp.keyWindow can be a sibling).
+        .onChange(of: hostedWindow) { _, new in sessions.hostedWindow = new }
         .modifier(TerminalHandlers(
             sessions: sessions,
             isKeyWindow: { isKeyWindow },

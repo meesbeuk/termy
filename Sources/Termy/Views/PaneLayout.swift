@@ -35,8 +35,10 @@ struct PaneLayout: View {
         let isActive = pane.id == tab.activePaneId
         TerminalSurface(session: pane, sessions: sessions, settings: settings)
             .id(pane.id)
+            // Per-pane minimum keeps splits from collapsing to an unusable
+            // ~20-column terminal at minWindow widths.
+            .frame(minWidth: 200, minHeight: 100)
             .overlay(
-                // Accent border on the active pane when split — invisible when single.
                 Group {
                     if !single {
                         RoundedRectangle(cornerRadius: 4)
@@ -50,9 +52,11 @@ struct PaneLayout: View {
             .onTapGesture { tab.activePaneId = pane.id }
     }
 
+    /// Uses `Color.primary` rather than hard-coded white so the divider stays
+    /// visible on light themes (Solarized Light, GitHub Light, Gruvbox Light).
     private var divider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.08))
+            .fill(Color.primary.opacity(0.12))
             .frame(
                 width: tab.orientation == .horizontal ? 1 : nil,
                 height: tab.orientation == .vertical ? 1 : nil

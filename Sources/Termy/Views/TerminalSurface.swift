@@ -30,6 +30,11 @@ struct TerminalSurface: NSViewRepresentable {
         // Bridge process state back to the session model — title/cwd updates,
         // termination, etc. Coordinator pattern keeps the delegate alive.
         view.processDelegate = context.coordinator
+        // Also own the view-level delegate so we explicitly handle link clicks
+        // (OSC 8 hyperlinks + plain URL detection). Without this, behaviour
+        // falls back to SwiftTerm's internal NSWorkspace.open default — which
+        // works, but is opaque + can't be customized.
+        view.terminalDelegate = context.coordinator
 
         view.startProcess(
             executable: session.shellPath,
@@ -44,8 +49,14 @@ struct TerminalSurface: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: LocalProcessTerminalView, context: Context) {
-        applyAppearance(nsView)
-        // Autoresizing handles size sync — no manual frame poke needed.
+        // Skip the full re-apply when nothing the view cares about has
+        // changed. Avoids reallocating 16 NSColors per parent re-render
+        // (hover-state changes in the title strip trigger updateNSView).
+        let stamp = "\(settings.themeID)|\(Int(settings.fontSize))|\(settings.fontFamily)|\(settings.cursorStyle.rawValue)|\(settings.cursorBlink)"
+        if context.coordinator.lastAppearanceStamp != stamp {
+            applyAppearance(nsView)
+            context.coordinator.lastAppearanceStamp = stamp
+        }
     }
 
     func makeCoordinator() -> Coordinator {
@@ -63,10 +74,21 @@ struct TerminalSurface: NSViewRepresentable {
             ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
         view.font = font
 
-        // TODO(cursor): SwiftTerm's caret style isn't in its public API surface
-        // yet — `caretView` and `style` are internal. Settings.cursorStyle is
-        // persisted and will plug in when SwiftTerm exposes it, or via OSC
-        // sequences emitted by the shell prompt.
+        // Cursor style + blink via DECSCUSR escape sequence — the standard
+        // terminal way to set the cursor shape. Codes:
+        //   1 blink block, 2 steady block, 3 blink underline,
+        //   4 steady underline, 5 blink bar, 6 steady bar
+        let cursorCode: Int = {
+            switch (settings.cursorStyle, settings.cursorBlink) {
+            case (.block, true):     return 1
+            case (.block, false):    return 2
+            case (.underline, true): return 3
+            case (.underline, false):return 4
+            case (.bar, true):       return 5
+            case (.bar, false):      return 6
+            }
+        }()
+        view.feed(text: "\u{001B}[\(cursorCode) q")
 
         // Fully transparent — the window's adaptive backdrop is the single
         // source of opacity for the entire app. No per-element backgrounds.
@@ -81,9 +103,15 @@ struct TerminalSurface: NSViewRepresentable {
         view.installColors(settings.theme.swiftTermColors)
     }
 
-    final class Coordinator: NSObject, LocalProcessTerminalViewDelegate {
+    final class Coordinator: NSObject, LocalProcessTerminalViewDelegate, TerminalViewDelegate {
         let session: TerminalSession
         let sessions: TerminalSessions
+        /// Last appearance signature (theme|font|cursor) we applied — used to
+        /// skip redundant `applyAppearance` calls when nothing visual changed.
+        var lastAppearanceStamp: String = ""
+        /// Debounce timer for persisting cwd changes. Heavy `cd` workflows
+        /// otherwise produce hundreds of UserDefaults writes per second.
+        private var persistTimer: Timer?
 
         init(session: TerminalSession, sessions: TerminalSessions) {
             self.session = session
@@ -104,7 +132,12 @@ struct TerminalSurface: NSViewRepresentable {
             DispatchQueue.main.async {
                 if let dir = directory, !dir.isEmpty {
                     self.session.cwd = dir
-                    self.sessions.persist()    // restored tabs follow the live cwd
+                    // Debounce persist — `cd`-heavy workflows hit this on every
+                    // hop, and UserDefaults writes are not free.
+                    self.persistTimer?.invalidate()
+                    self.persistTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+                        DispatchQueue.main.async { self?.sessions.persist() }
+                    }
                 }
             }
         }
@@ -117,5 +150,38 @@ struct TerminalSurface: NSViewRepresentable {
                 self.sessions.closePane(self.session.id)
             }
         }
+
+        // MARK: - TerminalViewDelegate (link clicks, bell, etc.)
+
+        func requestOpenLink(source: SwiftTerm.TerminalView, link: String, params: [String: String]) {
+            // Only open http(s) and file URLs — refuse arbitrary schemes so
+            // a hostile shell script can't trick us into launching `vscode://`
+            // or similar protocol handlers without explicit user intent.
+            guard let url = URL(string: link),
+                  let scheme = url.scheme?.lowercased(),
+                  ["http", "https", "file"].contains(scheme)
+            else { return }
+            NSWorkspace.shared.open(url)
+        }
+
+        // SwiftTerm's protocol requires these but we don't need custom behavior;
+        // the default macOS implementations handle them appropriately.
+        func sizeChanged(source: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {}
+        func setTerminalTitle(source: SwiftTerm.TerminalView, title: String) {
+            DispatchQueue.main.async {
+                if !title.isEmpty { self.session.title = title }
+            }
+        }
+        func send(source: SwiftTerm.TerminalView, data: ArraySlice<UInt8>) {}
+        func scrolled(source: SwiftTerm.TerminalView, position: Double) {}
+        func bell(source: SwiftTerm.TerminalView) {}
+        func clipboardCopy(source: SwiftTerm.TerminalView, content: Data) {
+            if let s = String(data: content, encoding: .utf8) {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(s, forType: .string)
+            }
+        }
+        func iTermContent(source: SwiftTerm.TerminalView, content: ArraySlice<UInt8>) {}
+        func rangeChanged(source: SwiftTerm.TerminalView, startY: Int, endY: Int) {}
     }
 }

@@ -21,15 +21,32 @@ final class TerminalSession: ObservableObject, Identifiable {
     /// Working directory the shell should start in.
     let initialCwd: String
 
-    init(initialCwd: String = NSHomeDirectory()) {
-        if let envShell = ProcessInfo.processInfo.environment["SHELL"], !envShell.isEmpty {
-            self.shellPath = envShell
+    /// Extra env vars to inject on top of the inherited environment.
+    private let envExtras: [String: String]
+    /// Profile this session was opened with — nil = ambient defaults.
+    let profileID: UUID?
+
+    init(initialCwd: String = NSHomeDirectory(), profile: Profile? = nil) {
+        if let profile {
+            self.shellPath = profile.effectiveShellPath
+            self.shellArgs = profile.shellArgs.isEmpty ? ["--login"] : profile.shellArgs
+            let resolved = initialCwd.isEmpty || initialCwd == NSHomeDirectory() ? profile.effectiveCwd : initialCwd
+            self.initialCwd = resolved
+            self.cwd = resolved
+            self.envExtras = profile.environmentExtras
+            self.profileID = profile.id
         } else {
-            self.shellPath = "/bin/zsh"
+            if let envShell = ProcessInfo.processInfo.environment["SHELL"], !envShell.isEmpty {
+                self.shellPath = envShell
+            } else {
+                self.shellPath = "/bin/zsh"
+            }
+            self.shellArgs = ["--login"]
+            self.initialCwd = initialCwd
+            self.cwd = initialCwd
+            self.envExtras = [:]
+            self.profileID = nil
         }
-        self.shellArgs = ["--login"]
-        self.initialCwd = initialCwd
-        self.cwd = initialCwd
     }
 
     var processEnvironment: [String] {
@@ -38,6 +55,7 @@ final class TerminalSession: ObservableObject, Identifiable {
         env["COLORTERM"] = "truecolor"
         env["LANG"] = env["LANG"] ?? "en_US.UTF-8"
         env["LC_ALL"] = env["LC_ALL"] ?? "en_US.UTF-8"
+        for (k, v) in envExtras { env[k] = v }
         return env.map { "\($0.key)=\($0.value)" }
     }
 }
@@ -48,6 +66,16 @@ final class TerminalSession: ObservableObject, Identifiable {
 final class TerminalSessions: ObservableObject {
     @Published var tabs: [TerminalTab] = []
     @Published var selectedTabId: UUID?
+
+    /// Weak ref to the NSWindow hosting these sessions. Set from the SwiftUI
+    /// view via WindowAccessor. Used so multi-window setups close the *right*
+    /// window when their last tab closes, not whichever window is `keyWindow`
+    /// at the moment.
+    weak var hostedWindow: NSWindow?
+
+    /// Profile store for resolving the default profile when openTab() is called
+    /// without an explicit profile (⌘T, command palette, etc.).
+    weak var profileStore: ProfileStore?
 
     private static let restoreKey = "mees.terminal.restoreTabs.v2"
 
@@ -64,9 +92,12 @@ final class TerminalSessions: ObservableObject {
     // MARK: - Tab lifecycle
 
     @discardableResult
-    func openTab() -> TerminalTab {
+    func openTab(profile: Profile? = nil) -> TerminalTab {
         let cwd = currentSession?.cwd ?? NSHomeDirectory()
-        let tab = TerminalTab(initialCwd: cwd)
+        // Fall back to the default profile so new tabs honor profile settings
+        // (shell, args, env, tag color) without callers needing to thread it.
+        let resolvedProfile = profile ?? profileStore?.defaultProfile
+        let tab = TerminalTab(initialCwd: cwd, profile: resolvedProfile)
         tabs.append(tab)
         selectedTabId = tab.id
         persist()
@@ -129,9 +160,9 @@ final class TerminalSessions: ObservableObject {
         tabs.remove(at: idx)
         if tabs.isEmpty {
             persist()
-            // Close THIS window only — the AppDelegate quits the app when the
-            // last window closes (applicationShouldTerminateAfterLastWindowClosed).
-            NSApp.keyWindow?.close()
+            // Close THIS sessions' window specifically — not whichever window
+            // happens to be NSApp.keyWindow, which could be a sibling window.
+            (hostedWindow ?? NSApp.keyWindow)?.close()
             return
         }
         if wasSelected {

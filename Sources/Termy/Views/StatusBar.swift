@@ -73,25 +73,47 @@ struct StatusBar: View {
         }
     }
 
+    /// Walks up the tree looking for `.git`. Handles three layouts:
+    ///   - normal repo:   `.git/` directory with `HEAD` inside
+    ///   - submodule:     `.git` file pointing at `gitdir: <path>`
+    ///   - worktree:      same `gitdir:` indirection — must follow to find HEAD
+    /// Without the indirection step we'd render "gitdir:" as the branch name.
     private static func findBranch(startingAt path: String) -> String? {
         var current = URL(fileURLWithPath: path)
         let fm = FileManager.default
-        for _ in 0..<25 {                                // depth cap, just in case
-            let head = current.appendingPathComponent(".git/HEAD")
-            if let data = try? Data(contentsOf: head),
-               let s = String(data: data, encoding: .utf8) {
-                let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.hasPrefix("ref: refs/heads/") {
-                    return String(trimmed.dropFirst("ref: refs/heads/".count))
+        for _ in 0..<25 {
+            let gitURL = current.appendingPathComponent(".git")
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: gitURL.path, isDirectory: &isDir) {
+                let headURL: URL = isDir.boolValue
+                    ? gitURL.appendingPathComponent("HEAD")
+                    : Self.resolveGitDirFile(at: gitURL).appendingPathComponent("HEAD")
+                if let data = try? Data(contentsOf: headURL),
+                   let s = String(data: data, encoding: .utf8) {
+                    let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.hasPrefix("ref: refs/heads/") {
+                        return String(trimmed.dropFirst("ref: refs/heads/".count))
+                    }
+                    return String(trimmed.prefix(7))
                 }
-                // Detached HEAD — show the short SHA.
-                return String(trimmed.prefix(7))
+                return nil
             }
             let parent = current.deletingLastPathComponent()
-            if parent.path == current.path { break }      // hit filesystem root
+            if parent.path == current.path { break }
             current = parent
-            if !fm.fileExists(atPath: current.path) { break }
         }
         return nil
+    }
+
+    /// Parses a `.git` file (submodule / worktree) of the form
+    /// `gitdir: <relative-or-absolute-path>` and returns the resolved URL.
+    private static func resolveGitDirFile(at fileURL: URL) -> URL {
+        guard let data = try? Data(contentsOf: fileURL),
+              let s = String(data: data, encoding: .utf8) else { return fileURL }
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("gitdir: ") else { return fileURL }
+        let raw = String(trimmed.dropFirst("gitdir: ".count))
+        if raw.hasPrefix("/") { return URL(fileURLWithPath: raw) }
+        return fileURL.deletingLastPathComponent().appendingPathComponent(raw)
     }
 }

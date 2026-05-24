@@ -169,8 +169,8 @@ private struct GeneralPane: View {
                 .toggleStyle(.checkbox).font(DS.Typo.caption)
             Toggle("Confirm before quitting", isOn: $settings.confirmOnQuit)
                 .toggleStyle(.checkbox).font(DS.Typo.caption)
-            Toggle("Copy text on selection", isOn: $settings.copyOnSelect)
-                .toggleStyle(.checkbox).font(DS.Typo.caption)
+            // `copyOnSelect` removed — SwiftTerm doesn't expose a selection
+            // hook we can wire it through, so the toggle did nothing.
         }
     }
 }
@@ -394,9 +394,10 @@ private struct AboutPane: View {
                     Text("A native macOS terminal for vibecoders.")
                         .font(DS.Typo.caption)
                         .foregroundStyle(DS.Colors.tertiary)
-                    Link("github.com/meesbeuk/termy",
-                         destination: URL(string: "https://github.com/meesbeuk/termy")!)
-                        .font(DS.Typo.caption)
+                    if let url = URL(string: "https://github.com/meesbeuk/termy") {
+                        Link("github.com/meesbeuk/termy", destination: url)
+                            .font(DS.Typo.caption)
+                    }
                 }
                 Spacer()
             }
@@ -524,8 +525,17 @@ private struct ProfileRow: View {
                 ProfileEditor(draft: $draft)
                 HStack {
                     Spacer()
-                    Button("Save") { onSave(draft) }
-                        .controlSize(.small)
+                    Button("Save") {
+                        // Don't save blank-named profiles — they render as an
+                        // empty row that's impossible to identify in the list.
+                        var safe = draft
+                        let trimmed = safe.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if trimmed.isEmpty { safe.name = "Untitled" }
+                        onSave(safe)
+                    }
+                    .controlSize(.small)
+                    .disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              && draft.shellPath.isEmpty && draft.initialCwd.isEmpty)
                 }
             }
         }

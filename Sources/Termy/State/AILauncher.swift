@@ -13,11 +13,11 @@ struct AILauncher: Identifiable, Hashable {
     let brandAsset: String? // basename of SVG in Resources/LaunchIcons (no extension)
     let tint: AILauncherTint
 
-    /// Always returns the canonical set so users never lose access to a tool
-    /// just because our detection missed a non-standard install path
-    /// (npm-global, brew, asdf, mise, etc.). If a tool isn't actually
-    /// installed, the shell will surface a "command not found" — that's
-    /// faster + more honest feedback than us hiding the button.
+    /// Returns the full canonical list. We deliberately don't probe `$PATH`
+    /// because shells inherit paths via `--login` rc files that we can't
+    /// reliably resolve from inside the host process (mise, asdf, brew at
+    /// different prefixes, etc.). If a tool isn't installed, the shell shows
+    /// "command not found" — honest feedback beats hiding the button silently.
     static func installed() -> [AILauncher] {
         all
     }

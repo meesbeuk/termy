@@ -34,10 +34,18 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalNewTab, object: nil)
                 }
                 .keyboardShortcut("t", modifiers: .command)
-                Button("Close Tab") {
+                // ⌘W = close the active pane; the tab closes when its last
+                // pane goes. Labelled "Close" rather than "Close Tab" because
+                // it doesn't always close the whole tab. ⌘⇧W closes the
+                // whole window outright.
+                Button("Close") {
                     NotificationCenter.default.post(name: .terminalCloseTab, object: nil)
                 }
                 .keyboardShortcut("w", modifiers: .command)
+                Button("Close Window") {
+                    NSApp.keyWindow?.close()
+                }
+                .keyboardShortcut("w", modifiers: [.command, .shift])
             }
             CommandMenu("Terminal") {
                 Button("Increase Font Size") { settings.bumpFontSize() }
@@ -147,11 +155,15 @@ extension Notification.Name {
 /// Per-window root. Owns its own TerminalSessions so multi-window works.
 struct TerminalWindowRoot: View {
     @StateObject private var sessions = TerminalSessions()
+    @EnvironmentObject var profiles: ProfileStore
 
     var body: some View {
         MainTerminalView()
             .environmentObject(sessions)
             .onAppear {
+                // Wire profile resolution into the session model so new tabs
+                // honor the user's default profile (shell, env, tag color).
+                sessions.profileStore = profiles
                 if sessions.tabs.isEmpty {
                     // Restore last session's tabs in the first window only —
                     // additional windows (⌘N) open with a single blank tab.

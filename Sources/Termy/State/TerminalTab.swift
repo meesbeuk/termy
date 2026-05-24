@@ -27,10 +27,11 @@ final class TerminalTab: ObservableObject, Identifiable {
     /// Mirror keystrokes typed into the active pane to all panes (iTerm2-style).
     @Published var broadcastInput: Bool = false
 
-    init(initialCwd: String = NSHomeDirectory()) {
-        let first = TerminalSession(initialCwd: initialCwd)
+    init(initialCwd: String = NSHomeDirectory(), profile: Profile? = nil) {
+        let first = TerminalSession(initialCwd: initialCwd, profile: profile)
         self.panes = [first]
         self.activePaneId = first.id
+        if let profile, profile.tagColor != .none { self.tagColor = profile.tagColor }
     }
 
     init(panes: [TerminalSession], orientation: PaneOrientation = .horizontal) {
