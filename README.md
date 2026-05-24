@@ -18,15 +18,16 @@ iTerm2 is powerful but dated. Warp is great but cloud-tied. Apple's Terminal.app
 ### Sessions
 - **Tabs + splits** in one window — `⌘T` new tab, `⌘D` horizontal split, `⌘⇧D` vertical split, `⌘⌥]/[` cycle focus.
 - **Multi-window** — `⌘N` opens a new independent window with its own tab list.
-- **Quick Terminal** — `⌃`` (Control-backtick) opens a fresh floating window for a one-off command. Also in the Termy menu and the Dock right-click menu.
+- **Quake-style drop-down terminal** — `⌃`` (Control-backtick) slides a persistent panel down from the top of the active display. Same panel toggles in and out; its shell stays alive between toggles so it's instant. Hides on focus loss.
 - **Duplicate tab** — `⌘⇧T`.
 - **Recent directories** picker — `⌘⌥/` to jump back into any cwd from any tab.
 - **Broadcast input** — mirror keystrokes to every pane in a tab (right-click the tab to toggle).
 - **Drag-drop** file paths from Finder straight into the active pane (auto-quoted).
+- **Inline find** — `⌘F` opens a search-as-you-type bar with case + regex toggles; `⌘G` / `⌘⇧G` cycles matches.
 
 ### Profiles
 - Saved shell configurations: name, shell path, args, initial cwd, environment overrides, tag color.
-- **Random Tapback memoji avatars** per profile so you can pick yours out at a glance — re-roll button if you don't like the one you got.
+- **Per-profile avatar** — local deterministic gradient + initial circle keyed off a stable seed so you can pick your profile out at a glance. Re-roll button generates a fresh seed.
 - Set a default profile and every new tab uses its shell / env / cwd.
 - Right-click Termy in the Dock → **New Tab with Profile** submenu.
 - Delete confirmation + last-profile guard so you can't end up with zero profiles.
@@ -41,13 +42,13 @@ iTerm2 is powerful but dated. Warp is great but cloud-tied. Apple's Terminal.app
 - **Tab tag colors** — 9 options, set per tab via right-click or per profile.
 
 ### Quality of life
-- **Command Palette** — `⌘⇧P`, fuzzy jump to tab / theme / action / workflow / SSH host. Sidebar layout matches the Settings sheet.
-- **Workflows** — saved commands with seeded defaults (git status, kill port 3000, etc.).
-- **SSH profile manager** — reads `~/.ssh/config` and surfaces hosts in the Command Palette.
+- **Command Palette** — `⌘⇧P`, fuzzy jump to tab / theme / action / SSH host. Sidebar layout matches the Settings sheet.
+- **Visible chrome icons** — every keyboard shortcut also has a clickable icon in the title strip (search, palette, recent dirs, splits, Quake drop-down, settings) so features are discoverable without reading docs.
+- **SSH profile manager** — reads `~/.ssh/config` plus any `Include` directives (e.g. `~/.ssh/config.d/*`) and surfaces hosts in the Command Palette.
 - **Status bar** — cwd (with `~` folding), git branch (worktree + submodule safe), clock.
 - **Process-done notifications** — toggle in General settings; add `precmd() { print -n "\a" }` to `.zshrc` to get a system notification when a long command finishes in a background window.
 - **Sparkle auto-updater** — Settings → Updates → "Automatically check" + "Automatically download + install in background". No reinstalls.
-- **Persistent across launches** — tabs, panes, cwds, theme, font, profiles, workflows all restore.
+- **Persistent across launches** — tabs, panes, cwds, theme, font, profiles all restore.
 
 ### Standard app
 - Launch at login (via `SMAppService`).
@@ -92,7 +93,8 @@ open /Applications/Termy.app
 | Focus next / previous pane | `⌘⌥]` / `⌘⌥[` |
 | Recent directories | `⌘⌥/` |
 | Command Palette | `⌘⇧P` |
-| Find | `⌘F` |
+| Find in scrollback | `⌘F` |
+| Next / previous find match | `⌘G` / `⌘⇧G` |
 | Clear | `⌘K` |
 | Increase / decrease font | `⌘=` / `⌘-` |
 | Reset font | `⌘0` |
@@ -138,7 +140,6 @@ Open to PRs on the deferred items above. The big-ticket additions worth building
 - [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) — terminal emulation core
 - [Sparkle](https://sparkle-project.org/) — auto-updater
 - [LobeHub icons](https://lobehub.com/icons) — brand SVGs for the AI launcher row
-- [Tapback](https://tapback.co/memoji) — memoji avatars for profiles
 - SwiftUI + AppKit + NSVisualEffectView
 
 ## License
