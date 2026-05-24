@@ -6,6 +6,33 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.7</title>
+            <description><![CDATA[
+                <h2>Real Quake drop-down, inline find bar, visible icon affordances</h2>
+                <ul>
+                    <li><strong>Quake-style drop-down terminal (⌃`)</strong> — a single persistent panel that slides down from the top of the active display, with its own shell that stays alive between toggles. Replaces the v0.9.6 "Quick Terminal" that secretly just opened a regular second window.</li>
+                    <li><strong>Inline find bar (⌘F)</strong> — search-as-you-type across the scrollback, with case + regex toggles and ⌘G / ⌘⇧G to cycle matches. Wired to SwiftTerm's real find API. Replaces the legacy NSFindPanel popup.</li>
+                    <li><strong>Visible icon row in the title strip</strong> — search, command palette, recent directories, split horizontal/vertical, Quake drop-down, settings. Every keyboard shortcut also gets a clickable affordance so features are discoverable by scanning the chrome.</li>
+                    <li><strong>SSH config <code>Include</code> directives are now followed</strong> — palette SSH list reflects modern <code>~/.ssh/config.d/*</code> style multi-account setups (recursive, depth-limited, dedup'd).</li>
+                    <li>Bug fix: accidental ⌘W on a last-tab window no longer permanently wipes the saved layout — the rescue blank tab is no longer persisted over the previous state.</li>
+                    <li>Bug fix: broadcast-input key monitor was installed before the host window existed; comparison silently no-op'd. Now reinstalled when the window arrives.</li>
+                    <li>Cuts: the Workflow store (5 seeded snippets nobody asked for), the tapback.co avatar HTTP fetch (privacy + offline-launch issue, replaced with a local gradient generator), and ~100 lines of dead CursorPreview markers.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 22:55:00 +0000</pubDate>
+            <sparkle:version>24</sparkle:version>
+            <sparkle:shortVersionString>0.9.7</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.7/Termy.dmg"
+                sparkle:version="24"
+                sparkle:shortVersionString="0.9.7"
+                length="2612271"
+                sparkle:edSignature="YpssjMPQ+QDbLMR0+HZi7obM9hc2BSXvBpJTpR4SpVGz02KyXmKifs+MH68qK/Mkmcb8l8edpXbzX/40inc0AA=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.6</title>
             <description><![CDATA[
                 <h2>Quieter scrollback, no more silent app-quit on ⌘W, real font picker</h2>
