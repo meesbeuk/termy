@@ -7,7 +7,6 @@ struct MainTerminalView: View {
     @EnvironmentObject var sessions: TerminalSessions
     @EnvironmentObject var settings: TerminalSettings
     @State private var showingSettings = false
-    @State private var showingAILauncher = false
     @State private var showingRecentDirs = false
     @State private var showingPalette = false
     @State private var hostedWindow: NSWindow?
@@ -16,8 +15,7 @@ struct MainTerminalView: View {
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
-                TitleStrip(showingSettings: $showingSettings,
-                           showingAILauncher: $showingAILauncher)
+                TitleStrip(showingSettings: $showingSettings)
                 if settings.vibecoderMode {
                     VibecoderQuickLaunchRow(onLaunch: { launch($0) })
                         .padding(.horizontal, 10)
@@ -47,19 +45,6 @@ struct MainTerminalView: View {
                     Divider().opacity(0.25)
                     StatusBar()
                 }
-            }
-
-            if showingAILauncher {
-                ZStack {
-                    Color.black.opacity(0.10).ignoresSafeArea()
-                        .onTapGesture { showingAILauncher = false }
-                    AILauncherPanel(
-                        onDismiss: { showingAILauncher = false },
-                        onLaunch: { launch($0) }
-                    )
-                }
-                .transition(.opacity)
-                .zIndex(10)
             }
 
             if showingRecentDirs {
@@ -102,7 +87,6 @@ struct MainTerminalView: View {
             handleDrop: handleDrop,
             installKeyMonitor: installKeyMonitor,
             removeKeyMonitor: removeKeyMonitor,
-            showAILauncher: { showingAILauncher = true },
             showRecentDirs: { showingRecentDirs = true },
             showPalette: { showingPalette = true }
         ))
@@ -228,7 +212,6 @@ private struct TitleStrip: View {
     @EnvironmentObject var sessions: TerminalSessions
     @EnvironmentObject var settings: TerminalSettings
     @Binding var showingSettings: Bool
-    @Binding var showingAILauncher: Bool
 
     private var displayCwd: String {
         guard let path = sessions.currentSession?.cwd else { return "" }
@@ -257,15 +240,6 @@ private struct TitleStrip: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
-            Button(action: { showingAILauncher = true }) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 11))
-                    .frame(width: 20, height: 20)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.orange)
-            .help("Launch AI tool (⌘L)")
             Button(action: { showingSettings = true }) {
                 Image(systemName: "gearshape")
                     .font(.system(size: 11))
@@ -301,30 +275,33 @@ private struct VibecoderQuickLaunchRow: View {
         .onAppear { launchers = AILauncher.installed() }
     }
 
-    /// Tiny chip view extracted so the parent's body type-checks in reasonable time.
+    /// Icon-only circular launch button. Single white tint, tooltip on hover.
+    /// SF Symbol approximation today — swap for bundled brand SVG when ready.
     private struct LaunchChip: View {
         let launcher: AILauncher
-        let tint: SwiftUI.Color
+        let tint: SwiftUI.Color   // unused in icon-only mode but kept for API compat
         let onTap: () -> Void
+        @State private var hovering = false
 
         var body: some View {
             Button(action: onTap) {
-                HStack(spacing: 5) {
-                    Image(systemName: launcher.icon)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(tint)
-                    Text(launcher.displayName)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.primary)
-                }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(Capsule().fill(SwiftUI.Color.primary.opacity(0.08)))
-                .overlay(Capsule().strokeBorder(SwiftUI.Color.primary.opacity(0.06), lineWidth: 0.5))
-                .contentShape(Capsule())
+                Image(systemName: launcher.icon)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white)
+                    .frame(width: 26, height: 26)
+                    .background(
+                        Circle().fill(SwiftUI.Color.white.opacity(hovering ? 0.16 : 0.08))
+                    )
+                    .overlay(
+                        Circle().strokeBorder(SwiftUI.Color.white.opacity(0.08), lineWidth: 0.5)
+                    )
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .help("Run \(launcher.cli) in active pane")
+            .help("\(launcher.displayName) — run `\(launcher.cli)` in active pane")
+            .onHover { newValue in
+                withAnimation(.easeOut(duration: 0.10)) { hovering = newValue }
+            }
         }
     }
 

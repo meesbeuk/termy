@@ -27,12 +27,27 @@ TMP_APP="$PROJECT_DIR/.build/${APP_NAME}.app"
 rm -rf "$TMP_APP"
 mkdir -p "$TMP_APP/Contents/MacOS"
 mkdir -p "$TMP_APP/Contents/Resources"
+mkdir -p "$TMP_APP/Contents/Frameworks"
 cp "$BIN" "$TMP_APP/Contents/MacOS/${APP_NAME}"
 cp "$PROJECT_DIR/Resources/${APP_NAME}-Info.plist" "$TMP_APP/Contents/Info.plist"
 
 if [[ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]]; then
     cp "$PROJECT_DIR/Resources/AppIcon.icns" "$TMP_APP/Contents/Resources/AppIcon.icns"
 fi
+
+# Bundle any frameworks built via SPM artifacts (Sparkle, etc.) so the binary
+# resolves its @rpath references at runtime. Without this the app crashes
+# on launch trying to load Sparkle.framework.
+SPARKLE_FRAMEWORK="$PROJECT_DIR/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+if [[ -d "$SPARKLE_FRAMEWORK" ]]; then
+    cp -R "$SPARKLE_FRAMEWORK" "$TMP_APP/Contents/Frameworks/"
+fi
+
+# Add the rpath for bundled frameworks. Without this the dyld loader can't
+# find Sparkle.framework at @rpath/Sparkle.framework... and the app crashes
+# on launch with "cannot be opened because of a problem".
+install_name_tool -add_rpath "@executable_path/../Frameworks" \
+    "$TMP_APP/Contents/MacOS/${APP_NAME}" 2>/dev/null || true
 
 echo "── Ad-hoc codesigning ──"
 codesign --force --deep --sign - "$TMP_APP"

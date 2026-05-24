@@ -5,6 +5,8 @@ import AppKit
 struct TermyApp: App {
     @NSApplicationDelegateAdaptor(TerminalAppDelegate.self) var delegate
     @StateObject private var settings = TerminalSettings()
+    @StateObject private var profiles = ProfileStore()
+    @StateObject private var updater = Updater()
 
     /// Only the first window restores persisted tabs; further windows are blank.
     nonisolated(unsafe) static var didRestoreFirstWindow = false
@@ -16,6 +18,8 @@ struct TermyApp: App {
         WindowGroup("Termy", id: "terminal") {
             TerminalWindowRoot()
                 .environmentObject(settings)
+                .environmentObject(profiles)
+                .environmentObject(updater)
         }
         .windowStyle(.hiddenTitleBar)
         // .automatic = window can be freely resized; SwiftTerm reflows its
@@ -90,11 +94,11 @@ struct TermyApp: App {
                 }
                 .keyboardShortcut("f", modifiers: .command)
             }
-            CommandMenu("AI") {
-                Button("Launch AI Tool…") {
-                    NotificationCenter.default.post(name: .terminalOpenAILauncher, object: nil)
-                }
-                .keyboardShortcut("l", modifiers: .command)
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { updater.checkForUpdates() }
+                    .disabled(!updater.canCheck)
+            }
+            CommandMenu("Termy") {
                 Button("Command Palette…") {
                     NotificationCenter.default.post(name: .terminalOpenPalette, object: nil)
                 }
@@ -117,7 +121,6 @@ extension Notification.Name {
     static let terminalFocusPreviousPane = Notification.Name("mees.terminal.focusPrev")
     static let terminalDuplicateTab = Notification.Name("mees.terminal.dupTab")
     static let terminalRecentDirs = Notification.Name("mees.terminal.recentDirs")
-    static let terminalOpenAILauncher = Notification.Name("mees.terminal.aiLauncher")
     static let terminalOpenPalette = Notification.Name("mees.terminal.palette")
 }
 

@@ -68,17 +68,22 @@ struct TerminalSettingsSheet: View {
 
     private var themeSection: some View {
         DSSection("Theme") {
-            Picker("Theme", selection: $settings.themeID) {
-                ForEach(ThemeCategory.allCases, id: \.self) { cat in
-                    Section(header: Text(cat.rawValue)) {
-                        ForEach(TerminalTheme.all.filter { $0.category == cat }) { theme in
-                            Text(theme.name).tag(theme.id)
-                        }
+            ForEach(ThemeCategory.allCases, id: \.self) { cat in
+                Text(cat.rawValue)
+                    .font(DS.Typo.tiny.weight(.semibold))
+                    .foregroundStyle(DS.Colors.tertiary)
+                    .textCase(.uppercase)
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())],
+                          spacing: DS.Spacing.s) {
+                    ForEach(TerminalTheme.all.filter { $0.category == cat }) { theme in
+                        ThemePreviewCard(
+                            theme: theme,
+                            isSelected: settings.themeID == theme.id,
+                            onSelect: { settings.themeID = theme.id }
+                        )
                     }
                 }
             }
-            .pickerStyle(.menu)
-            .labelsHidden()
         }
     }
 
@@ -103,38 +108,57 @@ struct TerminalSettingsSheet: View {
                     .foregroundStyle(DS.Colors.secondary)
                     .frame(width: 32, alignment: .trailing)
             }
+
+            FontPreview(
+                family: settings.fontFamily,
+                size: settings.fontSize,
+                foreground: themeForeground
+            )
+
             Text("⌘+ / ⌘- / ⌘0 also work as shortcuts.")
                 .font(DS.Typo.tiny)
                 .foregroundStyle(DS.Colors.tertiary)
         }
     }
 
+    /// Convert the active theme's foreground RGB to a SwiftUI Color, used by
+    /// previews so they reflect the user's current selections.
+    private var themeForeground: Color {
+        let (r, g, b) = settings.theme.foreground
+        return Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255)
+    }
+
     private var cursorSection: some View {
         DSSection("Cursor") {
-            HStack(spacing: DS.Spacing.m) {
-                Picker("Cursor Style", selection: $settings.cursorStyle) {
-                    ForEach(CursorStyle.allCases) { style in
-                        Text(style.displayName).tag(style)
-                    }
+            HStack(spacing: DS.Spacing.s) {
+                ForEach(CursorStyle.allCases) { style in
+                    CursorPreview(
+                        style: style,
+                        blink: settings.cursorBlink,
+                        isSelected: settings.cursorStyle == style,
+                        onSelect: { settings.cursorStyle = style }
+                    )
+                    .frame(maxWidth: .infinity)
                 }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                Toggle("Blink", isOn: $settings.cursorBlink)
-                    .toggleStyle(.checkbox)
-                    .font(DS.Typo.caption)
             }
+            Toggle("Blink", isOn: $settings.cursorBlink)
+                .toggleStyle(.checkbox)
+                .font(DS.Typo.caption)
         }
     }
 
     private var densitySection: some View {
         DSSection("Density") {
-            Picker("Padding", selection: $settings.paddingPreset) {
+            HStack(spacing: DS.Spacing.s) {
                 ForEach(PaddingPreset.allCases) { p in
-                    Text(p.displayName).tag(p)
+                    DensityPreview(
+                        preset: p,
+                        isSelected: settings.paddingPreset == p,
+                        onSelect: { settings.paddingPreset = p }
+                    )
+                    .frame(maxWidth: .infinity)
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
         }
     }
 
@@ -167,6 +191,7 @@ struct TerminalSettingsSheet: View {
                 .controlSize(.small)
                 .disabled(settings.autoOpacity)
                 .opacity(settings.autoOpacity ? 0.4 : 1.0)
+            OpacityPreview(opacity: settings.effectiveOpacity)
             Text(settings.autoOpacity
                  ? "Light wallpapers → more opaque, dark → more glass."
                  : "Manual opacity — drag to taste.")

@@ -94,7 +94,7 @@ final class TerminalTab: ObservableObject, Identifiable {
 }
 
 /// Tab tag color — a small set of recognizable hues for fast at-a-glance ID.
-enum TabTagColor: String, CaseIterable, Identifiable {
+enum TabTagColor: String, CaseIterable, Identifiable, Codable {
     case none, red, orange, yellow, green, blue, purple, pink, gray
     var id: String { rawValue }
     var swiftColor: Color? {

@@ -12,7 +12,6 @@ struct TerminalHandlers: ViewModifier {
     let handleDrop: ([NSItemProvider]) -> Bool
     let installKeyMonitor: () -> Void
     let removeKeyMonitor: () -> Void
-    let showAILauncher: () -> Void
     let showRecentDirs: () -> Void
     let showPalette: () -> Void
 
@@ -32,7 +31,6 @@ struct TerminalHandlers: ViewModifier {
                 sessions: sessions,
                 isKeyWindow: isKeyWindow,
                 hostedWindow: hostedWindow,
-                showAILauncher: showAILauncher,
                 showRecentDirs: showRecentDirs,
                 showPalette: showPalette
             ))
@@ -90,7 +88,6 @@ private struct NotificationHandlersB: ViewModifier {
     let sessions: TerminalSessions
     let isKeyWindow: () -> Bool
     let hostedWindow: () -> NSWindow?
-    let showAILauncher: () -> Void
     let showRecentDirs: () -> Void
     let showPalette: () -> Void
 
@@ -107,9 +104,6 @@ private struct NotificationHandlersB: ViewModifier {
             }
             .onReceive(NotificationCenter.default.publisher(for: .terminalRecentDirs)) { _ in
                 if isKeyWindow() { showRecentDirs() }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .terminalOpenAILauncher)) { _ in
-                if isKeyWindow() { showAILauncher() }
             }
             .onReceive(NotificationCenter.default.publisher(for: .terminalOpenPalette)) { _ in
                 if isKeyWindow() { showPalette() }

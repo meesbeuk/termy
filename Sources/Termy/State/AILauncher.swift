@@ -21,61 +21,33 @@ struct AILauncher: Identifiable, Hashable {
         all
     }
 
-    /// Static catalog. Add more here to make them available. Each will only
-    /// appear in the launcher if the corresponding CLI is on $PATH.
+    /// Static catalog. Icon is an SF Symbol used as a placeholder — real brand
+    /// marks can be dropped into Resources/Logos/ and referenced by `logoAsset`
+    /// when bundled. UI renders all-white regardless of tint.
     static let all: [AILauncher] = [
-        AILauncher(
-            id: "claude",
-            displayName: "Claude Code",
-            cli: "claude",
-            arguments: [],
-            icon: "sparkles",
-            tint: .orange
-        ),
-        AILauncher(
-            id: "codex",
-            displayName: "Codex",
-            cli: "codex",
-            arguments: [],
-            icon: "wand.and.stars",
-            tint: .green
-        ),
-        AILauncher(
-            id: "cursor",
-            displayName: "Cursor",
-            cli: "cursor",
-            arguments: ["."],
-            icon: "cursorarrow.rays",
-            tint: .blue
-        ),
-        AILauncher(
-            id: "code",
-            displayName: "VS Code",
-            cli: "code",
-            arguments: ["."],
-            icon: "chevron.left.forwardslash.chevron.right",
-            tint: .blue
-        ),
-        AILauncher(
-            id: "gh",
-            displayName: "GitHub Copilot",
-            cli: "gh",
-            arguments: ["copilot", "suggest"],
-            icon: "person.fill.questionmark",
-            tint: .purple
-        ),
-        AILauncher(
-            id: "aider",
-            displayName: "Aider",
-            cli: "aider",
-            arguments: [],
-            icon: "ant.fill",
-            tint: .red
-        ),
+        AILauncher(id: "claude",  displayName: "Claude Code",     cli: "claude",
+                   arguments: [], icon: "sparkle", tint: .neutral),
+        AILauncher(id: "codex",   displayName: "Codex",           cli: "codex",
+                   arguments: [], icon: "wand.and.stars.inverse", tint: .neutral),
+        AILauncher(id: "cursor",  displayName: "Cursor",          cli: "cursor",
+                   arguments: ["."], icon: "cursorarrow.click.2", tint: .neutral),
+        AILauncher(id: "code",    displayName: "VS Code",         cli: "code",
+                   arguments: ["."], icon: "chevron.left.forwardslash.chevron.right", tint: .neutral),
+        AILauncher(id: "gh",      displayName: "GitHub Copilot",  cli: "gh",
+                   arguments: ["copilot", "suggest"], icon: "circle.hexagongrid.fill", tint: .neutral),
+        AILauncher(id: "aider",   displayName: "Aider",           cli: "aider",
+                   arguments: [], icon: "hammer.fill", tint: .neutral),
     ]
 }
 
 /// SF-symbol tint colors. Resolved at view time so it's pure data here.
 enum AILauncherTint: Hashable {
     case orange, green, blue, purple, red, neutral
+}
+
+extension AILauncher {
+    /// What the user actually sees typed into the terminal — the CLI + its args.
+    var commandPreview: String {
+        ([cli] + arguments).joined(separator: " ")
+    }
 }
