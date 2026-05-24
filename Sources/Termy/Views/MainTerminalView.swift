@@ -383,19 +383,28 @@ private struct RecentDirsPanel: View {
                 }
             }
         }
-        .onKeyPress(.escape) { onDismiss(); return .handled }
-        .onKeyPress(.return) {
-            if !cwds.isEmpty { onPick(cwds[selected]) }
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            if !cwds.isEmpty { selected = (selected + 1) % cwds.count }
-            return .handled
-        }
-        .onKeyPress(.upArrow) {
-            if !cwds.isEmpty { selected = (selected - 1 + cwds.count) % cwds.count }
-            return .handled
-        }
+        // Use hidden keyboard-shortcut buttons rather than .onKeyPress —
+        // child Buttons in the list can steal focus and prevent the modifier
+        // from firing. keyboardShortcut works regardless of focus.
+        .background(
+            Group {
+                Button("") { onDismiss() }
+                    .keyboardShortcut(.escape, modifiers: [])
+                Button("") {
+                    if !cwds.isEmpty { onPick(cwds[selected]) }
+                }
+                .keyboardShortcut(.return, modifiers: [])
+                Button("") {
+                    if !cwds.isEmpty { selected = (selected + 1) % cwds.count }
+                }
+                .keyboardShortcut(.downArrow, modifiers: [])
+                Button("") {
+                    if !cwds.isEmpty { selected = (selected - 1 + cwds.count) % cwds.count }
+                }
+                .keyboardShortcut(.upArrow, modifiers: [])
+            }
+            .opacity(0).allowsHitTesting(false).frame(width: 0, height: 0)
+        )
     }
 
     private func display(_ path: String) -> String {

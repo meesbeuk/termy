@@ -32,19 +32,29 @@ struct CommandPalette: View {
         .shadow(color: .black.opacity(DS.Modal.shadowOpacity),
                 radius: DS.Modal.shadowRadius, x: 0, y: DS.Modal.shadowY)
         .onAppear { focused = true }
-        .onKeyPress(.escape) { onDismiss(); return .handled }
-        .onKeyPress(.return) {
-            if !filtered.isEmpty { commit(filtered[selected]) }
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            if !filtered.isEmpty { selected = (selected + 1) % filtered.count }
-            return .handled
-        }
-        .onKeyPress(.upArrow) {
-            if !filtered.isEmpty { selected = (selected - 1 + filtered.count) % filtered.count }
-            return .handled
-        }
+        // Hidden buttons with keyboard shortcuts — onKeyPress doesn't fire
+        // when a TextField has focus (the TextField swallows the event), so
+        // we route Escape / Return / Arrows through Buttons which respect
+        // shortcuts regardless of focus.
+        .background(
+            Group {
+                Button("") { onDismiss() }
+                    .keyboardShortcut(.escape, modifiers: [])
+                Button("") {
+                    if !filtered.isEmpty { commit(filtered[selected]) }
+                }
+                .keyboardShortcut(.return, modifiers: [])
+                Button("") {
+                    if !filtered.isEmpty { selected = (selected + 1) % filtered.count }
+                }
+                .keyboardShortcut(.downArrow, modifiers: [])
+                Button("") {
+                    if !filtered.isEmpty { selected = (selected - 1 + filtered.count) % filtered.count }
+                }
+                .keyboardShortcut(.upArrow, modifiers: [])
+            }
+            .opacity(0).allowsHitTesting(false).frame(width: 0, height: 0)
+        )
         .onChange(of: query) { _, _ in selected = 0 }
     }
 
