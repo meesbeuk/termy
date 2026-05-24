@@ -65,6 +65,12 @@ final class TermyTerminalView: LocalProcessTerminalView {
     private var oscBuffer: [UInt8] = []
     private var inOSC = false
 
+    /// Absolute row positions (in the scrollback line buffer) where
+    /// the shell emitted an OSC 133;A (prompt start). Lets `⌘↑/⌘↓`
+    /// jump prompt-to-prompt without the user scrolling. Capped at
+    /// 1000 to bound memory for marathon sessions; oldest dropped.
+    var promptMarks: [Int] = []
+
     // MARK: - Cinema mode (typewriter pacer)
     //
     // Optional feature for users recording Termy demos / screencasts.
@@ -301,6 +307,19 @@ final class TermyTerminalView: LocalProcessTerminalView {
                 onCommandSettled?(preview)
             }
             osc133JustFired = false
+            // Record this prompt's absolute row so ⌘↑/⌘↓ can jump back.
+            // yDisp (public) is the top of the viewport in scrollback;
+            // y (public) is the cursor's row within the viewport. Sum
+            // gives the scrollback-absolute row where the prompt just
+            // landed. De-dupe consecutive identical rows (paste echoes).
+            let buffer = getTerminal().buffer
+            let absRow = buffer.yDisp + buffer.y
+            if promptMarks.last != absRow {
+                promptMarks.append(absRow)
+                if promptMarks.count > 1000 {
+                    promptMarks.removeFirst(promptMarks.count - 1000)
+                }
+            }
         case "C":
             // Command output starts — reset preview so it captures only
             // this command's output, not the prompt prefix.
@@ -324,6 +343,42 @@ final class TermyTerminalView: LocalProcessTerminalView {
             .split(separator: "\n", omittingEmptySubsequences: true)
             .last
             .map(String.init)
+    }
+
+    /// Scroll to the previous prompt mark before the current viewport.
+    /// Falls back to half-page-up when no marks are recorded (shell
+    /// without OSC 133 setup). Returns true if we moved.
+    @discardableResult
+    func jumpToPreviousPrompt() -> Bool {
+        let buffer = getTerminal().buffer
+        let viewportTop = buffer.yDisp
+        let candidate = promptMarks.last(where: { $0 < viewportTop })
+        if let target = candidate {
+            scrollTo(row: max(0, target - 1))
+            return true
+        }
+        // Fallback: scroll half a screen up.
+        let half = max(1, getTerminal().rows / 2)
+        scrollTo(row: max(0, viewportTop - half))
+        return false
+    }
+
+    @discardableResult
+    func jumpToNextPrompt() -> Bool {
+        let buffer = getTerminal().buffer
+        let viewportTop = buffer.yDisp
+        let candidate = promptMarks.first(where: { $0 > viewportTop })
+        if let target = candidate {
+            scrollTo(row: max(0, target - 1))
+            return true
+        }
+        // Fallback: scroll half a screen down. Use the highest known
+        // mark as a stand-in upper bound when we can't read total
+        // line count (internal in SwiftTerm).
+        let upperBound = max(promptMarks.last ?? viewportTop, viewportTop)
+        let half = max(1, getTerminal().rows / 2)
+        scrollTo(row: min(upperBound, viewportTop + half))
+        return false
     }
 
     /// Lazy-install the per-view idle-check timer. Tears down with the

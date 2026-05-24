@@ -153,6 +153,16 @@ private struct NotificationHandlersB: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .terminalOpenPasteHistory)) { _ in
                 if isKeyWindow() { showPasteHistory() }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalJumpPrevPrompt)) { _ in
+                guard isKeyWindow(),
+                      let view = sessions.currentSession?.terminalView as? TermyTerminalView else { return }
+                view.jumpToPreviousPrompt()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalJumpNextPrompt)) { _ in
+                guard isKeyWindow(),
+                      let view = sessions.currentSession?.terminalView as? TermyTerminalView else { return }
+                view.jumpToNextPrompt()
+            }
             // LaunchServices handed us files to open (Finder double-click on
             // .sh, .command, +x binary). Only the key window opens the tabs
             // so each file produces exactly one tab regardless of how many

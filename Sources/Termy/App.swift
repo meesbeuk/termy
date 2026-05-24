@@ -118,6 +118,14 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalToggleFind, object: nil)
                 }
                 .keyboardShortcut("f", modifiers: .command)
+                Button("Jump to Previous Prompt") {
+                    NotificationCenter.default.post(name: .terminalJumpPrevPrompt, object: nil)
+                }
+                .keyboardShortcut(.upArrow, modifiers: .command)
+                Button("Jump to Next Prompt") {
+                    NotificationCenter.default.post(name: .terminalJumpNextPrompt, object: nil)
+                }
+                .keyboardShortcut(.downArrow, modifiers: .command)
                 Button("Use Selection for Find") {
                     NotificationCenter.default.post(name: .terminalFindSelection, object: nil)
                 }
@@ -217,6 +225,8 @@ extension Notification.Name {
     static let terminalOpenSessionLogs = Notification.Name("mees.terminal.openSessionLogs")
     static let terminalFindSelection = Notification.Name("mees.terminal.findSelection")
     static let terminalOpenPasteHistory = Notification.Name("mees.terminal.openPasteHistory")
+    static let terminalJumpPrevPrompt = Notification.Name("mees.terminal.jumpPrevPrompt")
+    static let terminalJumpNextPrompt = Notification.Name("mees.terminal.jumpNextPrompt")
     static let terminalClear = Notification.Name("mees.terminal.clear")
     static let terminalToggleFind = Notification.Name("mees.terminal.toggleFind")
     static let terminalSplitHorizontal = Notification.Name("mees.terminal.splitH")

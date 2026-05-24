@@ -6,6 +6,29 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.29</title>
+            <description><![CDATA[
+                <h2>Jump-to-prompt navigation (⌘↑ / ⌘↓) — Bucket A #5</h2>
+                <ul>
+                    <li><strong>⌘↑ / ⌘↓ jumps to previous / next prompt in scrollback.</strong> Set up the OSC 133 shell snippet (README → Smart command-finished notifications) and Termy tracks every prompt; the shortcuts then scroll directly between commands instead of fiddling with the trackpad through 200 lines of <code>npm install</code> output.</li>
+                    <li>Falls back to half-page scroll when no OSC 133 marks are recorded (shells without the snippet), so the shortcut is always useful.</li>
+                    <li>Each pane keeps its own ring buffer of up to 1000 prompt marks; oldest dropped on overflow.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 08:00:00 +0000</pubDate>
+            <sparkle:version>46</sparkle:version>
+            <sparkle:shortVersionString>0.9.29</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.29/Termy.dmg"
+                sparkle:version="46"
+                sparkle:shortVersionString="0.9.29"
+                length="2933325"
+                sparkle:edSignature="dJd8K9irahwP8EaYJdXqYbdYcAjdCaUsEloRLIynKwTaPhMSnAG9W9GJuSPb5KiniWf5v5YkKoGMf8kyKK0OBA=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.28</title>
             <description><![CDATA[
                 <h2>Paste history (⌘⇧V) — Bucket A #7 from the roadmap</h2>
