@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import SwiftUI
 
 /// Orientation of split panes inside a tab.
 /// `.horizontal` = panes side-by-side (split happens left→right).
@@ -21,6 +22,10 @@ final class TerminalTab: ObservableObject, Identifiable {
     @Published var panes: [TerminalSession]
     @Published var orientation: PaneOrientation = .horizontal
     @Published var activePaneId: UUID?
+    /// Optional color tag shown as a dot on the tab chip.
+    @Published var tagColor: TabTagColor = .none
+    /// Mirror keystrokes typed into the active pane to all panes (iTerm2-style).
+    @Published var broadcastInput: Bool = false
 
     init(initialCwd: String = NSHomeDirectory()) {
         let first = TerminalSession(initialCwd: initialCwd)
@@ -86,4 +91,24 @@ final class TerminalTab: ObservableObject, Identifiable {
     var displayTitle: String {
         activePane?.title ?? panes.first?.title ?? "zsh"
     }
+}
+
+/// Tab tag color — a small set of recognizable hues for fast at-a-glance ID.
+enum TabTagColor: String, CaseIterable, Identifiable {
+    case none, red, orange, yellow, green, blue, purple, pink, gray
+    var id: String { rawValue }
+    var swiftColor: Color? {
+        switch self {
+        case .none: return nil
+        case .red: return .red
+        case .orange: return .orange
+        case .yellow: return .yellow
+        case .green: return .green
+        case .blue: return .blue
+        case .purple: return .purple
+        case .pink: return .pink
+        case .gray: return .gray
+        }
+    }
+    var displayName: String { rawValue.capitalized }
 }

@@ -95,6 +95,10 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalOpenAILauncher, object: nil)
                 }
                 .keyboardShortcut("l", modifiers: .command)
+                Button("Command Palette…") {
+                    NotificationCenter.default.post(name: .terminalOpenPalette, object: nil)
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
             }
         }
     }
@@ -114,6 +118,7 @@ extension Notification.Name {
     static let terminalDuplicateTab = Notification.Name("mees.terminal.dupTab")
     static let terminalRecentDirs = Notification.Name("mees.terminal.recentDirs")
     static let terminalOpenAILauncher = Notification.Name("mees.terminal.aiLauncher")
+    static let terminalOpenPalette = Notification.Name("mees.terminal.palette")
 }
 
 /// Per-window root. Owns its own TerminalSessions so multi-window works.
@@ -142,11 +147,23 @@ struct TerminalWindowRoot: View {
 
 final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
+        let hide = UserDefaults.standard.bool(forKey: "termy.hideFromDock")
+        NSApp.setActivationPolicy(hide ? .accessory : .regular)
         NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let confirm = UserDefaults.standard.bool(forKey: "termy.confirmOnQuit")
+        guard confirm else { return .terminateNow }
+        let alert = NSAlert()
+        alert.messageText = "Quit Termy?"
+        alert.informativeText = "Are you sure you want to quit Termy? All sessions will end."
+        alert.addButton(withTitle: "Quit")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
     }
 }

@@ -15,6 +15,7 @@ struct TerminalSettingsSheet: View {
         ) {
             ScrollView {
                 VStack(alignment: .leading, spacing: DS.Spacing.l) {
+                    generalSection
                     vibecoderSection
                     themeSection
                     fontSection
@@ -24,7 +25,24 @@ struct TerminalSettingsSheet: View {
                     opacitySection
                 }
             }
-            .frame(maxHeight: 480)
+            .frame(maxHeight: 520)
+        }
+    }
+
+    private var generalSection: some View {
+        DSSection("General") {
+            Toggle("Launch at login", isOn: $settings.launchAtLogin)
+                .toggleStyle(.checkbox)
+                .font(DS.Typo.caption)
+            Toggle("Hide from Dock (menu-bar only style)", isOn: $settings.hideFromDock)
+                .toggleStyle(.checkbox)
+                .font(DS.Typo.caption)
+            Toggle("Confirm before quitting", isOn: $settings.confirmOnQuit)
+                .toggleStyle(.checkbox)
+                .font(DS.Typo.caption)
+            Toggle("Copy text on selection", isOn: $settings.copyOnSelect)
+                .toggleStyle(.checkbox)
+                .font(DS.Typo.caption)
         }
     }
 

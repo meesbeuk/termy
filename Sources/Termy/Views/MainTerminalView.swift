@@ -9,7 +9,9 @@ struct MainTerminalView: View {
     @State private var showingSettings = false
     @State private var showingAILauncher = false
     @State private var showingRecentDirs = false
+    @State private var showingPalette = false
     @State private var hostedWindow: NSWindow?
+    @State private var keyMonitor: Any?
 
     var body: some View {
         ZStack {
@@ -29,8 +31,11 @@ struct MainTerminalView: View {
 
                 ZStack {
                     if let tab = sessions.currentTab {
+                        // No .id() — letting SwiftUI diff in place keeps the
+                        // terminal NSView alive across renders so the grid
+                        // doesn't get re-instantiated and double-render stale
+                        // text on resize.
                         PaneLayout(tab: tab, sessions: sessions, settings: settings)
-                            .id(tab.id)
                             .padding(.horizontal, settings.paddingPreset.horizontal)
                             .padding(.vertical, settings.paddingPreset.vertical)
                     } else {
@@ -73,58 +78,79 @@ struct MainTerminalView: View {
                 .transition(.opacity)
                 .zIndex(10)
             }
+
+            if showingPalette {
+                ZStack {
+                    Color.black.opacity(0.10).ignoresSafeArea()
+                        .onTapGesture { showingPalette = false }
+                    CommandPalette(onDismiss: { showingPalette = false })
+                        .environmentObject(sessions)
+                        .environmentObject(settings)
+                }
+                .transition(.opacity)
+                .zIndex(11)
+            }
         }
         .frame(minWidth: 480, idealWidth: 920, maxWidth: .infinity,
                minHeight: 320, idealHeight: 620, maxHeight: .infinity)
         .background(WindowBackdrop(hostedWindow: $hostedWindow))
-        .onReceive(NotificationCenter.default.publisher(for: .terminalNewTab)) { _ in
-            if isKeyWindow { sessions.openTab() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .terminalCloseTab)) { _ in
-            if isKeyWindow { sessions.closeCurrent() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .terminalNextTab)) { _ in
-            if isKeyWindow { sessions.nextTab() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .terminalPreviousTab)) { _ in
-            if isKeyWindow { sessions.previousTab() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .terminalClear)) { _ in
-            if isKeyWindow { sessions.clearCurrent() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .terminalToggleFind)) { _ in
-            if isKeyWindow { performFind() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .terminalSplitHorizontal)) { _ in
-            if isKeyWindow { sessions.splitHorizontal() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .terminalSplitVertical)) { _ in
-            if isKeyWindow { sessions.splitVertical() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .terminalFocusNextPane)) { _ in
-            if isKeyWindow { sessions.focusNextPane() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .terminalFocusPreviousPane)) { _ in
-            if isKeyWindow { sessions.focusPreviousPane() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .terminalDuplicateTab)) { _ in
-            if isKeyWindow { sessions.duplicateCurrentTab() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .terminalRecentDirs)) { _ in
-            if isKeyWindow { showingRecentDirs = true }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .terminalOpenAILauncher)) { _ in
-            if isKeyWindow { showingAILauncher = true }
-        }
+        .modifier(TerminalHandlers(
+            sessions: sessions,
+            isKeyWindow: { isKeyWindow },
+            hostedWindow: { hostedWindow },
+            performFind: performFind,
+            handleDrop: handleDrop,
+            installKeyMonitor: installKeyMonitor,
+            removeKeyMonitor: removeKeyMonitor,
+            showAILauncher: { showingAILauncher = true },
+            showRecentDirs: { showingRecentDirs = true },
+            showPalette: { showingPalette = true }
+        ))
         .sheet(isPresented: $showingSettings) {
             TerminalSettingsSheet(onClose: { showingSettings = false })
                 .environmentObject(settings)
         }
     }
 
+    private func removeKeyMonitor() {
+        if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
+    }
+
     /// Send the launcher's CLI to the active pane as a typed command.
     private func launch(_ launcher: AILauncher) {
         sessions.sendToActivePane(launcher.commandPreview)
+    }
+
+    /// Drop a file/folder from Finder → escaped path types into the active pane.
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                let path = url.path
+                let escaped = path.contains(" ") ? "'\(path)'" : path
+                DispatchQueue.main.async {
+                    sessions.currentSession?.terminalView?.send(txt: escaped + " ")
+                }
+            }
+        }
+        return true
+    }
+
+    /// Local key monitor that mirrors typed characters to all sibling panes
+    /// when the active tab has Broadcast Input enabled. Active pane still gets
+    /// the keystroke through normal AppKit routing — we only forward to others.
+    private func installKeyMonitor() {
+        if keyMonitor != nil { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.window == hostedWindow,
+                  let tab = sessions.currentTab, tab.broadcastInput,
+                  let chars = event.characters, !chars.isEmpty
+            else { return event }
+            for pane in tab.panes where pane.id != tab.activePaneId {
+                pane.terminalView?.send(txt: chars)
+            }
+            return event
+        }
     }
 
     /// Only the currently-focused window should react to global notifications.
@@ -429,11 +455,20 @@ private struct TabChip: View {
 
     var body: some View {
         HStack(spacing: 6) {
+            if let dot = tab.tagColor.swiftColor {
+                Circle().fill(dot).frame(width: 7, height: 7)
+            }
             if tab.panes.count > 1 {
                 Image(systemName: tab.orientation == .horizontal
                       ? "rectangle.split.2x1" : "rectangle.split.1x2")
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
+            }
+            if tab.broadcastInput {
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.orange)
+                    .help("Broadcast input on — keystrokes go to all panes")
             }
             Text(displayTitle)
                 .font(.system(size: 11, weight: .medium))
@@ -465,6 +500,14 @@ private struct TabChip: View {
         .onTapGesture { onSelect() }
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.12)) { isHovering = hovering }
+        }
+        .contextMenu {
+            Menu("Tab Color") {
+                ForEach(TabTagColor.allCases) { c in
+                    Button(c.displayName) { tab.tagColor = c }
+                }
+            }
+            Toggle("Broadcast Input to All Panes", isOn: $tab.broadcastInput)
         }
     }
 

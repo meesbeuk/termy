@@ -19,6 +19,9 @@ struct TerminalSurface: NSViewRepresentable {
 
         let view = LocalProcessTerminalView(frame: .zero)
         applyAppearance(view)
+        // Register for file URL drops — drop a file from Finder → its escaped
+        // path types into the terminal at the cursor (standard terminal UX).
+        view.registerForDraggedTypes([.fileURL])
 
         // Bridge process state back to the session model — title/cwd updates,
         // termination, etc. Coordinator pattern keeps the delegate alive.
@@ -38,6 +41,17 @@ struct TerminalSurface: NSViewRepresentable {
 
     func updateNSView(_ nsView: LocalProcessTerminalView, context: Context) {
         applyAppearance(nsView)
+        // Defensive: force the SwiftTerm NSView to fill its SwiftUI parent's
+        // bounds. SwiftUI's hosting layout sometimes lags by a frame on
+        // resize, leaving stale rendered text behind. Explicit frame sync +
+        // needsDisplay forces a clean redraw at the new grid size.
+        DispatchQueue.main.async {
+            if let parent = nsView.superview, nsView.frame.size != parent.bounds.size {
+                nsView.frame = parent.bounds
+            }
+            nsView.needsLayout = true
+            nsView.needsDisplay = true
+        }
     }
 
     func makeCoordinator() -> Coordinator {

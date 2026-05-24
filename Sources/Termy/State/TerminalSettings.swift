@@ -2,6 +2,7 @@ import Foundation
 import SwiftUI
 import Combine
 import AppKit
+import ServiceManagement
 
 /// User-facing terminal preferences, persisted to UserDefaults.
 @MainActor
@@ -72,6 +73,30 @@ final class TerminalSettings: ObservableObject {
         didSet { UserDefaults.standard.set(showTabBar, forKey: Self.showTabBarKey) }
     }
 
+    // MARK: - Standard app preferences
+
+    @Published var launchAtLogin: Bool {
+        didSet {
+            UserDefaults.standard.set(launchAtLogin, forKey: Self.launchAtLoginKey)
+            applyLaunchAtLogin()
+        }
+    }
+
+    @Published var hideFromDock: Bool {
+        didSet {
+            UserDefaults.standard.set(hideFromDock, forKey: Self.hideFromDockKey)
+            applyDockVisibility()
+        }
+    }
+
+    @Published var confirmOnQuit: Bool {
+        didSet { UserDefaults.standard.set(confirmOnQuit, forKey: Self.confirmOnQuitKey) }
+    }
+
+    @Published var copyOnSelect: Bool {
+        didSet { UserDefaults.standard.set(copyOnSelect, forKey: Self.copyOnSelectKey) }
+    }
+
     var theme: TerminalTheme { TerminalTheme.find(id: themeID) }
 
     static let `default`: CGFloat = 13
@@ -93,6 +118,10 @@ final class TerminalSettings: ObservableObject {
     private static let lineSpacingKey = "termy.lineSpacing"
     private static let showStatusBarKey = "termy.showStatusBar"
     private static let showTabBarKey = "termy.showTabBar"
+    private static let launchAtLoginKey = "termy.launchAtLogin"
+    private static let hideFromDockKey = "termy.hideFromDock"
+    private static let confirmOnQuitKey = "termy.confirmOnQuit"
+    private static let copyOnSelectKey = "termy.copyOnSelect"
 
     init() {
         let saved = UserDefaults.standard.double(forKey: Self.fontSizeKey)
@@ -136,7 +165,38 @@ final class TerminalSettings: ObservableObject {
         } else {
             self.showTabBar = UserDefaults.standard.bool(forKey: Self.showTabBarKey)
         }
+        self.launchAtLogin = UserDefaults.standard.bool(forKey: Self.launchAtLoginKey)
+        self.hideFromDock = UserDefaults.standard.bool(forKey: Self.hideFromDockKey)
+        if UserDefaults.standard.object(forKey: Self.confirmOnQuitKey) == nil {
+            self.confirmOnQuit = false
+        } else {
+            self.confirmOnQuit = UserDefaults.standard.bool(forKey: Self.confirmOnQuitKey)
+        }
+        self.copyOnSelect = UserDefaults.standard.bool(forKey: Self.copyOnSelectKey)
         refreshEffectiveOpacity(screen: NSScreen.main)
+        applyDockVisibility()
+    }
+
+    /// Register/unregister Termy as a login item via ServiceManagement.
+    private func applyLaunchAtLogin() {
+        let enable = launchAtLogin
+        Task.detached {
+            do {
+                if enable {
+                    try SMAppService.mainApp.register()
+                } else {
+                    try SMAppService.mainApp.unregister()
+                }
+            } catch {
+                // Silently ignore — user can retry from settings.
+            }
+        }
+    }
+
+    /// Hide / show the Dock icon. Apple's `setActivationPolicy` is the public API.
+    /// Switching to .accessory removes the Dock icon; .regular brings it back.
+    private func applyDockVisibility() {
+        NSApp.setActivationPolicy(hideFromDock ? .accessory : .regular)
     }
 
     /// Recompute the effective opacity from current settings + screen.
