@@ -101,6 +101,11 @@ final class ProfileStore: ObservableObject {
     }
 
     func remove(_ id: UUID) {
+        // Guard: never leave the store empty. Without this, defaultProfile
+        // falls back to a fresh Profile(name: "Default") every call — looks
+        // OK at first but the synthesized profile has a brand-new UUID each
+        // time, breaking any code that compares IDs.
+        guard profiles.count > 1 else { return }
         profiles.removeAll { $0.id == id }
         if defaultProfileID == id { defaultProfileID = profiles.first?.id }
         save()

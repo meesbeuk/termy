@@ -449,6 +449,7 @@ private struct ProfileRow: View {
     let onSave: (Profile) -> Void
 
     @State private var draft: Profile
+    @State private var showingDeleteConfirm = false
 
     init(profile: Profile, isDefault: Bool, isEditing: Bool,
          onSetDefault: @escaping () -> Void, onEdit: @escaping () -> Void,
@@ -461,6 +462,12 @@ private struct ProfileRow: View {
         self.onDelete = onDelete
         self.onSave = onSave
         _draft = State(initialValue: profile)
+    }
+
+    private func confirmAndDelete() {
+        // Single-profile guard: never let the user delete the last profile.
+        // The seed code expects ProfileStore.profiles non-empty.
+        showingDeleteConfirm = true
     }
 
     var body: some View {
@@ -495,7 +502,7 @@ private struct ProfileRow: View {
                 // raw Image+Button gave a ~10×10pt target that was nearly
                 // impossible to click without zooming.
                 DSIconButton(icon: isEditing ? "chevron.up" : "pencil", action: onEdit)
-                DSIconButton(icon: "trash", action: onDelete, color: DS.Colors.tertiary)
+                DSIconButton(icon: "trash", action: confirmAndDelete, color: DS.Colors.tertiary)
             }
 
             if isEditing {
@@ -529,6 +536,17 @@ private struct ProfileRow: View {
         }
         .onChange(of: profile) { _, new in
             if !isEditing { draft = new }
+        }
+        // Destructive-action confirmation. Prevents an accidental click on the
+        // trash icon from nuking a profile (especially the default one) with
+        // no recourse — UserDefaults state survives launches.
+        .alert("Delete profile \"\(profile.name)\"?", isPresented: $showingDeleteConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive, action: onDelete)
+        } message: {
+            Text(isDefault
+                 ? "This is your default profile. Deleting it promotes another profile to default."
+                 : "This action cannot be undone.")
         }
     }
 }
