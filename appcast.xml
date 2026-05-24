@@ -6,6 +6,33 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.6</title>
+            <description><![CDATA[
+                <h2>Quieter scrollback, no more silent app-quit on ⌘W, real font picker</h2>
+                <ul>
+                    <li><strong>Caret visible from launch</strong> — no more "click a theme to make the cursor appear." Appearance now re-applies on the first non-zero layout pass, so SwiftTerm gets a real frame to position the caret against.</li>
+                    <li><strong>Scrollback survives layout passes</strong> — v0.9.3's reflow-off wrapper fired on every SwiftUI sub-cell layout (hover state, pixel snaps), trimming scrollback to the viewport hundreds of times a second. Now gated on actual cell-grid changes, so scrollback is only trimmed when columns/rows would genuinely change.</li>
+                    <li><strong>⌘W on a single-tab window no longer quits Termy.</strong> Used to cascade: close pane → close tab → close window → terminate app. Now the last tab is replaced with a fresh blank tab; ⌘⇧W still closes the window outright.</li>
+                    <li><strong>Saved tab layout survives an unmounted external drive.</strong> Previously, launching Termy with a saved cwd on an unmounted volume would silently overwrite the saved layout with a blank tab. Now we open a blank tab without persisting, so the layout comes back next time the volume is mounted.</li>
+                    <li><strong>Font picker shows every installed monospaced font</strong> — Nerd Fonts, Berkeley Mono, JetBrains Mono, etc. — instead of a hardcoded 7-entry list.</li>
+                    <li><strong>Drag-drop quoting hardened.</strong> Dropped file paths are now always single-quoted, so a path containing <code>$(...)</code> or backticks can't run shell substitution before you read the command.</li>
+                    <li>Removed two dead settings (<code>lineSpacing</code>, <code>copyOnSelect</code>) that were persisted but never wired through anywhere — kept around as ghosts since v0.8.x.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 18:08:24 +0000</pubDate>
+            <sparkle:version>23</sparkle:version>
+            <sparkle:shortVersionString>0.9.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.6/Termy.dmg"
+                sparkle:version="23"
+                sparkle:shortVersionString="0.9.6"
+                length="2398790"
+                sparkle:edSignature="1VTfEmhRxfWSt3KjwDdut6QhXQf1x8UFW04oGuGYfWhTmAOSjiO0LZqEEA97Oa49UbvtBFl6kyaM4Bx80zwJAg=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.4</title>
             <description><![CDATA[
                 <h2>Cursor on launch, bulletproof resize, stronger adaptive backdrop</h2>
