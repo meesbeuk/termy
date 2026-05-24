@@ -6,6 +6,31 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.7.1</title>
+            <description><![CDATA[
+                <h2>Layout fixes + memoji profile avatars</h2>
+                <ul>
+                    <li>AI launcher row now sits on the same row as the macOS traffic lights (no more separate band below)</li>
+                    <li>Hover labels show the brand name as a non-glitchy inline pill next to the icons</li>
+                    <li>Real LobeHub brand SVGs for Claude Code, OpenAI/Codex, Cursor, Gemini CLI, GitHub Copilot</li>
+                    <li>Profiles UI in Settings with random Tapback memoji avatars per profile (re-roll button in the editor)</li>
+                    <li>Auto-update toggles: auto-check + auto-install in background — never reinstall again</li>
+                    <li>Command Palette now matches the Settings sheet exactly (640×480, sidebar+detail)</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 18:25:00 +0000</pubDate>
+            <sparkle:version>8</sparkle:version>
+            <sparkle:shortVersionString>0.7.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.7.1/Termy.dmg"
+                sparkle:version="8"
+                sparkle:shortVersionString="0.7.1"
+                length="2535740"
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.6.0</title>
             <description><![CDATA[
                 <h2>Density previews + resize smoothness</h2>
