@@ -901,9 +901,17 @@ private struct TabChip: View {
         }
         .contextMenu {
             Button("Rename Tab…") { startRename() }
+            Button("Duplicate Tab") {
+                NotificationCenter.default.post(name: .terminalDuplicateTab, object: nil)
+            }
             Button("Reveal cwd in Finder") {
                 let url = URL(fileURLWithPath: tab.displayCwd)
                 NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+            Button("Copy cwd path") {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(tab.displayCwd, forType: .string)
             }
             if tab.customTitle != nil {
                 Button("Reset to auto title") { tab.customTitle = nil }

@@ -6,6 +6,29 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.23</title>
+            <description><![CDATA[
+                <h2>Small UX polish</h2>
+                <ul>
+                    <li><strong>Tab right-click menu</strong> gains <em>Duplicate Tab</em> and <em>Copy cwd path</em>.</li>
+                    <li><strong>Status-bar cwd right-click</strong> menu: Reveal in Finder, Copy path, Open in new tab.</li>
+                    <li><strong>Settings → About</strong> now links to "What's new in vX.Y.Z →" pointing at the matching GitHub release.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 05:35:00 +0000</pubDate>
+            <sparkle:version>40</sparkle:version>
+            <sparkle:shortVersionString>0.9.23</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.23/Termy.dmg"
+                sparkle:version="40"
+                sparkle:shortVersionString="0.9.23"
+                length="2847287"
+                sparkle:edSignature="IWDzHwYPDpqO8KtXSC7tgR4N1V0u16nCbDhTFepGPmIh7KcVdtAcSFsomJq7LwobkcYLRZc0fVNejktYKB79Dg=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.22</title>
             <description><![CDATA[
                 <h2>Cross-log content search + verified 100-tab stress</h2>

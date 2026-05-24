@@ -45,7 +45,16 @@ struct StatusBar: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Reveal in Finder")
+            .help("Click to reveal in Finder · right-click to copy path")
+            .contextMenu {
+                Button("Reveal in Finder") { revealInFinder() }
+                Button("Copy path") {
+                    let pb = NSPasteboard.general
+                    pb.clearContents()
+                    pb.setString(cwd, forType: .string)
+                }
+                Button("Open in new tab") { sessions.openTabIn(cwd: cwd) }
+            }
             if let branch = gitBranch {
                 HStack(spacing: 3) {
                     Image(systemName: "arrow.triangle.branch")

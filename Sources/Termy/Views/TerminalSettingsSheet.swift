@@ -502,6 +502,11 @@ private struct AboutPane: View {
                             Link("github.com/meesbeuk/termy", destination: url)
                                 .font(DS.Typo.caption)
                         }
+                        if let releaseURL = URL(string: "https://github.com/meesbeuk/termy/releases/tag/v\(version)") {
+                            Link("What's new in v\(version) →", destination: releaseURL)
+                                .font(DS.Typo.caption)
+                                .foregroundStyle(DS.Colors.accent)
+                        }
                     }
                     Spacer()
                 }
