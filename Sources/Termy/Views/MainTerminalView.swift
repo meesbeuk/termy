@@ -159,7 +159,16 @@ struct MainTerminalView: View {
             } else {
                 removeKeyMonitor()
             }
+            syncWindowTitle()
         }
+        // Push the active pane's title/cwd into NSWindow.title so the
+        // Window menu and Dock can distinguish multiple Termy windows.
+        // Without this every window shows up as plain "Termy" — useless
+        // when the user has 3+ open.
+        .onChange(of: sessions.selectedTabId) { _, _ in syncWindowTitle() }
+        .onChange(of: sessions.currentSession?.cwd) { _, _ in syncWindowTitle() }
+        .onChange(of: sessions.currentSession?.title) { _, _ in syncWindowTitle() }
+        .onChange(of: sessions.currentTab?.customTitle) { _, _ in syncWindowTitle() }
         // Window-level Esc handler — Esc never reaches the focused NSTextField
         // in the FindBar because something between the window and the field
         // editor consumes it. Diagnostic logging confirmed
@@ -198,6 +207,31 @@ struct MainTerminalView: View {
 
     private func removeKeyMonitor() {
         if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
+    }
+
+    /// Map the active pane state to NSWindow.title. Format prefers, in
+    /// order: tab custom title, pane title if it differs from "zsh", or
+    /// the cwd basename with `~` folding. NSWindow keeps titleVisibility
+    /// hidden so this doesn't change the chrome — it only feeds the
+    /// Window menu, Dock, and Mission Control labels.
+    private func syncWindowTitle() {
+        guard let window = hostedWindow else { return }
+        let title: String
+        if let custom = sessions.currentTab?.customTitle, !custom.isEmpty {
+            title = custom
+        } else if let paneTitle = sessions.currentSession?.title,
+                  !paneTitle.isEmpty, paneTitle != "zsh", paneTitle != "bash" {
+            title = paneTitle
+        } else if let cwd = sessions.currentSession?.cwd {
+            let home = NSHomeDirectory()
+            let folded = cwd.hasPrefix(home) ? "~" + cwd.dropFirst(home.count) : cwd
+            title = (folded as NSString).lastPathComponent
+        } else {
+            title = "Termy"
+        }
+        if window.title != title {
+            window.title = title
+        }
     }
 
     /// Send the launcher's CLI to the active pane + auto-execute it.

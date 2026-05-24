@@ -6,6 +6,28 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.26</title>
+            <description><![CDATA[
+                <h2>Dynamic window titles</h2>
+                <ul>
+                    <li><strong>NSWindow.title now reflects the active pane</strong> — Window menu, Dock right-click "windows" list, and Mission Control labels can finally tell multi-window users which Termy window is which. Title source: custom tab title → pane title (if non-default) → cwd basename with <code>~</code> folding.</li>
+                    <li>The visible chrome stays unchanged (title bar still hidden) — this only feeds the macOS chrome around the window.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 06:35:00 +0000</pubDate>
+            <sparkle:version>43</sparkle:version>
+            <sparkle:shortVersionString>0.9.26</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.26/Termy.dmg"
+                sparkle:version="43"
+                sparkle:shortVersionString="0.9.26"
+                length="2862537"
+                sparkle:edSignature="oLUGCbSotUSuconxk6oxEqmSaU3qbbLHDYK7wB58Z268cabBOhZfdOzbbmOm1PsUIRpRFoeZ8O3eNvT70MhlCg=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.25</title>
             <description><![CDATA[
                 <h2>⌘E Use Selection for Find + Help menu links</h2>
