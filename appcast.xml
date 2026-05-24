@@ -6,6 +6,25 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.12 (hotfix)</title>
+            <description><![CDATA[
+                <h2>Crash fix — ProfileAvatar arithmetic overflow</h2>
+                <p>Crash log analysis surfaced a Swift runtime trap in <code>ProfileAvatar.angleOffset</code>: the FNV-1a seed hash could be close to Int.max, and the <code>* 17</code> spread multiply was overflowing Int and trapping. Affected v0.9.7–v0.9.11 intermittently on theme switches and settings sheet renders. Fixed by reducing modulo 360 before the multiply and using overflow-wrapping arithmetic.</p>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 01:15:00 +0000</pubDate>
+            <sparkle:version>29</sparkle:version>
+            <sparkle:shortVersionString>0.9.12</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.12/Termy.dmg"
+                sparkle:version="29"
+                sparkle:shortVersionString="0.9.12"
+                length="2658235"
+                sparkle:edSignature="7S65L1JIyL0gK4ddIY7A8mq0OYVSzUKp6N7JJsX670qM7XMzfYGAbadAJPgqSDi6uV+1LqaCNx8L1RKOC8uNDQ=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.11</title>
             <description><![CDATA[
                 <h2>Smart notifications, simpler Settings, tab right-click menu, ⌘1-⌘9, reveal in Finder</h2>

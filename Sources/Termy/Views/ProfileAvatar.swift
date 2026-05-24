@@ -62,7 +62,12 @@ struct ProfileAvatar: View {
     }
 
     private var angleOffset: Double {
-        Double((seedHash * 17) % 360)
+        // `seedHash` can be close to Int.max (UInt64 truncated). Reduce
+        // it modulo 360 BEFORE the spread multiply, otherwise the multiply
+        // overflows Int and traps at runtime — that crashed v0.9.7-0.9.11
+        // intermittently on theme switches / settings sheet renders.
+        let reduced = seedHash % 360
+        return Double(((reduced &* 17) % 360 + 360) % 360)
     }
 
     /// Stable FNV-1a-ish hash of the avatar seed. Cheap, deterministic, doesn't
