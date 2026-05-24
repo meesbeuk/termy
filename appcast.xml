@@ -6,6 +6,26 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.8.4</title>
+            <description><![CDATA[
+                <h2>Escape closes modals reliably</h2>
+                <ul>
+                    <li>Command Palette and Recent Directories now close on Escape regardless of focus — previously the TextField inside the palette was eating the keystroke.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 19:05:00 +0000</pubDate>
+            <sparkle:version>14</sparkle:version>
+            <sparkle:shortVersionString>0.8.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.8.4/Termy.dmg"
+                sparkle:version="14"
+                sparkle:shortVersionString="0.8.4"
+                length="2525064"
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.8.3</title>
             <description><![CDATA[
                 <h2>Settings honesty pass</h2>
