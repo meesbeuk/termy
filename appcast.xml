@@ -6,6 +6,28 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.20</title>
+            <description><![CDATA[
+                <h2>Profile picker on + button, Reset all settings</h2>
+                <ul>
+                    <li><strong>Right-click the + new-tab button</strong> to pick a profile. Previously the only way to open a tab with a non-default profile was the Dock right-click menu — now it's one right-click in the tab bar.</li>
+                    <li><strong>Settings → About → Reset all Termy settings.</strong> Restores every preference (themes, profiles, tab layouts, notifications, etc.) to factory defaults. Quits Termy afterwards; relaunch starts fresh. Files on disk untouched.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 04:30:00 +0000</pubDate>
+            <sparkle:version>37</sparkle:version>
+            <sparkle:shortVersionString>0.9.20</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.20/Termy.dmg"
+                sparkle:version="37"
+                sparkle:shortVersionString="0.9.20"
+                length="2745888"
+                sparkle:edSignature="AqNk7kJMKk8o0W0licagCfidV71YuWLanFiv4/O5kCkqtDOB1uaKvn5bEHt3SO9hfHnepaXObYRXtF0m1AFkAw=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.19</title>
             <description><![CDATA[
                 <h2>Drag-resizable pane dividers</h2>

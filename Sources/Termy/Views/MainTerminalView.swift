@@ -684,6 +684,25 @@ private struct TabBar: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
+                .help("New tab (⌘T) — right-click to choose profile")
+                .accessibilityLabel("New tab")
+                // Right-click + button offers a profile picker so users
+                // can open a tab with a specific saved profile without
+                // going to the Dock menu. Lists every defined profile;
+                // 'Default' is the same as a left-click.
+                .contextMenu {
+                    if let store = sessions.profileStore {
+                        Button("New Tab (Default)") { sessions.openTab() }
+                        if store.profiles.count > 1 {
+                            Divider()
+                            ForEach(store.profiles) { p in
+                                Button(p.name) { sessions.openTab(profile: p) }
+                            }
+                        }
+                    } else {
+                        Button("New Tab") { sessions.openTab() }
+                    }
+                }
                 Spacer()
             }
             .padding(.horizontal, 10)

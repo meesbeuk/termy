@@ -463,6 +463,8 @@ private struct QuakePane: View {
 }
 
 private struct AboutPane: View {
+    @State private var showingResetConfirm = false
+
     private var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
     }
@@ -471,38 +473,81 @@ private struct AboutPane: View {
     }
 
     var body: some View {
-        DSSection("About") {
-            HStack(alignment: .top, spacing: DS.Spacing.l) {
-                if let icon = NSImage(named: "AppIcon") {
-                    Image(nsImage: icon)
-                        .resizable().interpolation(.medium)
-                        .frame(width: 64, height: 64)
-                } else {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.black)
-                        .frame(width: 64, height: 64)
-                        .overlay(
-                            Text("T").font(.system(size: 32, weight: .bold))
-                                .foregroundStyle(.white)
-                        )
-                }
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Termy")
-                        .font(DS.Typo.title)
-                    Text("Version \(version) (build \(build))")
-                        .font(DS.Typo.caption)
-                        .foregroundStyle(DS.Colors.secondary)
-                    Text("A native macOS terminal for vibecoders.")
-                        .font(DS.Typo.caption)
-                        .foregroundStyle(DS.Colors.tertiary)
-                    if let url = URL(string: "https://github.com/meesbeuk/termy") {
-                        Link("github.com/meesbeuk/termy", destination: url)
-                            .font(DS.Typo.caption)
+        VStack(alignment: .leading, spacing: DS.Spacing.l) {
+            DSSection("About") {
+                HStack(alignment: .top, spacing: DS.Spacing.l) {
+                    if let icon = NSImage(named: "AppIcon") {
+                        Image(nsImage: icon)
+                            .resizable().interpolation(.medium)
+                            .frame(width: 64, height: 64)
+                    } else {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.black)
+                            .frame(width: 64, height: 64)
+                            .overlay(
+                                Text("T").font(.system(size: 32, weight: .bold))
+                                    .foregroundStyle(.white)
+                            )
                     }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Termy")
+                            .font(DS.Typo.title)
+                        Text("Version \(version) (build \(build))")
+                            .font(DS.Typo.caption)
+                            .foregroundStyle(DS.Colors.secondary)
+                        Text("A native macOS terminal for vibecoders.")
+                            .font(DS.Typo.caption)
+                            .foregroundStyle(DS.Colors.tertiary)
+                        if let url = URL(string: "https://github.com/meesbeuk/termy") {
+                            Link("github.com/meesbeuk/termy", destination: url)
+                                .font(DS.Typo.caption)
+                        }
+                    }
+                    Spacer()
                 }
-                Spacer()
+            }
+
+            DSSection("Reset") {
+                Button(role: .destructive, action: { showingResetConfirm = true }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.counterclockwise")
+                        Text("Reset all Termy settings…")
+                    }
+                    .font(DS.Typo.caption)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(DS.Colors.danger.opacity(0.85))
+                Text("Restore every preference (theme, font, density, profiles, tabs, restore keys, etc.) to factory defaults. Won't touch your shell config or files. Termy quits afterwards — relaunch to start fresh.")
+                    .font(DS.Typo.tiny)
+                    .foregroundStyle(DS.Colors.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .alert("Reset all Termy settings?", isPresented: $showingResetConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset", role: .destructive) { resetAndQuit() }
+        } message: {
+            Text("This removes every Termy-owned preference — themes, profiles, saved tab layouts, notification toggles. Termy quits afterwards. Files on disk are untouched.")
+        }
+    }
+
+    /// Drops every UserDefaults key under the `termy.` namespace plus
+    /// the per-window restoreKeys, then exits. Sparkle's own SU* keys are
+    /// left alone — they're tied to update history and don't need a reset.
+    private func resetAndQuit() {
+        let defaults = UserDefaults.standard
+        let dict = defaults.dictionaryRepresentation()
+        for key in dict.keys where key.hasPrefix("termy.") || key.hasPrefix("mees.terminal.") {
+            defaults.removeObject(forKey: key)
+        }
+        // Per-window restore keys are UUID strings — flush them too.
+        if let windowKeys = defaults.stringArray(forKey: "mees.terminal.windowKeys.v1") {
+            for k in windowKeys { defaults.removeObject(forKey: k) }
+        }
+        defaults.removeObject(forKey: "mees.terminal.windowKeys.v1")
+        defaults.removeObject(forKey: "mees.terminal.restoreTabs.v2")
+        defaults.synchronize()
+        NSApp.terminate(nil)
     }
 }
 
