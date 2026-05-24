@@ -491,18 +491,11 @@ private struct ProfileRow: View {
                         .font(DS.Typo.tiny)
                         .foregroundStyle(DS.Colors.tertiary)
                 }
-                Button(action: onEdit) {
-                    Image(systemName: isEditing ? "chevron.up" : "pencil")
-                        .font(.system(size: 10))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(DS.Colors.secondary)
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(.system(size: 10))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(DS.Colors.tertiary)
+                // Use DSIconButton for proper 22×22 hit areas — the previous
+                // raw Image+Button gave a ~10×10pt target that was nearly
+                // impossible to click without zooming.
+                DSIconButton(icon: isEditing ? "chevron.up" : "pencil", action: onEdit)
+                DSIconButton(icon: "trash", action: onDelete, color: DS.Colors.tertiary)
             }
 
             if isEditing {
