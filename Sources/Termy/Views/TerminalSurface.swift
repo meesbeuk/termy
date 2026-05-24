@@ -74,21 +74,10 @@ struct TerminalSurface: NSViewRepresentable {
             ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
         view.font = font
 
-        // Cursor style + blink via DECSCUSR escape sequence — the standard
-        // terminal way to set the cursor shape. Codes:
-        //   1 blink block, 2 steady block, 3 blink underline,
-        //   4 steady underline, 5 blink bar, 6 steady bar
-        let cursorCode: Int = {
-            switch (settings.cursorStyle, settings.cursorBlink) {
-            case (.block, true):     return 1
-            case (.block, false):    return 2
-            case (.underline, true): return 3
-            case (.underline, false):return 4
-            case (.bar, true):       return 5
-            case (.bar, false):      return 6
-            }
-        }()
-        view.feed(text: "\u{001B}[\(cursorCode) q")
+        // Cursor style: SwiftTerm's public surface doesn't expose this in a
+        // way we can reliably set, and the DECSCUSR escape sequence path
+        // corrupted the buffer when fed pre-startProcess. Settings are
+        // persisted but the toggle is currently visual-only.
 
         // Fully transparent — the window's adaptive backdrop is the single
         // source of opacity for the entire app. No per-element backgrounds.
