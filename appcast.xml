@@ -6,6 +6,27 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.1</title>
+            <description><![CDATA[
+                <h2>Readable on any backdrop</h2>
+                <ul>
+                    <li>Terminal text is now legible whether you're over a dark wallpaper, a white app, or anything else — switched the window backdrop from .ultraThinMaterial to NSVisualEffectView's .hudWindow material, which stays dark-glassy regardless of what's behind.</li>
+                    <li>README rewritten with full feature list, shortcuts, settings tour, and honest known-limitations section.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 19:40:00 +0000</pubDate>
+            <sparkle:version>18</sparkle:version>
+            <sparkle:shortVersionString>0.9.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.1/Termy.dmg"
+                sparkle:version="18"
+                sparkle:shortVersionString="0.9.1"
+                length="2552340"
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.0</title>
             <description><![CDATA[
                 <h2>Dock right-click menu + bell notifications</h2>
