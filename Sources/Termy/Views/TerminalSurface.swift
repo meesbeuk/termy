@@ -6,6 +6,19 @@ import SwiftTerm
 /// Each instance owns a separate shell process — its lifecycle is tied to the
 /// `TerminalSession` model, not to the view tree, so tab switches don't fork
 /// new shells.
+/// Subclass that hooks the bell so we can fire a notification when an
+/// unfocused window beeps. Overriding the view-level `bell(source: Terminal)`
+/// is safe — it doesn't touch the terminalDelegate (replacing that would
+/// disconnect keyboard input, as v0.8.0–0.8.2 painfully proved).
+final class TermyTerminalView: LocalProcessTerminalView {
+    var onBell: (() -> Void)?
+
+    override func bell(source: Terminal) {
+        super.bell(source: source)
+        onBell?()
+    }
+}
+
 struct TerminalSurface: NSViewRepresentable {
     @ObservedObject var session: TerminalSession
     @ObservedObject var sessions: TerminalSessions
@@ -17,7 +30,14 @@ struct TerminalSurface: NSViewRepresentable {
             return existing
         }
 
-        let view = LocalProcessTerminalView(frame: .zero)
+        let view = TermyTerminalView(frame: .zero)
+        view.onBell = { [weak session] in
+            guard let session else { return }
+            TermyNotifications.shared.bell(
+                window: session.terminalView?.window,
+                cwd: session.cwd
+            )
+        }
         applyAppearance(view)
         // CRITICAL: autoresizing makes AppKit propagate every superview size
         // change down to this view, which fires SwiftTerm's setFrameSize →

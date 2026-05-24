@@ -17,11 +17,16 @@ struct TermyApp: App {
         // works naturally — Cmd+N opens a separate independent terminal window
         // with its own tab list and shell processes.
         WindowGroup("Termy", id: "terminal") {
-            TerminalWindowRoot()
-                .environmentObject(settings)
-                .environmentObject(profiles)
-                .environmentObject(workflows)
-                .environmentObject(updater)
+            ZStack {
+                TerminalWindowRoot()
+                // Invisible bridge that hands the AppDelegate the closure it
+                // needs to open new WindowGroup windows from the Dock menu.
+                DockMenuBridge(delegate: delegate)
+            }
+            .environmentObject(settings)
+            .environmentObject(profiles)
+            .environmentObject(workflows)
+            .environmentObject(updater)
         }
         .windowStyle(.hiddenTitleBar)
         // .automatic = window can be freely resized; SwiftTerm reflows its
@@ -181,6 +186,17 @@ struct TerminalWindowRoot: View {
 }
 
 final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
+    /// Wired from the SwiftUI scene (via `DockMenuBridge`) so AppKit's Dock
+    /// menu — which lives outside the SwiftUI environment — can still ask
+    /// the scene to spawn a new window.
+    var openNewWindow: (() -> Void)?
+    /// Live snapshot of the user's profiles, supplied by the scene. Used to
+    /// populate the "New Tab with Profile" submenu in the Dock menu.
+    var profilesProvider: (() -> [Profile])?
+    /// Profile ID requested by the Dock menu — consumed by the next openTab
+    /// call in the active window.
+    static var pendingDockProfileID: UUID?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         let hide = UserDefaults.standard.bool(forKey: "termy.hideFromDock")
         NSApp.setActivationPolicy(hide ? .accessory : .regular)
@@ -200,5 +216,88 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Quit")
         alert.addButton(withTitle: "Cancel")
         return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+    }
+
+    /// Right-click Termy in the Dock → this menu. macOS appends its own
+    /// items (Show All Windows / Hide / Quit / open windows list) below.
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+
+        let nw = NSMenuItem(title: "New Window", action: #selector(dockNewWindow), keyEquivalent: "")
+        nw.target = self
+        menu.addItem(nw)
+
+        let nt = NSMenuItem(title: "New Tab", action: #selector(dockNewTab), keyEquivalent: "")
+        nt.target = self
+        menu.addItem(nt)
+
+        let quick = NSMenuItem(title: "Quick Terminal", action: #selector(dockNewWindow), keyEquivalent: "")
+        quick.target = self
+        menu.addItem(quick)
+
+        // Profile submenu — only meaningful when the user has > 1 profile,
+        // otherwise the entries would all do the same thing as "New Tab".
+        if let profs = profilesProvider?(), profs.count > 1 {
+            menu.addItem(.separator())
+            let sub = NSMenu()
+            for p in profs {
+                let item = NSMenuItem(title: p.name, action: #selector(dockNewTabWithProfile(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = p.id.uuidString
+                sub.addItem(item)
+            }
+            let parent = NSMenuItem(title: "New Tab with Profile", action: nil, keyEquivalent: "")
+            parent.submenu = sub
+            menu.addItem(parent)
+        }
+
+        return menu
+    }
+
+    @objc private func dockNewWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        openNewWindow?()
+    }
+
+    @objc private func dockNewTab() {
+        NSApp.activate(ignoringOtherApps: true)
+        // If there's no open window yet (app launched into accessory mode or
+        // all closed), the notification has no handler — fall back to opening
+        // a window, which auto-creates a fresh tab.
+        if NSApp.windows.contains(where: { $0.isVisible }) {
+            NotificationCenter.default.post(name: .terminalNewTab, object: nil)
+        } else {
+            openNewWindow?()
+        }
+    }
+
+    @objc private func dockNewTabWithProfile(_ sender: NSMenuItem) {
+        guard let idStr = sender.representedObject as? String,
+              let id = UUID(uuidString: idStr) else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        TerminalAppDelegate.pendingDockProfileID = id
+        if NSApp.windows.contains(where: { $0.isVisible }) {
+            NotificationCenter.default.post(name: .terminalNewTab, object: nil)
+        } else {
+            openNewWindow?()
+        }
+    }
+}
+
+/// Bridges AppKit's Dock menu callbacks back into the SwiftUI scene. Lives
+/// invisibly inside `TermyApp` so it can capture `@Environment(\.openWindow)`,
+/// which is the only sanctioned way to spawn a `WindowGroup` window.
+struct DockMenuBridge: View {
+    @EnvironmentObject var profiles: ProfileStore
+    @Environment(\.openWindow) private var openWindow
+    let delegate: TerminalAppDelegate
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onAppear {
+                delegate.openNewWindow = { openWindow(id: "terminal") }
+                delegate.profilesProvider = { profiles.profiles }
+            }
     }
 }

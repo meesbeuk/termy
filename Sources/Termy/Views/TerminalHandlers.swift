@@ -58,7 +58,16 @@ private struct NotificationHandlersA: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onReceive(NotificationCenter.default.publisher(for: .terminalNewTab)) { _ in
-                if isKeyWindow() { sessions.openTab() }
+                guard isKeyWindow() else { return }
+                // Consume any profile ID requested via the Dock menu, then
+                // clear it so the next ⌘T uses the default profile again.
+                if let id = TerminalAppDelegate.pendingDockProfileID {
+                    TerminalAppDelegate.pendingDockProfileID = nil
+                    let profile = sessions.profileStore?.profiles.first(where: { $0.id == id })
+                    sessions.openTab(profile: profile)
+                } else {
+                    sessions.openTab()
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .terminalCloseTab)) { _ in
                 if isKeyWindow() { sessions.closeCurrent() }

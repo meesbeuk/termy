@@ -170,6 +170,12 @@ private struct GeneralPane: View {
                 .toggleStyle(.checkbox).font(DS.Typo.caption)
             Toggle("Confirm before quitting", isOn: $settings.confirmOnQuit)
                 .toggleStyle(.checkbox).font(DS.Typo.caption)
+            Toggle("Notify when an unfocused window beeps", isOn: $settings.notifyOnBell)
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
+            Text("Hooks the terminal BEL. Pair with `precmd() { print -n \"\\a\" }` in zsh to get a system notification when a long command finishes in a background window.")
+                .font(DS.Typo.tiny)
+                .foregroundStyle(DS.Colors.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
             // `copyOnSelect` removed — SwiftTerm doesn't expose a selection
             // hook we can wire it through, so the toggle did nothing.
         }

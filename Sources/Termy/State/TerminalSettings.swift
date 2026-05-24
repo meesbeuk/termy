@@ -88,6 +88,13 @@ final class TerminalSettings: ObservableObject {
         didSet { UserDefaults.standard.set(confirmOnQuit, forKey: Self.confirmOnQuitKey) }
     }
 
+    /// Show a system notification when a terminal pane emits BEL while its
+    /// window isn't focused. Pair with a shell `precmd` that rings the bell
+    /// to get "command finished" alerts for long-running work.
+    @Published var notifyOnBell: Bool {
+        didSet { UserDefaults.standard.set(notifyOnBell, forKey: Self.notifyOnBellKey) }
+    }
+
     @Published var copyOnSelect: Bool {
         didSet { UserDefaults.standard.set(copyOnSelect, forKey: Self.copyOnSelectKey) }
     }
@@ -115,6 +122,7 @@ final class TerminalSettings: ObservableObject {
     private static let hideFromDockKey = "termy.hideFromDock"
     private static let confirmOnQuitKey = "termy.confirmOnQuit"
     private static let copyOnSelectKey = "termy.copyOnSelect"
+    private static let notifyOnBellKey = "termy.notifyOnBell"
 
     init() {
         let saved = UserDefaults.standard.double(forKey: Self.fontSizeKey)
@@ -159,6 +167,9 @@ final class TerminalSettings: ObservableObject {
             self.confirmOnQuit = UserDefaults.standard.bool(forKey: Self.confirmOnQuitKey)
         }
         self.copyOnSelect = UserDefaults.standard.bool(forKey: Self.copyOnSelectKey)
+        // Default-off so we don't pop a notification-permission dialog at
+        // first launch with no user context.
+        self.notifyOnBell = UserDefaults.standard.bool(forKey: Self.notifyOnBellKey)
         refreshEffectiveOpacity(screen: NSScreen.main)
         applyDockVisibility()
     }
