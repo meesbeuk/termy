@@ -6,6 +6,29 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.6.0</title>
+            <description><![CDATA[
+                <h2>Density previews + resize smoothness</h2>
+                <ul>
+                    <li>Density preview now shows a real mini-terminal at each preset's actual padding — compact/cozy/spacious are visibly distinct</li>
+                    <li>Resize is smooth: AppKit autoresizing drives SwiftTerm directly, no stale text on window drag</li>
+                    <li>AI quick launch actually executes the command (sends CR, not LF)</li>
+                    <li>Removed redundant cwd label from title strip</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 17:55:00 +0000</pubDate>
+            <sparkle:version>6</sparkle:version>
+            <sparkle:shortVersionString>0.6.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.6.0/Termy.dmg"
+                sparkle:version="6"
+                sparkle:shortVersionString="0.6.0"
+                length="2438417"
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.5.0</title>
             <description><![CDATA[
                 <h2>Visual previews + auto-updater</h2>
