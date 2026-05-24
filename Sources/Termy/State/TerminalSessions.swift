@@ -156,6 +156,22 @@ final class TerminalSessions: ObservableObject {
         selectedTabId = id
     }
 
+    /// Jump to the tab at the given 1-indexed position. Returns silently if
+    /// `n` is out of range. `n == .max` selects the last tab regardless of
+    /// count (matches the standard ⌘9-is-last browser convention).
+    func selectTabByPosition(_ n: Int) {
+        guard !tabs.isEmpty else { return }
+        let idx: Int
+        if n == Int.max {
+            idx = tabs.count - 1
+        } else if n >= 1 && n <= tabs.count {
+            idx = n - 1
+        } else {
+            return
+        }
+        selectedTabId = tabs[idx].id
+    }
+
     func nextTab() {
         guard !tabs.isEmpty else { return }
         let i = tabs.firstIndex(where: { $0.id == selectedTabId }) ?? 0
@@ -202,6 +218,17 @@ final class TerminalSessions: ObservableObject {
             }
             persist()
         }
+    }
+
+    /// Close every tab except the given one. Used by the tab right-click
+    /// menu's "Close Other Tabs" item — common terminal-app affordance.
+    func closeOtherTabs(keeping id: UUID) {
+        for tab in tabs where tab.id != id {
+            for pane in tab.panes { pane.terminalView?.terminate() }
+        }
+        tabs.removeAll { $0.id != id }
+        selectedTabId = id
+        persist()
     }
 
     func closeTab(_ id: UUID) {

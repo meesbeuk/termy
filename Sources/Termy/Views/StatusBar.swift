@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+import AppKit
 
 /// Slim bar pinned to the bottom of the window. Shows the active pane's cwd
 /// (with `~` folding) + git branch (when the cwd is inside a repo) + clock.
@@ -28,16 +29,21 @@ struct StatusBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            HStack(spacing: 4) {
-                Image(systemName: "folder")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                Text(displayCwd)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            Button(action: revealInFinder) {
+                HStack(spacing: 4) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                    Text(displayCwd)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .help("Reveal in Finder")
             if let branch = gitBranch {
                 HStack(spacing: 3) {
                     Image(systemName: "arrow.triangle.branch")
@@ -60,6 +66,13 @@ struct StatusBar: View {
         .onChange(of: cwd) { _, _ in resolveGit(force: true) }
         .onReceive(clockTimer) { now = $0 }
         .onReceive(gitTimer) { _ in resolveGit(force: false) }
+    }
+
+    private func revealInFinder() {
+        let path = cwd
+        guard !path.isEmpty else { return }
+        let url = URL(fileURLWithPath: path)
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     private var clockString: String {

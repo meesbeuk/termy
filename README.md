@@ -1,139 +1,115 @@
-# Termy
+<h1 align="center">Termy</h1>
 
-A fast, native macOS terminal **built for vibecoders** — Apple Liquid Glass aesthetic, one-click access to Claude / Codex / Cursor / Gemini CLI / GitHub Copilot from the title strip, and a profile-aware session model so every shell session matches your setup.
+<p align="center">
+  <strong>A native macOS terminal built for AI workflows.</strong><br/>
+  Liquid glass aesthetic, one-key launchers for Claude Code and Codex, a real Quake drop-down, and inline scrollback search — all in a single app that opens in &lt;0.5s.
+</p>
 
-Built in SwiftUI + AppKit on top of [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) for the actual terminal emulation, wrapped in a polished window that uses the `.hudWindow` material so text stays readable on any backdrop (white app, dark photo, anything).
+<p align="center">
+  <a href="https://github.com/meesbeuk/termy/releases/latest">
+    <img alt="Download" src="https://img.shields.io/github/v/release/meesbeuk/termy?style=for-the-badge&label=Download&color=000000">
+  </a>
+  <a href="https://github.com/meesbeuk/termy/blob/main/LICENSE">
+    <img alt="MIT License" src="https://img.shields.io/github/license/meesbeuk/termy?style=for-the-badge&color=000000">
+  </a>
+  <img alt="macOS 15+" src="https://img.shields.io/badge/macOS-15%2B-000000?style=for-the-badge">
+  <img alt="Apple Silicon" src="https://img.shields.io/badge/Apple%20Silicon-✓-000000?style=for-the-badge">
+</p>
+
+---
 
 ## Why Termy
 
-iTerm2 is powerful but dated. Warp is great but cloud-tied. Apple's Terminal.app is bare. Termy is for people who want **a clean fast native macOS terminal that knows you live in AI tools** — Claude, Codex, Cursor — without forcing you into a specific workflow.
+iTerm2 is dated. Warp is cloud-locked. Apple's Terminal.app is barebones. **Termy is what a 2026 macOS terminal should be** — fast, native, beautiful, and aware that your shell sessions are mostly running AI coding tools.
 
-## Features
-
-### Vibecoder workflow
-- **Vibecoder Mode** (default on) — quick-launch row in the title strip for Claude Code, OpenAI Codex, Cursor, Gemini CLI, GitHub Copilot, Aider. One click runs the CLI with Enter, not just types it.
-- **Real brand icons** — bundled SVGs from [LobeHub](https://lobehub.com/icons), rendered template-mode so they tint with the active theme.
-- **Hover label** — pill next to the icon shows the tool name; no SF Symbol guessing game.
-
-### Sessions
-- **Tabs + splits** in one window — `⌘T` new tab, `⌘D` horizontal split, `⌘⇧D` vertical split, `⌘⌥]/[` cycle focus.
-- **Multi-window** — `⌘N` opens a new independent window with its own tab list.
-- **Quake-style drop-down terminal** — `⌃`` (Control-backtick) slides a persistent panel down from the top of the active display. Same panel toggles in and out; its shell stays alive between toggles so it's instant. Hides on focus loss.
-- **Duplicate tab** — `⌘⇧T`.
-- **Recent directories** picker — `⌘⌥/` to jump back into any cwd from any tab.
-- **Broadcast input** — mirror keystrokes to every pane in a tab (right-click the tab to toggle).
-- **Drag-drop** file paths from Finder straight into the active pane (auto-quoted).
-- **Inline find** — `⌘F` opens a search-as-you-type bar with case + regex toggles; `⌘G` / `⌘⇧G` cycles matches.
-
-### Profiles
-- Saved shell configurations: name, shell path, args, initial cwd, environment overrides, tag color.
-- **Per-profile avatar** — local deterministic gradient + initial circle keyed off a stable seed so you can pick your profile out at a glance. Re-roll button generates a fresh seed.
-- Set a default profile and every new tab uses its shell / env / cwd.
-- Right-click Termy in the Dock → **New Tab with Profile** submenu.
-- Delete confirmation + last-profile guard so you can't end up with zero profiles.
-
-### Look
-- **NSVisualEffectView `.hudWindow` material** for the window backdrop — dark glassy surface that stays readable on a white app behind it, not just on dark wallpapers.
-- **Adaptive tint** layered on top — small extra darken on light wallpapers, full glass on dark.
-- **17 themes** in three categories: Modern Dark (Tokyo Night, Catppuccin Mocha, Dracula, Nord, One Dark, Ayu Dark, Monokai Pro, Material Dark, Night Owl, Palenight, Synthwave '84), Classic Dark (Default, Solarized, Gruvbox), Light (Solarized Light, Gruvbox Light, GitHub Light).
-- **Live theme switching** — no restart.
-- **Density presets** — Compact / Cozy / Spacious, with a real mini-terminal preview showing the actual padding each produces.
-- **Font family + size** with live preview; `⌘+ / ⌘- / ⌘0` for size.
-- **Tab tag colors** — 9 options, set per tab via right-click or per profile.
-
-### Quality of life
-- **Command Palette** — `⌘⇧P`, fuzzy jump to tab / theme / action / SSH host. Sidebar layout matches the Settings sheet.
-- **Visible chrome icons** — every keyboard shortcut also has a clickable icon in the title strip (search, palette, recent dirs, splits, Quake drop-down, settings) so features are discoverable without reading docs.
-- **SSH profile manager** — reads `~/.ssh/config` plus any `Include` directives (e.g. `~/.ssh/config.d/*`) and surfaces hosts in the Command Palette.
-- **Status bar** — cwd (with `~` folding), git branch (worktree + submodule safe), clock.
-- **Process-done notifications** — toggle in General settings; add `precmd() { print -n "\a" }` to `.zshrc` to get a system notification when a long command finishes in a background window.
-- **Sparkle auto-updater** — Settings → Updates → "Automatically check" + "Automatically download + install in background". No reinstalls.
-- **Persistent across launches** — tabs, panes, cwds, theme, font, profiles all restore.
-
-### Standard app
-- Launch at login (via `SMAppService`).
-- Hide from Dock (menu-bar-only style).
-- Confirm before quitting.
-- Right-click Termy in the Dock → New Window / New Tab / Quick Terminal / per-profile submenu.
+- **One click launches your AI tool of choice.** Claude Code and OpenAI Codex sit in the title strip as proper icon buttons — `claude` or `codex` runs in the active pane with the right enter key, not just types it.
+- **Real Quake-style drop-down.** ⌃` slides a persistent panel down from the top of the active display. Stays alive between toggles so it's instant.
+- **Inline scrollback search.** ⌘F opens a search-as-you-type bar with regex, case toggle, and prev/next navigation. No NSFindPanel popup from 2007.
+- **Liquid-glass window** that stays readable on any wallpaper — adaptive opacity samples the desktop and ramps tint only when it has to.
+- **Live preview Settings** for every visual choice — pick a theme by clicking a real mini-terminal, not by guessing from a name.
 
 ## Install
 
-### Download the latest release
+```sh
+# Latest release
+open https://github.com/meesbeuk/termy/releases/latest
+# Drag Termy.app to /Applications and right-click → Open the first time.
+```
 
-Grab `Termy.dmg` from the [Releases page](../../releases/latest), drag `Termy.app` into `/Applications`, and run.
+Subsequent versions auto-update via Sparkle. EdDSA-signed since v0.9.4.
 
-The first launch will be blocked by Gatekeeper because the build isn't notarized. Right-click `Termy.app` → **Open** → confirm. (You only need to do this once.)
-
-Subsequent versions auto-update via Sparkle — no manual reinstall.
-
-### Build from source
-
-You need macOS 15+ and Xcode Command Line Tools.
-
+**Build from source:**
 ```sh
 git clone https://github.com/meesbeuk/termy.git
-cd termy
-./build.sh
-open /Applications/Termy.app
+cd termy && ./build.sh
 ```
+
+Requires macOS 15+ and the Xcode Command Line Tools.
+
+## Features
+
+### Built for AI workflows
+- **Vibecoder Mode** — Claude Code + OpenAI Codex quick-launch icons in the title strip. One click, command runs.
+- Add other AI CLIs as **Workflows** in the Command Palette (⌘⇧P).
+- **SSH host picker** reads `~/.ssh/config` + any `Include` directives, drops every host into the palette.
+
+### Sessions
+- **Tabs** (⌘T), **splits** (⌘D / ⌘⇧D), **multi-window** (⌘N) — every window's tabs persist independently and restore on next launch.
+- **Quake drop-down** (⌃`) — sticky panel that lives on the active monitor, configurable height + hide-on-focus-loss.
+- **⌘1–⌘9** jumps to tab N (⌘9 = last, browser convention).
+- **Broadcast input** — mirror keystrokes to every pane in a tab.
+- **Drag-drop** files from Finder, **paths auto-quoted** so `/tmp/$(whoami)/file` doesn't get shell-substituted.
+- **Recent directories** (⌘⌥/) — jump back to any cwd from any tab.
+
+### Find + navigate
+- **Inline find bar** (⌘F): search-as-you-type, case + regex toggles, ⌘G / ⌘⇧G cycles matches. Driven by SwiftTerm's native find API.
+- **Command Palette** (⌘⇧P): fuzzy jump to any tab, theme, action, or SSH host.
+- **Keyboard cheatsheet** (`?` icon in title strip): one modal listing every shortcut. Discoverable, not docs-only.
+- **Reveal in Finder** from the status-bar cwd or the tab right-click menu.
+
+### Look
+- **17 bundled themes** in three families: Modern Dark (Tokyo Night, Catppuccin Mocha, Dracula, Nord, One Dark, Ayu Dark, Monokai Pro, Material Dark, Night Owl, Palenight, Synthwave '84), Classic Dark (Default, Solarized, Gruvbox), Light (Solarized Light, Gruvbox Light, GitHub Light).
+- **`.hudWindow` material** for the backdrop — stays dark-glassy whether the wallpaper is white, dark, or anything else.
+- **Adaptive opacity** that samples wallpaper brightness and shifts the tint to keep terminal text legible.
+- **Every monospaced font** the system has installed — Nerd Fonts, Berkeley Mono, JetBrains Mono, you name it.
+- **Density presets** (Compact / Cozy / Spacious) with a real mini-terminal preview at each padding level.
+
+### Profiles
+- Saved shell configurations: name, shell path, args, initial cwd, env overrides, tag color, avatar.
+- **Local gradient avatars** per profile (no third-party HTTP fetch) — re-roll if you don't like the one you got.
+- **Right-click Dock icon → New Tab with Profile** submenu.
+
+### Quality of life
+- **Status bar** — cwd (with `~` folding), git branch (refreshes every 4s so `git checkout` reflects without `cd`), clock. Handles worktrees + submodules.
+- **Process-done notifications** — toggle in General settings; pair with `precmd() { print -n "\a" }` in zsh and you get system notifications when long commands finish in background windows.
+- **Auto-update** via Sparkle, configurable background install.
+- **Confirm before quit**, **launch at login**, **hide from Dock** — standard macOS app conveniences, off by default.
 
 ## Shortcuts
 
-| Action | Shortcut |
-|---|---|
-| New tab | `⌘T` |
-| Duplicate tab | `⌘⇧T` |
-| Close pane (cascades to tab / window) | `⌘W` |
-| Close window | `⌘⇧W` |
-| Next / previous tab | `⌘⇧]` / `⌘⇧[` |
-| New window | `⌘N` |
-| Quick Terminal | `⌃`` |
-| Split horizontally | `⌘D` |
-| Split vertically | `⌘⇧D` |
-| Focus next / previous pane | `⌘⌥]` / `⌘⌥[` |
-| Recent directories | `⌘⌥/` |
-| Command Palette | `⌘⇧P` |
-| Find in scrollback | `⌘F` |
-| Next / previous find match | `⌘G` / `⌘⇧G` |
-| Clear | `⌘K` |
-| Increase / decrease font | `⌘=` / `⌘-` |
-| Reset font | `⌘0` |
+Press `?` in the title strip for the in-app cheatsheet. Quick reference:
 
-## Settings
+```
+⌘T   new tab            ⌘D   split horizontal    ⌘F   find in scrollback
+⌘⇧T  duplicate tab      ⌘⇧D  split vertical      ⌘G   next match
+⌘W   close pane         ⌘⌥]  focus next pane     ⌘⇧G  prev match
+⌘⇧W  close window       ⌘⌥[  focus prev pane     ⌘K   clear screen
+⌘N   new window         ⌘⇧]  next tab            ⌘⌥/  recent dirs
+⌃`   Quake drop-down    ⌘⇧[  prev tab            ⌘⇧P  command palette
+⌘1-9 jump to tab N      ⌘=/-/0 font size
+```
 
-Open via the ⚙ icon in the title bar.
+## Project status
 
-- **General** — launch at login, hide from Dock, confirm-on-quit, bell notifications.
-- **Profiles** — saved shell configurations with memoji avatars.
-- **Vibecoder** — toggle the AI launcher row.
-- **Theme** — 17 bundled themes with previews.
-- **Font** — family + size picker with live preview.
-- **Density** — Compact / Cozy / Spacious padding.
-- **Chrome** — show / hide tab bar and status bar.
-- **Background** — opacity slider, auto-adapt-to-wallpaper toggle.
-- **Updates** — current version, last-checked timestamp, auto-check + auto-install toggles.
-- **About** — version, build, repo link.
+Termy is shipping rapidly. Recent releases:
 
-## Known limitations
+- **v0.9.11** — Settings consolidated to 5 sections, README rewrite, tab right-click menu (Close Others, Reveal in Finder), ⌘1-⌘9 tab switching.
+- **v0.9.10** — Tight launcher row (Claude + Codex), unified title-strip styling.
+- **v0.9.9** — Multi-window state survives launches, per-pane profile persistence, Quake settings (hide-on-focus-loss + height slider).
+- **v0.9.8** — Live git branch in status bar, Quake opens on the active monitor, keyboard cheatsheet.
+- **v0.9.7** — Real Quake drop-down, inline find bar, visible icon affordances.
 
-Honest list, so you know what you're getting:
-
-- **Multi-window tab restore is lossy.** Every window writes to the same UserDefaults key — the last one to save wins on relaunch. Fine if you mostly use one window. Multi-window people will lose state across launches.
-- **No OSC 133 shell-integration markers** yet, which means: no Warp-style command blocks, no perfectly-accurate "command finished" notifications (we use a bell-based heuristic instead), no regex triggers on command output.
-- **No sixel / kitty / iTerm image protocols** — image rendering in the terminal isn't supported.
-- **No inline AI chat panel** — Termy launches AI CLIs; it doesn't embed a chat surface.
-- **Cursor style / blink isn't configurable** — SwiftTerm doesn't expose a public hook for it on macOS.
-- **`copyOnSelect` isn't supported** for the same reason.
-
-These are either deferred features (open to PRs) or SwiftTerm-protocol-blocked.
-
-## Roadmap
-
-Open to PRs on the deferred items above. The big-ticket additions worth building next:
-
-- OSC 133 shell integration → command blocks, accurate process notifications, regex triggers
-- Per-pane profile persistence (so split restore remembers which profile each pane used)
-- Per-window UserDefaults namespacing so multi-window tab restore stops trampling
+[Full changelog →](https://github.com/meesbeuk/termy/releases)
 
 ## Built with
 
@@ -145,3 +121,7 @@ Open to PRs on the deferred items above. The big-ticket additions worth building
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+<sub><em>Keywords: macOS terminal, modern terminal, iTerm2 alternative, Warp alternative, Claude Code terminal, AI terminal, OpenAI Codex terminal, native macOS app, SwiftUI terminal, vibecoder, liquid glass, Tokyo Night, Catppuccin, Dracula, terminal emulator, Quake terminal, scrollback search, tmux alternative</em></sub>

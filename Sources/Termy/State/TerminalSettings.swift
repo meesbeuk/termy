@@ -88,6 +88,48 @@ final class TerminalSettings: ObservableObject {
         didSet { UserDefaults.standard.set(notifyOnBell, forKey: Self.notifyOnBellKey) }
     }
 
+    /// Fire a notification when a pane goes from "actively producing
+    /// output" to "quiet for N seconds" — the heuristic for "your AI tool
+    /// (or build, or test run, or whatever) just finished". No OSC 133
+    /// required; works with `claude`, `codex`, `npm test`, `cargo build`,
+    /// anything.
+    @Published var notifyOnIdle: Bool {
+        didSet { UserDefaults.standard.set(notifyOnIdle, forKey: Self.notifyOnIdleKey) }
+    }
+
+    /// Seconds of zero output that count as "settled". Lower = more
+    /// notifications (every short pause). Higher = catches only longer
+    /// commands. Default 4s = matches Claude/Codex response cadence.
+    @Published var idleThresholdSeconds: Double {
+        didSet {
+            let clamped = max(2.0, min(60.0, idleThresholdSeconds))
+            if clamped != idleThresholdSeconds { idleThresholdSeconds = clamped; return }
+            UserDefaults.standard.set(idleThresholdSeconds, forKey: Self.idleThresholdKey)
+        }
+    }
+
+    /// Limit notifications (bell + idle) to windows that aren't currently
+    /// focused. Default on — matches the user's intent of "I want to know
+    /// when something happens in the background." Turn off to get every
+    /// trigger, regardless of focus.
+    @Published var notifyOnlyBackground: Bool {
+        didSet { UserDefaults.standard.set(notifyOnlyBackground, forKey: Self.notifyOnlyBackgroundKey) }
+    }
+
+    /// Play the default sound with each notification. Off by default so
+    /// terminals next to the user don't audibly ding every time a command
+    /// settles.
+    @Published var notifySound: Bool {
+        didSet { UserDefaults.standard.set(notifySound, forKey: Self.notifySoundKey) }
+    }
+
+    /// Show the last terminal line as the notification body so the user
+    /// sees the actual result without switching windows. On by default —
+    /// the marginal context is worth the slight body length.
+    @Published var notifyShowPreview: Bool {
+        didSet { UserDefaults.standard.set(notifyShowPreview, forKey: Self.notifyShowPreviewKey) }
+    }
+
     // MARK: - Quake (drop-down terminal) settings
 
     /// Auto-hide the Quake drop-down when it loses focus. Standard Quake
@@ -129,6 +171,11 @@ final class TerminalSettings: ObservableObject {
     private static let hideFromDockKey = "termy.hideFromDock"
     private static let confirmOnQuitKey = "termy.confirmOnQuit"
     private static let notifyOnBellKey = "termy.notifyOnBell"
+    private static let notifyOnIdleKey = "termy.notifyOnIdle"
+    private static let idleThresholdKey = "termy.idleThresholdSeconds"
+    private static let notifyOnlyBackgroundKey = "termy.notifyOnlyBackground"
+    private static let notifySoundKey = "termy.notifySound"
+    private static let notifyShowPreviewKey = "termy.notifyShowPreview"
     private static let quakeHideOnFocusLossKey = "termy.quakeHideOnFocusLoss"
     private static let quakeHeightKey = "termy.quakeHeightFraction"
 
@@ -175,6 +222,20 @@ final class TerminalSettings: ObservableObject {
         // Default-off so we don't pop a notification-permission dialog at
         // first launch with no user context.
         self.notifyOnBell = UserDefaults.standard.bool(forKey: Self.notifyOnBellKey)
+        self.notifyOnIdle = UserDefaults.standard.bool(forKey: Self.notifyOnIdleKey)
+        let savedThreshold = UserDefaults.standard.double(forKey: Self.idleThresholdKey)
+        self.idleThresholdSeconds = savedThreshold > 0 ? savedThreshold : 4.0
+        if UserDefaults.standard.object(forKey: Self.notifyOnlyBackgroundKey) == nil {
+            self.notifyOnlyBackground = true
+        } else {
+            self.notifyOnlyBackground = UserDefaults.standard.bool(forKey: Self.notifyOnlyBackgroundKey)
+        }
+        self.notifySound = UserDefaults.standard.bool(forKey: Self.notifySoundKey)
+        if UserDefaults.standard.object(forKey: Self.notifyShowPreviewKey) == nil {
+            self.notifyShowPreview = true
+        } else {
+            self.notifyShowPreview = UserDefaults.standard.bool(forKey: Self.notifyShowPreviewKey)
+        }
         if UserDefaults.standard.object(forKey: Self.quakeHideOnFocusLossKey) == nil {
             self.quakeHideOnFocusLoss = true
         } else {

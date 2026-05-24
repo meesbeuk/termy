@@ -644,7 +644,8 @@ private struct TabBar: View {
                     TabChip(tab: tab,
                             isActive: tab.id == sessions.selectedTabId,
                             onSelect: { sessions.selectTab(tab.id) },
-                            onClose: { sessions.closeTab(tab.id) })
+                            onClose: { sessions.closeTab(tab.id) },
+                            onCloseOthers: { sessions.closeOtherTabs(keeping: tab.id) })
                 }
                 Button(action: { sessions.openTab() }) {
                     Image(systemName: "plus")
@@ -666,6 +667,7 @@ private struct TabChip: View {
     let isActive: Bool
     let onSelect: () -> Void
     let onClose: () -> Void
+    let onCloseOthers: () -> Void
 
     @State private var isHovering = false
 
@@ -718,12 +720,20 @@ private struct TabChip: View {
             withAnimation(.easeOut(duration: 0.12)) { isHovering = hovering }
         }
         .contextMenu {
+            Button("Reveal cwd in Finder") {
+                let url = URL(fileURLWithPath: tab.displayCwd)
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            }
+            Divider()
             Menu("Tab Color") {
                 ForEach(TabTagColor.allCases) { c in
                     Button(c.displayName) { tab.tagColor = c }
                 }
             }
             Toggle("Broadcast Input to All Panes", isOn: $tab.broadcastInput)
+            Divider()
+            Button("Close Other Tabs") { onCloseOthers() }
+            Button("Close Tab", role: .destructive) { onClose() }
         }
     }
 

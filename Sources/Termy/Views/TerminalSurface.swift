@@ -13,6 +13,13 @@ import SwiftTerm
 /// disconnect keyboard input, as v0.8.0–0.8.2 painfully proved).
 final class TermyTerminalView: LocalProcessTerminalView {
     var onBell: (() -> Void)?
+    /// Fires when this pane goes from "actively producing output" to
+    /// "settled for the configured idle threshold". The `preview`
+    /// parameter carries the most recent chunk of received text so the
+    /// notification can show *what* finished, not just *that* something
+    /// finished. Wired up in TerminalSurface to call TermyNotifications.
+    var onCommandSettled: ((_ preview: String?) -> Void)?
+
     /// Re-applies theme + caret colors. Set by TerminalSurface so we can
     /// re-run it both when the view first lands in a window AND on first
     /// non-zero layout. SwiftTerm's caret is positioned by updateDisplay,
@@ -27,9 +34,91 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// so the caret renders without requiring a theme switch.
     private var hasLaidOutAtRealSize = false
 
+    // MARK: - Idle (command-finished) tracking
+    //
+    // Counts bytes coming back from the PTY and notes when the last burst
+    // ended. A timer fires every 0.5s; if we've been "active" (received
+    // enough bytes recently) and now haven't seen anything for >=
+    // `idleThreshold` seconds, we declare the command finished and emit
+    // onCommandSettled. The vibecoder use case: ask Claude / Codex a
+    // question in one window, switch apps, the notification lands when
+    // the answer is done streaming.
+    //
+    // No OSC 133 required — works for any long-running command (build,
+    // test, codex prompt, gemini, etc.).
+    private var lastDataAt: Date = .distantPast
+    private var bytesSinceBurstStart: Int = 0
+    private var isCurrentlyActive = false
+    private var idleTimer: Timer?
+    private var lastPreviewBuffer: String = ""
+
+    /// Bytes accumulated within a single burst before the pane is
+    /// considered "active". One-byte rerenders (just a prompt refresh)
+    /// shouldn't count. 64B is enough to filter prompt redraws but small
+    /// enough to catch short-running commands.
+    private let activeByteThreshold = 64
+
     override func bell(source: Terminal) {
         super.bell(source: source)
         onBell?()
+    }
+
+    override func dataReceived(slice: ArraySlice<UInt8>) {
+        super.dataReceived(slice: slice)
+        let now = Date()
+        // Treat a >2s gap as a fresh burst — anything within 2s is one
+        // continuous output stream (Claude/Codex stream tokens, builds
+        // log throughout, etc.).
+        if now.timeIntervalSince(lastDataAt) > 2.0 {
+            bytesSinceBurstStart = 0
+            lastPreviewBuffer = ""
+        }
+        bytesSinceBurstStart += slice.count
+        lastDataAt = now
+        // Capture a sliding window of the most recent bytes (UTF-8
+        // decoded best-effort) so we can put a meaningful tail line in
+        // the eventual notification.
+        if let s = String(bytes: slice, encoding: .utf8) {
+            lastPreviewBuffer += s
+            if lastPreviewBuffer.count > 4096 {
+                lastPreviewBuffer = String(lastPreviewBuffer.suffix(2048))
+            }
+        }
+        if !isCurrentlyActive && bytesSinceBurstStart >= activeByteThreshold {
+            isCurrentlyActive = true
+            ensureIdleTimer()
+        }
+    }
+
+    /// Lazy-install the per-view idle-check timer. Tears down with the
+    /// view (timers are invalidated in deinit) so we don't leak.
+    private func ensureIdleTimer() {
+        if idleTimer != nil { return }
+        let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.tickIdle()
+        }
+        // Run on the common runloop mode so the timer keeps firing during
+        // modal sheets / live-resizes / scroll gestures.
+        RunLoop.main.add(t, forMode: .common)
+        idleTimer = t
+    }
+
+    private func tickIdle() {
+        guard isCurrentlyActive else { return }
+        let threshold = UserDefaults.standard.double(forKey: "termy.idleThresholdSeconds")
+        let effective = threshold > 0 ? threshold : 4.0
+        if Date().timeIntervalSince(lastDataAt) >= effective {
+            isCurrentlyActive = false
+            let preview = lastPreviewBuffer
+                .split(separator: "\n", omittingEmptySubsequences: true)
+                .last
+                .map(String.init)
+            onCommandSettled?(preview)
+        }
+    }
+
+    deinit {
+        idleTimer?.invalidate()
     }
 
     override func viewDidMoveToWindow() {
@@ -204,6 +293,14 @@ struct TerminalSurface: NSViewRepresentable {
             TermyNotifications.shared.bell(
                 window: session.terminalView?.window,
                 cwd: session.cwd
+            )
+        }
+        view.onCommandSettled = { [weak session] preview in
+            guard let session else { return }
+            TermyNotifications.shared.commandSettled(
+                window: session.terminalView?.window,
+                cwd: session.cwd,
+                preview: preview
             )
         }
         // Re-apply on window-attach and on first real layout — fixes the

@@ -9,7 +9,7 @@ struct TerminalSettingsSheet: View {
     @EnvironmentObject var profiles: ProfileStore
     let onClose: () -> Void
 
-    @State private var selectedCategory: SettingsCategory = .theme
+    @State private var selectedCategory: SettingsCategory = .appearance
 
     var body: some View {
         VStack(spacing: 0) {
@@ -67,15 +67,9 @@ struct TerminalSettingsSheet: View {
             VStack(alignment: .leading, spacing: DS.Spacing.l) {
                 switch selectedCategory {
                 case .general: GeneralPane()
+                case .appearance: AppearancePane()
                 case .profiles: ProfilesPane()
-                case .vibecoder: VibecoderPane()
                 case .quake: QuakePane()
-                case .theme: ThemePane()
-                case .font: FontPane()
-                case .density: DensityPane()
-                case .chrome: ChromePane()
-                case .background: BackgroundPane()
-                case .updates: UpdatesPane()
                 case .about: AboutPane()
                 }
             }
@@ -89,35 +83,27 @@ struct TerminalSettingsSheet: View {
 }
 
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    case general, profiles, vibecoder, quake, theme, font, density, chrome, background, updates, about
+    // Consolidated from 11 → 5 sections in v0.9.11. Vibecoder + bell +
+    // updates folded into General; theme + font + density + background +
+    // chrome consolidated into Appearance with subheaders. Profiles +
+    // Quake + About stay as their own sections.
+    case general, appearance, profiles, quake, about
     var id: String { rawValue }
     var displayName: String {
         switch self {
         case .general: return "General"
+        case .appearance: return "Appearance"
         case .profiles: return "Profiles"
-        case .vibecoder: return "Vibecoder"
         case .quake: return "Quake"
-        case .theme: return "Theme"
-        case .font: return "Font"
-        case .density: return "Density"
-        case .chrome: return "Chrome"
-        case .background: return "Background"
-        case .updates: return "Updates"
         case .about: return "About"
         }
     }
     var icon: String {
         switch self {
         case .general: return "gearshape"
+        case .appearance: return "paintpalette"
         case .profiles: return "person.crop.rectangle.stack"
-        case .vibecoder: return "sparkles"
         case .quake: return "chevron.down.square"
-        case .theme: return "paintpalette"
-        case .font: return "textformat"
-        case .density: return "rectangle.compress.vertical"
-        case .chrome: return "rectangle.topthird.inset.filled"
-        case .background: return "circle.lefthalf.filled"
-        case .updates: return "arrow.down.circle"
         case .about: return "info.circle"
         }
     }
@@ -161,64 +147,149 @@ private struct SidebarRow: View {
 
 private struct GeneralPane: View {
     @EnvironmentObject var settings: TerminalSettings
-    var body: some View {
-        DSSection("General") {
-            Toggle("Launch at login", isOn: $settings.launchAtLogin)
-                .toggleStyle(.checkbox).font(DS.Typo.caption)
-            Toggle("Hide from Dock (menu-bar only style)", isOn: $settings.hideFromDock)
-                .toggleStyle(.checkbox).font(DS.Typo.caption)
-            Toggle("Confirm before quitting", isOn: $settings.confirmOnQuit)
-                .toggleStyle(.checkbox).font(DS.Typo.caption)
-            Toggle("Notify when an unfocused window beeps", isOn: $settings.notifyOnBell)
-                .toggleStyle(.checkbox).font(DS.Typo.caption)
-            Text("Hooks the terminal BEL. Pair with `precmd() { print -n \"\\a\" }` in zsh to get a system notification when a long command finishes in a background window.")
-                .font(DS.Typo.tiny)
-                .foregroundStyle(DS.Colors.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
+    @EnvironmentObject var updater: Updater
 
-private struct VibecoderPane: View {
-    @EnvironmentObject var settings: TerminalSettings
-    var body: some View {
-        DSSection("Vibecoder") {
-            Toggle(isOn: $settings.vibecoderMode) {
-                HStack(spacing: 4) {
-                    Image(systemName: "sparkles")
-                        .foregroundStyle(DS.Colors.aiAccent)
-                    Text("Vibecoder Mode")
-                        .font(DS.Typo.body.weight(.medium))
-                }
-            }
-            .toggleStyle(.switch).controlSize(.mini)
-            Text("Quick-launch row for Claude / Codex / Cursor / VS Code / Aider in the title strip. Icon-only circular buttons; hover for the tool name.")
-                .font(DS.Typo.tiny)
-                .foregroundStyle(DS.Colors.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+    private var currentVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
     }
-}
 
-private struct ThemePane: View {
-    @EnvironmentObject var settings: TerminalSettings
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.l) {
-            DSSection("Theme") {
-                ForEach(ThemeCategory.allCases, id: \.self) { cat in
-                    Text(cat.rawValue)
-                        .font(DS.Typo.tiny.weight(.semibold))
-                        .foregroundStyle(DS.Colors.tertiary)
-                        .textCase(.uppercase)
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())],
-                              spacing: DS.Spacing.s) {
-                        ForEach(TerminalTheme.all.filter { $0.category == cat }) { theme in
-                            ThemePreviewCard(
-                                theme: theme,
-                                isSelected: settings.themeID == theme.id,
-                                onSelect: { settings.themeID = theme.id }
-                            )
+            DSSection("System") {
+                Toggle("Launch at login", isOn: $settings.launchAtLogin)
+                    .toggleStyle(.checkbox).font(DS.Typo.caption)
+                Toggle("Hide from Dock (menu-bar only)", isOn: $settings.hideFromDock)
+                    .toggleStyle(.checkbox).font(DS.Typo.caption)
+                Toggle("Confirm before quitting", isOn: $settings.confirmOnQuit)
+                    .toggleStyle(.checkbox).font(DS.Typo.caption)
+            }
+
+            DSSection("Chrome") {
+                Toggle("Show tab bar", isOn: $settings.showTabBar)
+                    .toggleStyle(.checkbox).font(DS.Typo.caption)
+                Toggle("Show status bar (cwd, git, clock)", isOn: $settings.showStatusBar)
+                    .toggleStyle(.checkbox).font(DS.Typo.caption)
+                Toggle(isOn: $settings.vibecoderMode) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(DS.Colors.aiAccent)
+                        Text("Vibecoder Mode")
+                            .font(DS.Typo.caption.weight(.medium))
+                    }
+                }
+                .toggleStyle(.checkbox)
+                Text("Surfaces Claude Code + Codex quick-launch icons in the title strip.")
+                    .font(DS.Typo.tiny)
+                    .foregroundStyle(DS.Colors.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            DSSection("Notifications") {
+                Toggle("Notify when a command finishes (auto)", isOn: $settings.notifyOnIdle)
+                    .toggleStyle(.checkbox).font(DS.Typo.caption)
+                Text("Detects when a pane goes from actively producing output to quiet — works for Claude Code, Codex, `npm test`, `cargo build`, anything. No shell setup required.")
+                    .font(DS.Typo.tiny)
+                    .foregroundStyle(DS.Colors.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Text("Quiet threshold")
+                        .font(DS.Typo.caption)
+                        .foregroundStyle(DS.Colors.secondary)
+                    Slider(value: $settings.idleThresholdSeconds, in: 2...30, step: 1)
+                        .controlSize(.small)
+                        .disabled(!settings.notifyOnIdle)
+                        .opacity(settings.notifyOnIdle ? 1.0 : 0.5)
+                    Text("\(Int(settings.idleThresholdSeconds))s")
+                        .font(DS.Typo.monoCaption)
+                        .foregroundStyle(DS.Colors.secondary)
+                        .frame(width: 30, alignment: .trailing)
+                }
+
+                Toggle("Notify when an unfocused window beeps", isOn: $settings.notifyOnBell)
+                    .toggleStyle(.checkbox).font(DS.Typo.caption)
+                Text("Hooks the terminal BEL. Pair with `precmd() { print -n \"\\a\" }` in zsh to ring after every command — useful as a manual alternative to the auto-quiet detector above.")
+                    .font(DS.Typo.tiny)
+                    .foregroundStyle(DS.Colors.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Divider().opacity(0.2)
+
+                Toggle("Only when the window isn't focused", isOn: $settings.notifyOnlyBackground)
+                    .toggleStyle(.checkbox).font(DS.Typo.caption)
+                Toggle("Show last line as preview", isOn: $settings.notifyShowPreview)
+                    .toggleStyle(.checkbox).font(DS.Typo.caption)
+                Toggle("Play sound", isOn: $settings.notifySound)
+                    .toggleStyle(.checkbox).font(DS.Typo.caption)
+            }
+
+            DSSection("Updates") {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Termy \(currentVersion)")
+                            .font(DS.Typo.body.weight(.semibold))
+                        if let last = updater.lastCheckedDescription {
+                            Text("Last checked \(last)")
+                                .font(DS.Typo.tiny)
+                                .foregroundStyle(DS.Colors.tertiary)
+                        } else {
+                            Text("Never checked yet.")
+                                .font(DS.Typo.tiny)
+                                .foregroundStyle(DS.Colors.tertiary)
                         }
+                    }
+                    Spacer()
+                    Button("Check Now") { updater.checkForUpdates() }
+                        .disabled(!updater.canCheck)
+                        .controlSize(.small)
+                }
+                Toggle("Automatically check for updates",
+                       isOn: Binding(get: { updater.autoCheck },
+                                     set: { updater.autoCheck = $0 }))
+                    .toggleStyle(.checkbox).font(DS.Typo.caption)
+                Toggle("Automatically download + install in background",
+                       isOn: Binding(get: { updater.autoDownload },
+                                     set: { updater.autoDownload = $0 }))
+                    .toggleStyle(.checkbox).font(DS.Typo.caption)
+                    .disabled(!updater.autoCheck)
+                    .opacity(updater.autoCheck ? 1.0 : 0.5)
+            }
+        }
+    }
+}
+
+/// Merged Theme + Font + Density + Background. Was four separate sections
+/// in v0.9.10 — every one is "how the terminal looks", so they belong
+/// together under one Appearance umbrella.
+private struct AppearancePane: View {
+    @EnvironmentObject var settings: TerminalSettings
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.l) {
+            ThemePicker()
+            FontControls()
+            DensityControls()
+            BackgroundControls()
+        }
+    }
+}
+
+private struct ThemePicker: View {
+    @EnvironmentObject var settings: TerminalSettings
+    var body: some View {
+        DSSection("Theme") {
+            ForEach(ThemeCategory.allCases, id: \.self) { cat in
+                Text(cat.rawValue)
+                    .font(DS.Typo.tiny.weight(.semibold))
+                    .foregroundStyle(DS.Colors.tertiary)
+                    .textCase(.uppercase)
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())],
+                          spacing: DS.Spacing.s) {
+                    ForEach(TerminalTheme.all.filter { $0.category == cat }) { theme in
+                        ThemePreviewCard(
+                            theme: theme,
+                            isSelected: settings.themeID == theme.id,
+                            onSelect: { settings.themeID = theme.id }
+                        )
                     }
                 }
             }
@@ -226,7 +297,7 @@ private struct ThemePane: View {
     }
 }
 
-private struct FontPane: View {
+private struct FontControls: View {
     @EnvironmentObject var settings: TerminalSettings
     var body: some View {
         DSSection("Font") {
@@ -243,14 +314,12 @@ private struct FontPane: View {
                     .foregroundStyle(DS.Colors.secondary)
                     .frame(width: 32, alignment: .trailing)
             }
-
             FontPreview(
                 family: settings.fontFamily,
                 size: settings.fontSize,
                 foreground: themeForeground
             )
-
-            Text("⌘+ / ⌘- / ⌘0 also work as shortcuts.")
+            Text("⌘+ / ⌘- / ⌘0 also adjust size.")
                 .font(DS.Typo.tiny).foregroundStyle(DS.Colors.tertiary)
         }
     }
@@ -260,35 +329,66 @@ private struct FontPane: View {
         return Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255)
     }
 
-    /// Every installed monospaced font, with our small "recommended"
-    /// shortlist surfaced at the top. Replaces the v0.9.5 behavior of
-    /// filtering a hardcoded 7-entry list, which silently hid the user's
-    /// favorite Nerd Fonts / Berkeley Mono / JetBrains Mono variants
-    /// behind a "font not available" no-op.
     private func installedFonts() -> [String] {
         let recommended = TerminalSettings.availableFontFamilies
             .filter { NSFont(name: $0, size: 12) != nil }
-        // Enumerate via NSFontDescriptor (the non-deprecated path) — match
-        // every descriptor whose symbolic traits include monoSpace.
-        let descriptor = NSFontDescriptor()
-            .withSymbolicTraits(.monoSpace)
+        let descriptor = NSFontDescriptor().withSymbolicTraits(.monoSpace)
         let matches = descriptor.matchingFontDescriptors(withMandatoryKeys: nil)
         let all = matches
             .compactMap { $0.object(forKey: .name) as? String }
             .sorted()
-        // De-dup while preserving the recommended-first order. SF Mono
-        // variants come from PostScript names that don't always match
-        // .monoSpace; the recommended list catches them.
         var seen = Set(recommended)
         let extras = all.filter { name in
-            // Skip ".SFNS..." system aliases and obvious italic/bold variants;
-            // SwiftTerm renders bold/italic via its own attribute path.
             !name.hasPrefix(".")
                 && !name.lowercased().contains("italic")
                 && !name.lowercased().contains("oblique")
                 && seen.insert(name).inserted
         }
         return recommended + extras
+    }
+}
+
+private struct DensityControls: View {
+    @EnvironmentObject var settings: TerminalSettings
+    var body: some View {
+        DSSection("Density") {
+            HStack(spacing: DS.Spacing.s) {
+                ForEach(PaddingPreset.allCases) { p in
+                    DensityPreview(
+                        preset: p,
+                        isSelected: settings.paddingPreset == p,
+                        onSelect: { settings.paddingPreset = p }
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+    }
+}
+
+private struct BackgroundControls: View {
+    @EnvironmentObject var settings: TerminalSettings
+    var body: some View {
+        DSSection("Background") {
+            HStack {
+                Text("Opacity").font(DS.Typo.caption).foregroundStyle(DS.Colors.secondary)
+                Spacer()
+                Text("\(Int(settings.effectiveOpacity * 100))%")
+                    .font(DS.Typo.monoCaption)
+                    .foregroundStyle(DS.Colors.secondary)
+            }
+            Toggle("Adapt to wallpaper brightness", isOn: $settings.autoOpacity)
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
+            Slider(value: $settings.opacity, in: 0...1.0)
+                .controlSize(.small)
+                .disabled(settings.autoOpacity)
+                .opacity(settings.autoOpacity ? 0.4 : 1.0)
+            OpacityPreview(opacity: settings.effectiveOpacity)
+            Text(settings.autoOpacity
+                 ? "Light wallpapers → more opaque, dark → more glass."
+                 : "Manual opacity — drag to taste.")
+                .font(DS.Typo.tiny).foregroundStyle(DS.Colors.tertiary)
+        }
     }
 }
 
@@ -315,85 +415,6 @@ private struct QuakePane: View {
                     .frame(width: 40, alignment: .trailing)
             }
             Text("Vertical fraction of the active display the panel takes when toggled. Applies next time you press ⌃`.")
-                .font(DS.Typo.tiny)
-                .foregroundStyle(DS.Colors.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
-
-private struct DensityPane: View {
-    @EnvironmentObject var settings: TerminalSettings
-    var body: some View {
-        DSSection("Density") {
-            HStack(spacing: DS.Spacing.s) {
-                ForEach(PaddingPreset.allCases) { p in
-                    DensityPreview(
-                        preset: p,
-                        isSelected: settings.paddingPreset == p,
-                        onSelect: { settings.paddingPreset = p }
-                    )
-                    .frame(maxWidth: .infinity)
-                }
-            }
-        }
-    }
-}
-
-private struct ChromePane: View {
-    @EnvironmentObject var settings: TerminalSettings
-    var body: some View {
-        DSSection("Chrome") {
-            Toggle("Show tab bar", isOn: $settings.showTabBar)
-                .toggleStyle(.checkbox).font(DS.Typo.caption)
-            Toggle("Show status bar (cwd, git, clock)", isOn: $settings.showStatusBar)
-                .toggleStyle(.checkbox).font(DS.Typo.caption)
-        }
-    }
-}
-
-private struct UpdatesPane: View {
-    @EnvironmentObject var updater: Updater
-
-    private var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
-    }
-
-    var body: some View {
-        DSSection("Updates") {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Termy \(currentVersion)")
-                        .font(DS.Typo.body.weight(.semibold))
-                    if let last = updater.lastCheckedDescription {
-                        Text("Last checked \(last)")
-                            .font(DS.Typo.tiny)
-                            .foregroundStyle(DS.Colors.tertiary)
-                    } else {
-                        Text("Never checked for updates yet.")
-                            .font(DS.Typo.tiny)
-                            .foregroundStyle(DS.Colors.tertiary)
-                    }
-                }
-                Spacer()
-                Button("Check Now") { updater.checkForUpdates() }
-                    .disabled(!updater.canCheck)
-                    .controlSize(.small)
-            }
-
-            Toggle("Automatically check for updates",
-                   isOn: Binding(get: { updater.autoCheck },
-                                 set: { updater.autoCheck = $0 }))
-                .toggleStyle(.checkbox).font(DS.Typo.caption)
-
-            Toggle("Automatically download + install updates in background",
-                   isOn: Binding(get: { updater.autoDownload },
-                                 set: { updater.autoDownload = $0 }))
-                .toggleStyle(.checkbox).font(DS.Typo.caption)
-                .disabled(!updater.autoCheck)
-                .opacity(updater.autoCheck ? 1.0 : 0.5)
-
-            Text("Updates come from the GitHub release feed. When background install is on, the new version applies the next time you launch Termy — no reinstall needed.")
                 .font(DS.Typo.tiny)
                 .foregroundStyle(DS.Colors.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -656,28 +677,3 @@ private struct ProfileEditor: View {
     }
 }
 
-private struct BackgroundPane: View {
-    @EnvironmentObject var settings: TerminalSettings
-    var body: some View {
-        DSSection("Background") {
-            HStack {
-                Text("Opacity").font(DS.Typo.caption).foregroundStyle(DS.Colors.secondary)
-                Spacer()
-                Text("\(Int(settings.effectiveOpacity * 100))%")
-                    .font(DS.Typo.monoCaption)
-                    .foregroundStyle(DS.Colors.secondary)
-            }
-            Toggle("Adapt to wallpaper brightness", isOn: $settings.autoOpacity)
-                .toggleStyle(.checkbox).font(DS.Typo.caption)
-            Slider(value: $settings.opacity, in: 0...1.0)
-                .controlSize(.small)
-                .disabled(settings.autoOpacity)
-                .opacity(settings.autoOpacity ? 0.4 : 1.0)
-            OpacityPreview(opacity: settings.effectiveOpacity)
-            Text(settings.autoOpacity
-                 ? "Light wallpapers → more opaque, dark → more glass."
-                 : "Manual opacity — drag to taste.")
-                .font(DS.Typo.tiny).foregroundStyle(DS.Colors.tertiary)
-        }
-    }
-}

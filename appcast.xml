@@ -6,6 +6,44 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.11</title>
+            <description><![CDATA[
+                <h2>Smart notifications, simpler Settings, tab right-click menu, ⌘1-⌘9, reveal in Finder</h2>
+                <h3>Smart notifications</h3>
+                <ul>
+                    <li><strong>Auto "command finished" notifications.</strong> Heuristic that fires when a pane goes from actively producing output to quiet for N seconds — works for Claude Code, Codex, npm test, cargo build, anything. No shell setup, no OSC 133.</li>
+                    <li><strong>Notification body shows the last terminal line</strong> so you see <em>what</em> finished, not just <em>that</em> it did.</li>
+                    <li>Configurable quiet threshold (2-30s), sound on/off, focus scope, preview on/off.</li>
+                </ul>
+                <h3>UX upgrades</h3>
+                <ul>
+                    <li><strong>⌘1-⌘9 to jump to tab N</strong> (⌘9 = last tab, browser convention).</li>
+                    <li><strong>Tab right-click menu</strong>: Reveal cwd in Finder, Close Other Tabs, Tab Color, Broadcast Input.</li>
+                    <li><strong>Status bar cwd is clickable</strong> — opens the directory in Finder.</li>
+                </ul>
+                <h3>Settings simplified</h3>
+                <ul>
+                    <li><strong>11 panes → 5</strong>: General (system + chrome + notifications + updates + vibecoder), Appearance (theme + font + density + background), Profiles, Quake, About. Less wandering, more finding.</li>
+                </ul>
+                <h3>Marketing-y README</h3>
+                <ul>
+                    <li>Rewrote the GitHub front page with hero pitch, badges, comparison ("iTerm2 alternative", "Warp alternative"), and SEO keywords so people can actually find Termy when searching for a modern macOS terminal.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 00:55:00 +0000</pubDate>
+            <sparkle:version>28</sparkle:version>
+            <sparkle:shortVersionString>0.9.11</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.11/Termy.dmg"
+                sparkle:version="28"
+                sparkle:shortVersionString="0.9.11"
+                length="2657919"
+                sparkle:edSignature="tXix1afQx5cJBURmsDNs3lsDLr705ykG3nRmFdNFZZHLECROAK5vgu3SDUzm8NDumfXPFOqSzsZK9LhWtILPCw=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.10</title>
             <description><![CDATA[
                 <h2>Tight title-strip — Claude + Codex only, unified icon style</h2>

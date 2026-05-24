@@ -80,6 +80,10 @@ private struct NotificationHandlersA: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .terminalPreviousTab)) { _ in
                 if isKeyWindow() { sessions.previousTab() }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalSelectTab)) { notification in
+                guard isKeyWindow(), let n = notification.object as? Int else { return }
+                sessions.selectTabByPosition(n)
+            }
             .onReceive(NotificationCenter.default.publisher(for: .terminalClear)) { _ in
                 if isKeyWindow() { sessions.clearCurrent() }
             }

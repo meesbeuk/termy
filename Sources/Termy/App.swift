@@ -66,6 +66,19 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalPreviousTab, object: nil)
                 }
                 .keyboardShortcut("[", modifiers: [.command, .shift])
+                // ⌘1…⌘8 jump to tab N; ⌘9 jumps to the last tab regardless
+                // of count (standard browser convention; muscle memory for
+                // anyone coming from iTerm2 / Chrome / Safari / Firefox).
+                ForEach(1...8, id: \.self) { n in
+                    Button("Tab \(n)") {
+                        NotificationCenter.default.post(name: .terminalSelectTab, object: n)
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character("\(n)")), modifiers: .command)
+                }
+                Button("Last Tab") {
+                    NotificationCenter.default.post(name: .terminalSelectTab, object: Int.max)
+                }
+                .keyboardShortcut("9", modifiers: .command)
                 Divider()
                 Button("Split Horizontally") {
                     NotificationCenter.default.post(name: .terminalSplitHorizontal, object: nil)
@@ -149,6 +162,7 @@ extension Notification.Name {
     static let terminalCloseTab = Notification.Name("mees.terminal.closeTab")
     static let terminalNextTab = Notification.Name("mees.terminal.nextTab")
     static let terminalPreviousTab = Notification.Name("mees.terminal.previousTab")
+    static let terminalSelectTab = Notification.Name("mees.terminal.selectTab")
     static let terminalClear = Notification.Name("mees.terminal.clear")
     static let terminalToggleFind = Notification.Name("mees.terminal.toggleFind")
     static let terminalSplitHorizontal = Notification.Name("mees.terminal.splitH")
