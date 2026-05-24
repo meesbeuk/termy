@@ -6,6 +6,26 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.8.5</title>
+            <description><![CDATA[
+                <h2>Bigger profile-row hit targets</h2>
+                <ul>
+                    <li>The pencil + trash icons on each profile row are now 22pt tap targets instead of ~10pt — actually clickable without zooming in.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Sun, 24 May 2026 19:10:00 +0000</pubDate>
+            <sparkle:version>15</sparkle:version>
+            <sparkle:shortVersionString>0.8.5</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.8.5/Termy.dmg"
+                sparkle:version="15"
+                sparkle:shortVersionString="0.8.5"
+                length="2518432"
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.8.4</title>
             <description><![CDATA[
                 <h2>Escape closes modals reliably</h2>
