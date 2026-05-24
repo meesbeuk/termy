@@ -177,16 +177,40 @@ private struct WindowBackdrop: View {
 
     var body: some View {
         ZStack {
-            // Base glass material — Apple's translucent layer.
-            Rectangle()
-                .fill(.ultraThinMaterial)
-            // Single adaptive tint covering the whole window. Higher opacity
-            // on light wallpapers (text gets contrast); lower on dark
-            // (more glass through).
+            // NSVisualEffectView with .hudWindow material — the dark-blurry
+            // surface macOS uses for HUDs. Unlike SwiftUI's .ultraThinMaterial
+            // (which goes near-white over white backdrops and renders terminal
+            // text unreadable), .hudWindow stays dark-glassy regardless of
+            // what's behind the window. We can't sample what's literally
+            // behind without screen-recording entitlements, so picking a
+            // material that's contrast-stable is the right tradeoff.
+            VisualEffectBlur(material: .hudWindow, blendingMode: .behindWindow)
+            // Extra tint on top — still drives auto/manual opacity range,
+            // but the floor is bumped so we never go below readable contrast.
             Color.black.opacity(settings.effectiveOpacity)
         }
         .ignoresSafeArea()
         .background(WindowAccessor(hostedWindow: $hostedWindow))
+    }
+}
+
+/// NSViewRepresentable wrapper around NSVisualEffectView. SwiftUI's `.material`
+/// modifier doesn't expose blendingMode or the HUD-style material.
+private struct VisualEffectBlur: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+    let blendingMode: NSVisualEffectView.BlendingMode
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let v = NSVisualEffectView()
+        v.material = material
+        v.blendingMode = blendingMode
+        v.state = .active
+        v.wantsLayer = true
+        return v
+    }
+    func updateNSView(_ v: NSVisualEffectView, context: Context) {
+        v.material = material
+        v.blendingMode = blendingMode
     }
 }
 

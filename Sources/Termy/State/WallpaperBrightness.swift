@@ -41,13 +41,19 @@ enum WallpaperBrightness {
         return 0.2126 * r + 0.7152 * g + 0.0722 * b
     }
 
-    /// Map a wallpaper luminance to the window's single-layer dark tint.
-    /// This is the ONLY opacity in the app now — covers the entire window,
-    /// including the terminal area. Needs enough opacity at the high end for
-    /// readable text over white backdrops; stays glass-like at the low end.
+    /// Extra dark tint on top of the .hudWindow material. The HUD material
+    /// already gives us a dark-glassy base that's readable on any backdrop,
+    /// so this tint range is small — just adds a touch more contrast over
+    /// light wallpapers while preserving glass on dark ones.
+    ///
+    /// Note: we sample the wallpaper file, not the actual pixels behind the
+    /// window (which would need screen-recording permission). So if a white
+    /// app is parked behind Termy over a dark wallpaper, this read says
+    /// "dark" and applies low tint — that scenario relies on .hudWindow's
+    /// built-in contrast to stay readable.
     static func opacity(forBrightness lum: Double) -> Double {
-        let minOpacity = 0.10   // dark wallpaper — let the glass show through
-        let maxOpacity = 0.55   // light wallpaper — opaque enough to read
+        let minOpacity = 0.10
+        let maxOpacity = 0.35
         return minOpacity + lum * (maxOpacity - minOpacity)
     }
 }
