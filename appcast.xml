@@ -6,6 +6,30 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.9.19</title>
+            <description><![CDATA[
+                <h2>Drag-resizable pane dividers</h2>
+                <ul>
+                    <li><strong>Drag the divider between split panes</strong> to change the size ratio — 70/30, 60/40, anything between 10% and 90%. Cursor turns into the resize arrow on hover, divider tints brighter while held. Replaces the previous fixed equal-split.</li>
+                    <li><strong>Fractions persist per-tab across launches</strong> — a 75/25 split comes back the way you left it.</li>
+                    <li>New splits carve from the active pane's space (not equally rebalanced), so creating a fourth pane doesn't unexpectedly shrink the three you already laid out.</li>
+                    <li>Closing a pane donates its space to the neighbour that inherits focus — adjacent panes don't suddenly jump in size.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 04:10:00 +0000</pubDate>
+            <sparkle:version>36</sparkle:version>
+            <sparkle:shortVersionString>0.9.19</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.9.19/Termy.dmg"
+                sparkle:version="36"
+                sparkle:shortVersionString="0.9.19"
+                length="2735392"
+                sparkle:edSignature="wB9Bq2ak77i5upLuXeEyFLkToBOMJYN6SGAyVI1u+U5e5Mpw4qKOX91RtnOKJwKo1xJohKDk4T+JjuGheMfKBg=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.18</title>
             <description><![CDATA[
                 <h2>Visible close affordances + grouped title-strip dividers</h2>

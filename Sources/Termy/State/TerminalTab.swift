@@ -32,10 +32,18 @@ final class TerminalTab: ObservableObject, Identifiable {
     /// stable human label. Persisted across launches.
     @Published var customTitle: String?
 
+    /// Per-pane size fractions, summing to 1.0. Defaults to equal
+    /// distribution (1/N for N panes) but updates as the user drags the
+    /// divider between panes. Persisted so a 70/30 split survives
+    /// relaunches. Length always matches panes.count; defensively
+    /// re-normalised on split/close.
+    @Published var paneFractions: [CGFloat] = []
+
     init(initialCwd: String = NSHomeDirectory(), profile: Profile? = nil) {
         let first = TerminalSession(initialCwd: initialCwd, profile: profile)
         self.panes = [first]
         self.activePaneId = first.id
+        self.paneFractions = [1.0]
         if let profile, profile.tagColor != .none { self.tagColor = profile.tagColor }
     }
 
@@ -43,6 +51,14 @@ final class TerminalTab: ObservableObject, Identifiable {
         self.panes = panes
         self.orientation = orientation
         self.activePaneId = panes.first?.id
+        self.paneFractions = Self.equalFractions(count: panes.count)
+    }
+
+    /// Equal-distribution helper used when fractions aren't otherwise
+    /// known (new tab, new split, restore without persisted fractions).
+    static func equalFractions(count: Int) -> [CGFloat] {
+        guard count > 0 else { return [] }
+        return Array(repeating: 1.0 / CGFloat(count), count: count)
     }
 
     var activePane: TerminalSession? {
@@ -51,19 +67,34 @@ final class TerminalTab: ObservableObject, Identifiable {
 
     /// Split the active pane: append a new pane with the active pane's cwd.
     /// First split also sets the orientation; subsequent splits append in the
-    /// existing orientation.
+    /// existing orientation. New pane takes half of the previously-active
+    /// pane's space — equivalent to "split here" rather than "add equal
+    /// share for all", which would shrink unrelated panes the user is
+    /// already happy with.
     func split(orientation: PaneOrientation) {
         let cwd = activePane?.cwd ?? NSHomeDirectory()
         let newPane = TerminalSession(initialCwd: cwd)
         if panes.count == 1 {
             self.orientation = orientation
         }
+        // Carve half of the active pane's fraction for the new pane.
+        if let activeIdx = panes.firstIndex(where: { $0.id == activePaneId }),
+           activeIdx < paneFractions.count {
+            let activeShare = paneFractions[activeIdx]
+            paneFractions[activeIdx] = activeShare / 2
+            paneFractions.append(activeShare / 2)
+        } else {
+            paneFractions = Self.equalFractions(count: panes.count + 1)
+        }
         panes.append(newPane)
         activePaneId = newPane.id
     }
 
     /// Close the active pane. Returns true if the tab should be closed too
-    /// (i.e. the last pane is being removed).
+    /// (i.e. the last pane is being removed). Redistributes the closed
+    /// pane's fraction to its neighbours so the remaining panes don't
+    /// unexpectedly resize — give the freed space to the neighbour that
+    /// gets focus.
     @discardableResult
     func closeActivePane() -> Bool {
         guard let active = activePane,
@@ -71,8 +102,20 @@ final class TerminalTab: ObservableObject, Identifiable {
         else { return panes.isEmpty }
         active.terminalView?.terminate()
         panes.remove(at: idx)
-        if panes.isEmpty { return true }
-        activePaneId = panes[min(idx, panes.count - 1)].id
+        if panes.isEmpty {
+            paneFractions = []
+            return true
+        }
+        let freed = idx < paneFractions.count ? paneFractions[idx] : 0
+        if idx < paneFractions.count {
+            paneFractions.remove(at: idx)
+        }
+        // Donate to the neighbour that inherits focus.
+        let focusIdx = min(idx, panes.count - 1)
+        if focusIdx < paneFractions.count {
+            paneFractions[focusIdx] += freed
+        }
+        activePaneId = panes[focusIdx].id
         return false
     }
 

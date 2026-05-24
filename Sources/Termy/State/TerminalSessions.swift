@@ -398,6 +398,9 @@ final class TerminalSessions: ObservableObject {
             if tab.tagColor != .none { dict["tagColor"] = tab.tagColor.rawValue }
             if tab.broadcastInput { dict["broadcastInput"] = true }
             if let title = tab.customTitle, !title.isEmpty { dict["customTitle"] = title }
+            if tab.paneFractions.count == tab.panes.count, !tab.paneFractions.isEmpty {
+                dict["paneFractions"] = tab.paneFractions.map { Double($0) }
+            }
             return dict
         }
         UserDefaults.standard.set(payload, forKey: restoreKey)
@@ -470,6 +473,10 @@ final class TerminalSessions: ObservableObject {
             }
             if let title = entry["customTitle"] as? String, !title.isEmpty {
                 tab.customTitle = title
+            }
+            if let fractions = entry["paneFractions"] as? [Double],
+               fractions.count == tab.panes.count {
+                tab.paneFractions = fractions.map { CGFloat($0) }
             }
             restored.append(tab)
         }
