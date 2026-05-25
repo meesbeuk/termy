@@ -122,7 +122,11 @@ struct MainTerminalView: View {
         // Window menu and Dock can distinguish multiple Termy windows.
         // Without this every window shows up as plain "Termy" — useless
         // when the user has 3+ open.
-        .onChange(of: sessions.selectedTabId) { _, _ in syncWindowTitle() }
+        .onChange(of: sessions.selectedTabId) { _, _ in
+            syncWindowTitle()
+            focusActivePane()
+        }
+        .onChange(of: sessions.currentTab?.activePaneId) { _, _ in focusActivePane() }
         .onChange(of: sessions.currentSession?.cwd) { _, _ in syncWindowTitle() }
         .onChange(of: sessions.currentSession?.title) { _, _ in syncWindowTitle() }
         .onChange(of: sessions.currentTab?.customTitle) { _, _ in syncWindowTitle() }
@@ -248,6 +252,23 @@ struct MainTerminalView: View {
             }
             .transition(.opacity)
             .zIndex(16)
+        }
+    }
+
+    /// Promote the active pane's NSView to first responder. Tab switches
+    /// otherwise leave the prior tab's view focused (or no view focused at
+    /// all on a fresh window), so the user has to click into the terminal
+    /// before keystrokes route to the PTY and the caret stays hollow.
+    /// Dispatched async so it runs after SwiftUI has mounted the new view
+    /// in the hierarchy — calling makeFirstResponder before the view is
+    /// in a window is a no-op.
+    private func focusActivePane() {
+        DispatchQueue.main.async {
+            guard let view = sessions.currentSession?.terminalView,
+                  let window = view.window ?? hostedWindow else { return }
+            if TermyTerminalView.shouldClaimFocus(over: window.firstResponder) {
+                window.makeFirstResponder(view)
+            }
         }
     }
 

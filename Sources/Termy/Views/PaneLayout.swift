@@ -96,57 +96,17 @@ struct PaneLayout: View {
 
     @ViewBuilder
     private func paneCell(_ pane: TerminalSession, single: Bool) -> some View {
-        let isActive = pane.id == tab.activePaneId
-        TerminalSurface(session: pane, sessions: sessions, settings: settings)
-            .id(pane.id)
-            // Per-pane minimum keeps splits from collapsing to an unusable
-            // ~20-column terminal at minWindow widths.
-            .frame(minWidth: 200, minHeight: 100)
-            .overlay(
-                Group {
-                    if !single {
-                        RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(
-                                isActive ? Color.accentColor.opacity(0.55) : Color.clear,
-                                lineWidth: 1
-                            )
-                    }
-                }
-            )
-            // Per-pane close × in the top-right when the tab has multiple
-            // panes. Hover-revealed so it doesn't clutter the active
-            // workspace.
-            .overlay(alignment: .topTrailing) {
-                if !single {
-                    PaneCloseButton {
-                        sessions.closePane(pane.id)
-                    }
-                    .padding(.top, 4)
-                    .padding(.trailing, 6)
-                }
-            }
-            .onTapGesture { tab.activePaneId = pane.id }
-            // Right-click anywhere in the terminal pane → standard
-            // macOS context menu: Copy / Paste / Select All / Find /
-            // Clear / New Tab. Every native terminal has this; Termy
-            // was missing it through v0.9.23.
-            .contextMenu {
-                Button("Copy") { copySelection(from: pane) }
-                    .disabled(!hasSelection(in: pane))
-                Button("Paste") { pasteInto(pane: pane) }
-                Button("Select All") { selectAll(in: pane) }
-                Divider()
-                Button("Find in Scrollback") {
-                    NotificationCenter.default.post(name: .terminalToggleFind, object: nil)
-                }
-                Button("Clear") {
-                    sessions.clearCurrent()
-                }
-                Divider()
-                Button("New Tab") { sessions.openTab() }
-                Button("Split Horizontally") { sessions.splitHorizontal() }
-                Button("Split Vertically") { sessions.splitVertical() }
-            }
+        PaneCellView(
+            pane: pane,
+            tab: tab,
+            sessions: sessions,
+            settings: settings,
+            single: single,
+            copySelection: { copySelection(from: $0) },
+            pasteInto: { pasteInto(pane: $0) },
+            selectAll: { selectAll(in: $0) },
+            hasSelection: { hasSelection(in: $0) }
+        )
     }
 
     /// SwiftTerm's `selection` is internal — we can't query it directly.
@@ -169,6 +129,152 @@ struct PaneLayout: View {
     private func selectAll(in pane: TerminalSession) {
         // NSView.selectAll(_:) routes to MacTerminalView's override.
         pane.terminalView?.selectAll(NSObject())
+    }
+}
+
+/// One pane cell — extracted from PaneLayout so SwiftUI can observe the
+/// session's `@Published var isActive` and animate the activity stripe.
+/// Inline overlays inside a parent View can't observe a leaf ObservableObject
+/// without a dedicated child view holding the @ObservedObject.
+private struct PaneCellView: View {
+    @ObservedObject var pane: TerminalSession
+    @ObservedObject var tab: TerminalTab
+    let sessions: TerminalSessions
+    @ObservedObject var settings: TerminalSettings
+    let single: Bool
+    let copySelection: (TerminalSession) -> Void
+    let pasteInto: (TerminalSession) -> Void
+    let selectAll: (TerminalSession) -> Void
+    let hasSelection: (TerminalSession) -> Bool
+
+    var body: some View {
+        let isActivePane = pane.id == tab.activePaneId
+        TerminalSurface(session: pane, sessions: sessions, settings: settings)
+            .frame(minWidth: 200, minHeight: 100)
+            .overlay(
+                Group {
+                    if !single {
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(
+                                isActivePane ? Color.accentColor.opacity(0.55) : Color.clear,
+                                lineWidth: 1
+                            )
+                    }
+                }
+            )
+            // Thin animated indeterminate progress stripe along the top
+            // edge of the pane while it's actively producing output
+            // (claude / codex / build / etc.). Same idle heuristic that
+            // fires "command finished" notifications — works for *any*
+            // long-running command without shell integration.
+            .overlay(alignment: .top) {
+                if settings.showActivityBar {
+                    ActivityStripe(active: pane.isActive)
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if !single {
+                    PaneCloseButton {
+                        sessions.closePane(pane.id)
+                    }
+                    .padding(.top, 4)
+                    .padding(.trailing, 22)
+                }
+            }
+            .onTapGesture {
+                tab.activePaneId = pane.id
+                if let view = pane.terminalView {
+                    view.window?.makeFirstResponder(view)
+                }
+            }
+            .contextMenu {
+                Button("Copy") { copySelection(pane) }
+                    .disabled(!hasSelection(pane))
+                Button("Paste") { pasteInto(pane) }
+                Button("Select All") { selectAll(pane) }
+                Divider()
+                Button("Find in Scrollback") {
+                    NotificationCenter.default.post(name: .terminalToggleFind, object: nil)
+                }
+                Button("Clear") { sessions.clearCurrent() }
+                Divider()
+                Button("New Tab") { sessions.openTab() }
+                Button("Split Horizontally") { sessions.splitHorizontal() }
+                Button("Split Vertically") { sessions.splitVertical() }
+            }
+    }
+}
+
+/// Thin (2pt) animated indeterminate progress stripe driven by the
+/// wall clock via `TimelineView`. Phase is computed from `Date()` so
+/// the animation can't ever desync — toggling `active` on/off rapidly
+/// just fades the stripe in/out without resetting or duplicating any
+/// animation state. The previous implementation used
+/// `withAnimation(.linear.repeatForever)` which left running animations
+/// behind on toggle and could visibly glitch.
+///
+/// Visual: a soft 22%-width pulse traverses left→right every ~1.4s.
+/// Fades to 0 opacity 250 ms after the pane goes idle; the
+/// TimelineView keeps producing frames during the fade so the pulse
+/// completes its in-progress sweep instead of jumping mid-stride. The
+/// view itself remains in the hierarchy at all times — no insertion /
+/// removal flicker.
+private struct ActivityStripe: View {
+    let active: Bool
+    /// Wall-clock anchor for the animation. Set when the stripe first
+    /// becomes visible so the pulse always starts from the leading edge
+    /// on a fresh activity burst, not mid-stride.
+    @State private var anchor: Date = .distantPast
+
+    /// Cycle length in seconds. Slower = calmer; faster = more urgent.
+    /// 1.4s sits in iTerm/Xcode territory — present but not jittery.
+    private let period: Double = 1.4
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !active)) { context in
+            GeometryReader { geo in
+                let w = max(1, geo.size.width)
+                let segment = max(80, w * 0.22)
+                let elapsed = context.date.timeIntervalSince(anchor)
+                // Normalised phase 0..1. Use `truncatingRemainder` so we
+                // never accumulate floating-point error over long runs.
+                let phase = CGFloat(elapsed.truncatingRemainder(dividingBy: period) / period)
+                let travel = w + segment
+                let offset = phase * travel - segment
+
+                ZStack(alignment: .leading) {
+                    Rectangle()
+                        .fill(Color.accentColor.opacity(0.10))
+                    LinearGradient(
+                        colors: [
+                            Color.accentColor.opacity(0),
+                            Color.accentColor.opacity(0.95),
+                            Color.accentColor.opacity(0),
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: segment)
+                    .offset(x: offset)
+                }
+                .frame(height: 2)
+                .clipped()
+            }
+        }
+        .frame(height: 2)
+        .opacity(active ? 1 : 0)
+        .animation(.easeOut(duration: 0.25), value: active)
+        .onChange(of: active) { _, isActive in
+            // Anchor on the rising edge so each new activity burst
+            // starts the pulse cleanly from the left rather than
+            // wherever the previous run happened to land.
+            if isActive { anchor = Date() }
+        }
+        .onAppear {
+            if active { anchor = Date() }
+        }
+        .accessibilityHidden(true)
     }
 }
 

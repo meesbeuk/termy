@@ -20,6 +20,12 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// finished. Wired up in TerminalSurface to call TermyNotifications.
     var onCommandSettled: ((_ preview: String?) -> Void)?
 
+    /// Fires when this pane transitions between "actively producing
+    /// output" and "settled". Drives the activity stripe rendered above
+    /// the pane — same heuristic that powers `onCommandSettled`, just
+    /// reported as a leading edge instead of only the trailing edge.
+    var onActivityChanged: ((_ active: Bool) -> Void)?
+
     /// Re-applies theme + caret colors. Set by TerminalSurface so we can
     /// re-run it both when the view first lands in a window AND on first
     /// non-zero layout. SwiftTerm's caret is positioned by updateDisplay,
@@ -114,13 +120,18 @@ final class TermyTerminalView: LocalProcessTerminalView {
     // MARK: - Session recording (optional, off by default)
     //
     // When the user opts in via Settings → General → Notifications →
-    // "Record session output", every pane writes its received bytes to a
+    // "Record session output", every pane streams its decoded text to a
     // per-session log file under ~/Library/Application Support/Termy/
-    // sessions/. One file per pane lifecycle, named with start
-    // timestamp + short pane id. FileHandle stays open for the pane's
-    // lifetime; closed in deinit.
-    private var recordingHandle: FileHandle?
+    // sessions/. SessionRecorder strips ANSI/OSC/DCS so the file opens
+    // cleanly in any text editor. One file per pane lifecycle; closed in
+    // deinit.
+    private var recorder: SessionRecorder?
     private var recordingChecked = false
+    /// Cached values used to seed the recorder header on first byte —
+    /// SwiftTerm doesn't surface cwd/shell directly to the view, so
+    /// TerminalSurface passes them in via configureRecording().
+    var recordingCwd: String?
+    var recordingShell: String?
 
     /// Bytes accumulated within a single burst before the pane is
     /// considered "active". One-byte rerenders (just a prompt refresh)
@@ -295,6 +306,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
         }
         if !isCurrentlyActive && bytesSinceBurstStart >= activeByteThreshold {
             isCurrentlyActive = true
+            onActivityChanged?(true)
             ensureIdleTimer()
         }
     }
@@ -366,6 +378,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
             // event only if we hadn't already (e.g. via 133;D).
             if isCurrentlyActive && !osc133JustFired {
                 isCurrentlyActive = false
+                onActivityChanged?(false)
                 let preview = tailLine(from: lastPreviewBuffer)
                 onCommandSettled?(preview)
             }
@@ -395,6 +408,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
             let preview = tailLine(from: lastPreviewBuffer)
             isCurrentlyActive = false
             osc133JustFired = true
+            onActivityChanged?(false)
             onCommandSettled?(preview)
         default:
             break
@@ -470,6 +484,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
         let effective = threshold > 0 ? threshold : 4.0
         if Date().timeIntervalSince(lastDataAt) >= effective {
             isCurrentlyActive = false
+            onActivityChanged?(false)
             onCommandSettled?(tailLine(from: lastPreviewBuffer))
         }
     }
@@ -477,85 +492,120 @@ final class TermyTerminalView: LocalProcessTerminalView {
     deinit {
         idleTimer?.invalidate()
         typewriterTimer?.invalidate()
-        try? recordingHandle?.close()
+        recorder?.close()
+        if let observer = keyWindowObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
-    /// If the user has the "Record session output" preference on, append
-    /// the raw byte slice to this pane's log file. First call per pane
-    /// lazily opens the file. Failures are swallowed — recording is a
-    /// best-effort QoL feature, not load-bearing.
+    /// If the user has the "Record session output" preference on, hand the
+    /// slice to the session recorder. The recorder lazy-opens its file on
+    /// first byte and silently degrades on any IO failure — recording is
+    /// best-effort, never load-bearing.
     private func recordIfEnabled(_ slice: ArraySlice<UInt8>) {
         let enabled = UserDefaults.standard.bool(forKey: "termy.recordSessions")
         guard enabled else {
-            if recordingHandle != nil { try? recordingHandle?.close(); recordingHandle = nil }
+            if recorder != nil {
+                recorder?.close()
+                recorder = nil
+                recordingChecked = false
+            }
             return
         }
-        if recordingHandle == nil {
+        if recorder == nil {
             if recordingChecked { return }  // failed once → don't keep trying
             recordingChecked = true
-            recordingHandle = Self.openSessionLog()
+            recorder = SessionRecorder(
+                cwd: recordingCwd ?? NSHomeDirectory(),
+                shell: recordingShell ?? "/bin/zsh"
+            )
         }
-        guard let handle = recordingHandle else { return }
-        try? handle.write(contentsOf: Data(slice))
+        recorder?.append(slice)
     }
 
-    private static func openSessionLog() -> FileHandle? {
-        let support = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first)
-            ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        let dir = support.appendingPathComponent("Termy/sessions", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd_HHmmss"
-        let name = "\(f.string(from: Date()))_\(UUID().uuidString.prefix(6)).log"
-        let fileURL = dir.appendingPathComponent(name)
-        FileManager.default.createFile(atPath: fileURL.path, contents: nil)
-        return try? FileHandle(forWritingTo: fileURL)
+    /// Tell the recorder the working directory just changed (OSC 7). Lets
+    /// the on-disk log mark `[cwd → ~/foo]` so the user can see in the
+    /// log file where each command sequence ran. No-op when not recording.
+    func recorderDidChangeCwd(_ cwd: String) {
+        recorder?.notifyCwdChanged(cwd)
     }
+
+    /// Observer for windowDidBecomeKey — claiming focus only in
+    /// viewDidMoveToWindow can race the window becoming key on cold launch.
+    /// Re-attempts the claim whenever the window flips to key.
+    private var keyWindowObserver: NSObjectProtocol?
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard window != nil else { return }
+        if let observer = keyWindowObserver {
+            NotificationCenter.default.removeObserver(observer)
+            keyWindowObserver = nil
+        }
+        guard let window else { return }
         onNeedsAppearanceRefresh?()
+        // Claim focus on initial attach AND any time the window becomes
+        // key. On a cold-launch boot the window isn't always key yet at
+        // viewDidMoveToWindow time, so a single attempt would leave the
+        // caret hollow. NotificationCenter retries cover that race and
+        // the "user switched apps and came back" case for free.
+        attemptFocusClaim()
+        keyWindowObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            self?.attemptFocusClaim()
+        }
+    }
+
+    private func attemptFocusClaim() {
+        guard let window else { return }
+        DispatchQueue.main.async { [weak self, weak window] in
+            guard let self, let window else { return }
+            if Self.shouldClaimFocus(over: window.firstResponder) {
+                window.makeFirstResponder(self)
+            }
+        }
+    }
+
+    static func shouldClaimFocus(over responder: NSResponder?) -> Bool {
+        guard let responder else { return true }
+        if responder is TermyTerminalView { return false }
+        if responder is NSText || responder is NSTextField { return false }
+        // NSWindow itself counts as "nothing meaningfully focused" — safe
+        // to take focus.
+        if responder is NSWindow { return true }
+        // Default: anything else (SwiftUI hosting view, generic NSView,
+        // unknown) is fair game. Terminal is the primary input target.
+        return true
     }
 
     // MARK: - Live-resize coalescing
     //
     // SwiftTerm's setFrameSize calls `processSizeChange` → `terminal.resize` →
-    // `reflowWider` on every AppKit setFrameSize tick. During a window-corner
-    // drag AppKit fires that hundreds of times per second with intermediate
-    // widths, and SwiftTerm's reflowWider has a buggy "remove wrapped
-    // continuation lines" path that drops content without merging into the
-    // surviving line. The net effect: scrollback gains duplicated/ghosted rows
-    // and scrolling back up looks corrupt.
+    // `reflowWider`/`reflowNarrower` on every AppKit setFrameSize tick. During
+    // a window-corner drag AppKit fires that hundreds of times per second with
+    // intermediate widths. We coalesce: skip per-tick processSizeChange via the
+    // NSView-direct setFrameSize, then fire ONE real resize on
+    // viewDidEndLiveResize so SwiftTerm's reflow runs exactly once.
     //
-    // Two defenses, stacked:
-    //   1. Coalesce — during a live drag, skip SwiftTerm's per-tick
-    //      processSizeChange so the cell grid mutates exactly once. We
-    //      hand-dispatch to NSView's setFrameSize via the objc runtime to
-    //      bypass SwiftTerm's override.
-    //   2. Skip the reflow entirely — when the drag ends and we run the one
-    //      final resize, temporarily flip the terminal's scrollback off
-    //      (`isReflowEnabled = hasScrollback`, so nil disables it). The
-    //      resize still rebuilds the visible grid; the buggy reflow path is
-    //      simply never taken. Scrollback past the visible viewport is lost,
-    //      but the alternative (corrupted, unreadable scrollback) is worse.
+    // Earlier builds used `withReflowDisabled` to skip SwiftTerm's reflow path
+    // on the settling resize. That call wraps `changeScrollback(nil)`, which
+    // internally calls `lines.trimStart(amountToTrim)` — permanently dropping
+    // every scrollback line above the visible viewport. End result: any window
+    // resize that crossed a cell boundary wiped the user's command history.
+    // SwiftTerm 1.13 reflows correctly; trust it and keep scrollback intact.
 
     override func viewDidEndLiveResize() {
         super.viewDidEndLiveResize()
-        // Settle the grid at the final size with reflow disabled, so the
-        // single resize that crosses cols/rows doesn't run reflowWider.
-        // Nudge by half a point first to force processSizeChange (which
-        // early-returns when the size matches the current frame). Only do
-        // this when the grid would actually change — a sub-cell drag (user
-        // wiggled the corner by < 1 column) doesn't need a reflow flush,
-        // and going through withReflowDisabled there would needlessly trim
-        // scrollback above the viewport.
+        // Settle the grid at the final size. Nudge by half a point first to
+        // force SwiftTerm's processSizeChange (which early-returns when the
+        // size matches the current frame). Only do this when the grid would
+        // actually change — a sub-cell drag doesn't need a reflow flush.
         let final = frame.size
         if wouldChangeCellGrid(newSize: final) {
-            withReflowDisabled {
-                super.setFrameSize(NSSize(width: final.width + 0.5, height: final.height))
-                super.setFrameSize(final)
-            }
+            super.setFrameSize(NSSize(width: final.width + 0.5, height: final.height))
+            super.setFrameSize(final)
         }
         // Full refresh from the buffer so any stale draw region clears.
         getTerminal().refresh(startRow: 0, endRow: getTerminal().rows - 1)
@@ -565,19 +615,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
     override func setFrameSize(_ newSize: NSSize) {
         let wasZeroSized = frame.size.width <= 0 || frame.size.height <= 0
         guard inLiveResize else {
-            // Reflow only mutates the buffer when (cols × rows) would change.
-            // For sub-cell layout adjustments (SwiftUI hover state, fractional
-            // pixel snaps, etc.) the grid is identical before and after — so
-            // we can skip the reflow-off wrapper. Wrapping every layout pass
-            // in withReflowDisabled was the v0.9.3 cure-worse-than-disease:
-            // every call trimmed and re-installed the scrollback buffer,
-            // permanently losing history. Now we only pay that cost when an
-            // actual cell-grid change is about to happen.
-            if wouldChangeCellGrid(newSize: newSize) {
-                withReflowDisabled { super.setFrameSize(newSize) }
-            } else {
-                super.setFrameSize(newSize)
-            }
+            super.setFrameSize(newSize)
             // First time we land at a real size, ask the host to re-apply
             // appearance. updateDisplay (and therefore caret positioning)
             // reads frame.height — an applyAppearance fired while frame was
@@ -641,19 +679,6 @@ final class TermyTerminalView: LocalProcessTerminalView {
         return dim
     }
 
-    /// Runs `body` with the terminal's scrollback temporarily set to nil so
-    /// `Buffer.resize` skips its reflow path. Restores the prior scrollback
-    /// size afterward. Visible viewport content is preserved across the
-    /// toggle (changeHistorySize trims from the START of the line buffer and
-    /// adjusts yBase/yDisp so the visible window stays anchored).
-    private func withReflowDisabled(_ body: () -> Void) {
-        let terminal = getTerminal()
-        let priorScrollback = terminal.options.scrollback
-        terminal.changeScrollback(nil)
-        body()
-        terminal.changeScrollback(priorScrollback > 0 ? priorScrollback : nil)
-    }
-
     private func callNSViewSetFrameSize(_ newSize: NSSize) {
         typealias Fn = @convention(c) (NSView, Selector, NSSize) -> Void
         let sel = #selector(NSView.setFrameSize(_:))
@@ -679,12 +704,24 @@ struct TerminalSurface: NSViewRepresentable {
         }
 
         let view = TermyTerminalView(frame: .zero)
+        // Default SwiftTerm requires Cmd-hover to discover and Cmd-click to
+        // open links — terrible discoverability. `.hover` underlines any
+        // URL / OSC 8 hyperlink the cursor is over, and a plain click on a
+        // highlighted link opens it. Selection still works via drag.
+        view.linkHighlightMode = .hover
+        view.linkReporting = .implicit
         view.onBell = { [weak session] in
             guard let session else { return }
             TermyNotifications.shared.bell(
                 window: session.terminalView?.window,
                 cwd: session.cwd
             )
+        }
+        view.onActivityChanged = { [weak session] active in
+            DispatchQueue.main.async {
+                guard let session, session.isActive != active else { return }
+                session.isActive = active
+            }
         }
         view.onCommandSettled = { [weak session] preview in
             guard let session else { return }
@@ -738,6 +775,12 @@ struct TerminalSurface: NSViewRepresentable {
         // init) and routes `send(source:data:)` to the PTY's stdin. Replacing
         // it with our own delegate would silently disconnect keyboard input.
         // SwiftTerm's macOS default already opens URLs via NSWorkspace.
+
+        // Seed the recorder with cwd/shell so the log header carries the
+        // right metadata even if the user toggled recording on between
+        // sessions. SessionRecorder lazy-opens on first byte.
+        view.recordingCwd = session.initialCwd
+        view.recordingShell = session.shellPath
 
         view.startProcess(
             executable: session.shellPath,
@@ -852,6 +895,10 @@ struct TerminalSurface: NSViewRepresentable {
             DispatchQueue.main.async {
                 if let dir = directory, !dir.isEmpty {
                     self.session.cwd = dir
+                    if let view = source as? TermyTerminalView {
+                        view.recordingCwd = dir
+                        view.recorderDidChangeCwd(dir)
+                    }
                     // Debounce persist — `cd`-heavy workflows hit this on every
                     // hop, and UserDefaults writes are not free.
                     self.persistTimer?.invalidate()

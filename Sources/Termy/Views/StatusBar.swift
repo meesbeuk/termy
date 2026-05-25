@@ -71,10 +71,13 @@ struct StatusBar: View {
             // tiny SF Symbol that the user can hover to confirm what's
             // active. Click-through to settings for the relevant one.
             if settings.recordSessions {
-                Image(systemName: "record.circle")
+                // Subtle logging glyph instead of `record.circle` — the
+                // red filled-circle read like a camera/screencap was rolling
+                // and made the bar feel alarming.
+                Image(systemName: "tray.and.arrow.down")
                     .font(.system(size: 10))
-                    .foregroundStyle(DS.Colors.danger.opacity(0.85))
-                    .help("Session recording active — output is being logged to ~/Library/Application Support/Termy/sessions/")
+                    .foregroundStyle(DS.Colors.tertiary)
+                    .help("Session output is being logged to ~/Library/Application Support/Termy/sessions/")
             }
             if settings.cinemaMode {
                 Image(systemName: "film")

@@ -11,6 +11,13 @@ final class TerminalSession: ObservableObject, Identifiable {
     @Published var title: String = "zsh"
     @Published var cwd: String
 
+    /// True while the pane is actively producing output (claude/codex is
+    /// thinking, build is compiling, etc.). Driven from TermyTerminalView's
+    /// idle heuristic — same one that powers the "command finished"
+    /// notification. PaneLayout reads this to render a thin animated
+    /// progress stripe at the top of the active pane.
+    @Published var isActive: Bool = false
+
     /// The actual SwiftTerm view. Created lazily once the SwiftUI representable
     /// is mounted so we don't fork a shell we never display.
     var terminalView: LocalProcessTerminalView?

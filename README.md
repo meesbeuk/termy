@@ -23,6 +23,7 @@
 iTerm2 is dated. Warp is cloud-locked. Apple's Terminal.app is barebones. **Termy is what a 2026 macOS terminal should be** — fast, native, beautiful, and aware that your shell sessions are mostly running AI coding tools.
 
 - **One click launches your AI tool of choice.** Claude Code and OpenAI Codex sit in the title strip as proper icon buttons — `claude` or `codex` runs in the active pane with the right enter key, not just types it.
+- **Activity stripe** — a thin animated bar pulses at the top of any pane that's busy, so a glance tells you whether claude is still thinking. Works for builds, watchers, anything that prints — no shell integration required.
 - **Real Quake-style drop-down.** ⌃` slides a persistent panel down from the top of the active display. Stays alive between toggles so it's instant.
 - **Inline scrollback search.** ⌘F opens a search-as-you-type bar with regex, case toggle, and prev/next navigation. No NSFindPanel popup from 2007.
 - **Liquid-glass window** that stays readable on any wallpaper — adaptive opacity samples the desktop and ramps tint only when it has to.
@@ -84,6 +85,9 @@ Requires macOS 15+ and the Xcode Command Line Tools.
 
 ### Quality of life
 - **Status bar** — cwd (with `~` folding), git branch (refreshes every 4s so `git checkout` reflects without `cd`), clock. Handles worktrees + submodules.
+- **Activity stripe** — thin animated bar at the top of any pane producing output. Tells you at a glance whether claude / codex / your build is still working. TimelineView-driven so it can't desync; toggle in Settings.
+- **Hover-to-discover links** — URLs and OSC 8 hyperlinks underline on hover, open on a single click. No Cmd modifier needed; works equally in plain shell or inside Claude / Codex.
+- **Transcript-style session logs** — opt-in pane recording produces files you can actually read in a text editor. Each prompt + command is one line, output indented under it; alternate-screen runs (claude / vim / less) are summarised as `[interactive program — Xm Ys]`. Browse + grep them via ⌘⇧L; **Clear all** wipes the folder in one click.
 - **Smart command-finished notifications** — heuristic idle detector for any shell, or **OSC 133 shell integration** for pixel-accurate "Claude finished responding" pings. One-time zsh setup:
   ```sh
   # ~/.zshrc — Termy OSC 133 shell integration + dynamic tab title
@@ -114,11 +118,11 @@ Press `?` in the title strip for the in-app cheatsheet. Quick reference:
 
 Termy is shipping rapidly. Recent releases:
 
-- **v0.9.11** — Settings consolidated to 5 sections, README rewrite, tab right-click menu (Close Others, Reveal in Finder), ⌘1-⌘9 tab switching.
-- **v0.9.10** — Tight launcher row (Claude + Codex), unified title-strip styling.
-- **v0.9.9** — Multi-window state survives launches, per-pane profile persistence, Quake settings (hide-on-focus-loss + height slider).
-- **v0.9.8** — Live git branch in status bar, Quake opens on the active monitor, keyboard cheatsheet.
-- **v0.9.7** — Real Quake drop-down, inline find bar, visible icon affordances.
+- **v0.10.0** — Resize/scrollback bug fixed (history no longer wiped on font/split resize), caret auto-focuses on launch + tab switch, activity stripe, hover-to-open links, transcript-style session logs, **Clear all logs**, notification redesign (no more prompt-soup body lines).
+- **v0.9.33** — QuickSelect (⌘⇧/) — Bucket A complete (URLs / file paths / git hashes / IPs from scrollback, click to open).
+- **v0.9.32** — Agent Sessions panel (⌘⇧A) — browse every recent Claude Code session, jump back into its directory.
+- **v0.9.31** — Paste history (⌘⇧V).
+- **v0.9.30** — Jump-to-prompt (⌘↑ / ⌘↓), trigger packs, YAML workflows.
 
 [Full changelog →](https://github.com/meesbeuk/termy/releases)
 

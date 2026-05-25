@@ -16,6 +16,7 @@ struct SessionLogBrowser: View {
     @State private var logs: [SessionLog] = []
     @State private var selectedLog: SessionLog?
     @State private var query: String = ""
+    @State private var showingClearConfirm = false
     /// Per-log content-match counts populated when the query is non-empty
     /// — lets us show "12 matches" next to each filtered file and rank
     /// results. Empty when query is empty (filename filter only).
@@ -61,9 +62,45 @@ struct SessionLogBrowser: View {
                 NSWorkspace.shared.activateFileViewerSelecting([dir])
             }
             .controlSize(.small)
+            Button("Clear all…", role: .destructive) {
+                showingClearConfirm = true
+            }
+            .controlSize(.small)
+            .disabled(logs.isEmpty)
             DSIconButton(icon: "xmark", action: onDismiss)
         }
         .padding(DS.Spacing.l)
+        .confirmationDialog(
+            "Delete all session logs?",
+            isPresented: $showingClearConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete \(logs.count) log\(logs.count == 1 ? "" : "s")", role: .destructive) {
+                clearAllLogs()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently removes every file in ~/Library/Application Support/Termy/sessions/. New recordings will start fresh.")
+        }
+    }
+
+    /// Remove every file from the sessions directory. Open recorders
+    /// (for currently-active panes) will simply lose their handle's
+    /// underlying file — that's harmless; their next write attempt fails
+    /// silently and recording continues into a fresh file on next pane
+    /// launch.
+    private func clearAllLogs() {
+        let dir = Self.sessionsDir()
+        let fm = FileManager.default
+        if let names = try? fm.contentsOfDirectory(atPath: dir.path) {
+            for name in names {
+                let url = dir.appendingPathComponent(name)
+                try? fm.removeItem(at: url)
+            }
+        }
+        logs = []
+        selectedLog = nil
+        contentMatchCounts = [:]
     }
 
     private var sidebar: some View {
@@ -205,9 +242,7 @@ struct SessionLogBrowser: View {
     }
 
     static func sessionsDir() -> URL {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        return support.appendingPathComponent("Termy/sessions", isDirectory: true)
+        SessionRecorder.sessionsDir()
     }
 }
 
@@ -366,8 +401,9 @@ private struct SessionLogDetail: View {
 
     /// Loads head + tail of the log file so previews stay snappy on
     /// very large recordings (a 100 MB `claude` transcript shouldn't
-    /// freeze the modal). Strips terminal escape sequences for
-    /// readability — the on-disk file keeps them intact for fidelity.
+    /// freeze the modal). On-disk files are already ANSI-stripped by
+    /// SessionRecorder, but we still run the legacy stripper as a safety
+    /// net for files saved by older Termy builds.
     private func loadPreview() {
         loading = true
         let url = log.url

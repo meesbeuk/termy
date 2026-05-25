@@ -6,6 +6,41 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.10.0 — Stability + transcript-quality logs</title>
+            <description><![CDATA[
+                <h2>Fixed</h2>
+                <ul>
+                    <li><strong>Window resize no longer wipes scrollback.</strong> The reflow-disabled wrapper was permanently trimming history every time the cell grid changed (font bumps, splits, drag-resize). Let SwiftTerm reflow natively and your full session history survives.</li>
+                    <li><strong>Caret fills + accepts input on launch.</strong> Cold-launch / tab-restore previously left the terminal view unfocused — you had to click once before typing. The pane now claims first responder on window attach + windowDidBecomeKey, and tab switches carry focus to the new pane.</li>
+                    <li><strong>Split-view close button cleared from the scrollbar.</strong> The per-pane × was overlapping SwiftTerm's scroller when a tab had multiple panes.</li>
+                    <li><strong>Recording indicator no longer looks like a camera.</strong> Swapped the red <code>record.circle</code> for a subtle <code>tray.and.arrow.down</code> in tertiary tone.</li>
+                </ul>
+                <h2>New</h2>
+                <ul>
+                    <li><strong>Activity stripe.</strong> A thin animated bar pulses at the top of any pane that's currently producing output — claude/codex thinking, builds compiling, watchers ticking. Driven by the same idle heuristic that powers "command finished" notifications, so it works for anything without shell integration. TimelineView-based, can't desync on rapid toggles. Toggle in Settings.</li>
+                    <li><strong>Hover-to-discover links.</strong> URLs and OSC 8 hyperlinks now underline on plain hover and open on a single click — no Cmd modifier required. Works equally in plain shell and inside Claude / Codex.</li>
+                    <li><strong>Clear all session logs.</strong> Destructive button in the Session Logs browser header, confirmation-gated. Wipes <code>~/Library/Application Support/Termy/sessions/</code> in one click.</li>
+                </ul>
+                <h2>Polish</h2>
+                <ul>
+                    <li><strong>Session logs read like a transcript.</strong> Full rewrite of the recorder: a cell-cursor model collapses zsh's CR + autosuggestion redraws to their final visible state. Alternate-screen runs (claude / vim / less) get summarised as <code>[interactive program — Xm Ys]</code> instead of polluting the log with redraw noise. Header carries date / user / shell / cwd / Termy version.</li>
+                    <li><strong>Notifications follow Apple HIG.</strong> Title is always "Termy", subtitle is the event ("Command finished" / "Bell" / your trigger title), body is <code>in ~/dir · 10:13</code> — or the actual command output when it's meaningful. Prompt-shaped previews (the noisy <code>user@host~%</code> redraw leak in the old build) are filtered out.</li>
+                </ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 10:20:00 +0000</pubDate>
+            <sparkle:version>51</sparkle:version>
+            <sparkle:shortVersionString>0.10.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.10.0/Termy.dmg"
+                sparkle:version="51"
+                sparkle:shortVersionString="0.10.0"
+                length="5499784"
+                sparkle:edSignature="KQLXnTAWoyG0V9buDFQ5Eu2Vx9bcNaeWYe6ChL+JyAEDH7g0PIxKlDFYVspZ1MDaogMmbQl2ghyjv9AaeY6MAA=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.9.33 — Bucket A complete</title>
             <description><![CDATA[
                 <h2>QuickSelect (⌘⇧/) — final Bucket A item</h2>

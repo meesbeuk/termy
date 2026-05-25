@@ -163,6 +163,14 @@ final class TerminalSettings: ObservableObject {
         }
     }
 
+    /// Animated thin progress stripe at the top of the active pane while a
+    /// command is producing output (claude/codex working, builds running,
+    /// long-lived watchers). Driven by the same idle heuristic used for
+    /// the "command finished" notification — no shell integration needed.
+    @Published var showActivityBar: Bool {
+        didSet { UserDefaults.standard.set(showActivityBar, forKey: Self.showActivityBarKey) }
+    }
+
     /// Preferred editor URL scheme for OSC 8 / Cmd-click on `path:line`
     /// references. Empty string = auto-detect (cursor → vscode → zed).
     /// Common values: "cursor", "vscode", "zed", "subl", "mate".
@@ -220,6 +228,7 @@ final class TerminalSettings: ObservableObject {
     private static let cinemaModeKey = "termy.cinemaMode"
     private static let cinemaCpsKey = "termy.cinemaCps"
     private static let editorSchemeKey = "termy.editorScheme"
+    private static let showActivityBarKey = "termy.showActivityBar"
     private static let quakeHideOnFocusLossKey = "termy.quakeHideOnFocusLoss"
     private static let quakeHeightKey = "termy.quakeHeightFraction"
 
@@ -285,6 +294,14 @@ final class TerminalSettings: ObservableObject {
         let savedCps = UserDefaults.standard.double(forKey: Self.cinemaCpsKey)
         self.cinemaCps = savedCps > 0 ? savedCps : 80
         self.editorScheme = UserDefaults.standard.string(forKey: Self.editorSchemeKey) ?? ""
+        // Activity bar default-on — it's a clear visual cue when claude /
+        // codex / a build is still working, and the user explicitly asked
+        // for it. Toggle off via Settings → Appearance if it's distracting.
+        if UserDefaults.standard.object(forKey: Self.showActivityBarKey) == nil {
+            self.showActivityBar = true
+        } else {
+            self.showActivityBar = UserDefaults.standard.bool(forKey: Self.showActivityBarKey)
+        }
         if UserDefaults.standard.object(forKey: Self.quakeHideOnFocusLossKey) == nil {
             self.quakeHideOnFocusLoss = true
         } else {
