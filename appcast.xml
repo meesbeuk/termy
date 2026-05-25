@@ -6,6 +6,24 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.10.1</title>
+            <description><![CDATA[
+                <p>Polish pass: cheatsheet now lists every shortcut (Agent Sessions / Session Logs / Paste History / Quick Select / Use Selection for Find / jump-to-prompt / scroll-to-edge — was missing from the in-app help), Diagnostics report actually shows the env Termy advertises to tools (TERM_PROGRAM, LC_TERMINAL, TERM_FEATURES — were showing as "—"), Command Palette can no longer crash when switching filter category, modal overlays shrink to fit small windows, `termy://palette` / `termy://welcome` / `termy://diagnostics` now reliably show on URL invocation.</p>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 08:19:43 +0000</pubDate>
+            <sparkle:version>52</sparkle:version>
+            <sparkle:shortVersionString>0.10.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.10.1/Termy.dmg"
+                sparkle:version="52"
+                sparkle:shortVersionString="0.10.1"
+                length="3229862"
+                sparkle:edSignature="/BPTW5l9xHd6VtsZo9zHKkvVU9sv7Y71uWCK8kDfPyCe1+Gn8rBaFJN2ToTu5F4TcZsRj242YlkHkVWk7EYhBQ=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.10.0 — Stability + transcript-quality logs</title>
             <description><![CDATA[
                 <h2>Fixed</h2>
