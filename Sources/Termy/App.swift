@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import CoreImage
 
 @main
 struct TermyApp: App {
@@ -413,6 +414,29 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let hide = UserDefaults.standard.bool(forKey: "termy.hideFromDock")
         NSApp.setActivationPolicy(hide ? .accessory : .regular)
+        // When running as Termy Dev (the staging bundle from stage.sh),
+        // invert the dock icon so it's visually distinct from prod —
+        // same artwork, photo-negative palette. Keeps the source tree
+        // single-icon while making the dock + ⌘-Tab cycle unambiguous.
+        if Bundle.main.bundleIdentifier == "com.mees.termy.dev",
+           let icon = NSApp.applicationIconImage {
+            NSApp.applicationIconImage = Self.invertedIcon(icon)
+        }
+        // One-shot local mouse-down monitor: every click in the app
+        // posts a focus-changed notification so each TermyTerminalView
+        // re-evaluates its inactive-caret overlay. Catches the case
+        // where clicking directly on a sibling pane's text area
+        // changes first responder via AppKit (not SwiftUI's tap
+        // gesture, which is where we'd otherwise post the notification).
+        NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: TermyTerminalView.focusChangedNotification,
+                    object: nil
+                )
+            }
+            return event
+        }
         // Load every saved window key so each can spawn its own window in
         // launch order. The first window pops the head; the per-window
         // root opens additional windows for the tail. Limited to 8 to
@@ -580,6 +604,32 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
         } else {
             openNewWindow?()
         }
+    }
+
+    /// Returns a color-inverted copy of an NSImage, used to brand the
+    /// staging dock icon. Implemented via CIFilter.colorInvert across
+    /// every representation so all icon sizes (16/32/128/256/512/1024)
+    /// stay crisp at retina scale; falls back to the original on any
+    /// filter failure. Preserves alpha (no halo on the transparent
+    /// rounded-rect corners that AppKit uses for dock icons).
+    static func invertedIcon(_ image: NSImage) -> NSImage {
+        let size = image.size
+        let inverted = NSImage(size: size)
+        inverted.lockFocus()
+        defer { inverted.unlockFocus() }
+        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            return image
+        }
+        let ciImage = CIImage(cgImage: cgImage)
+        guard let filter = CIFilter(name: "CIColorInvert") else { return image }
+        filter.setValue(ciImage, forKey: kCIInputImageKey)
+        guard let output = filter.outputImage else { return image }
+        let ctx = CIContext()
+        guard let invertedCG = ctx.createCGImage(output, from: output.extent) else { return image }
+        let rep = NSBitmapImageRep(cgImage: invertedCG)
+        rep.size = size
+        NSGraphicsContext.current?.cgContext.draw(invertedCG, in: NSRect(origin: .zero, size: size))
+        return inverted
     }
 }
 

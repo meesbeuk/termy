@@ -15,11 +15,17 @@ struct StatusBar: View {
     @State private var now: Date = Date()
     @State private var lastResolvedCwd: String = ""
     @State private var lastResolvedBranch: String?
+    /// Tick every 30s but the displayed clock is HH:mm, so most ticks
+    /// don't change the string. Apply a per-tick minute-equality gate
+    /// in `.onReceive(clockTimer)` to skip the state write when the
+    /// minute hasn't changed — halves StatusBar re-renders.
     private let clockTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
-    // Refresh the displayed git branch every 4s so `git checkout` /
+    // Refresh the displayed git branch every 10s so `git checkout` /
     // `git switch` updates without needing the user to `cd` to bump cwd.
-    // Cheap — it's a single .git/HEAD read off the main thread.
-    private let gitTimer = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
+    // 4s was overkill — branch state changes are user-driven and the
+    // read is debounced through .git/HEAD anyway. 10s cuts the idle
+    // wakeup rate without making branch updates feel laggy.
+    private let gitTimer = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
 
     private var cwd: String { sessions.currentSession?.cwd ?? "" }
 
@@ -99,7 +105,15 @@ struct StatusBar: View {
         .padding(.vertical, 5)
         .onAppear { resolveGit(force: true) }
         .onChange(of: cwd) { _, _ in resolveGit(force: true) }
-        .onReceive(clockTimer) { now = $0 }
+        .onReceive(clockTimer) { tick in
+            // Only mutate state when the minute actually rolled over;
+            // otherwise SwiftUI re-evaluates the whole StatusBar (cwd
+            // truncation, git branch text, mode glyphs) for nothing.
+            let cal = Calendar.current
+            if cal.component(.minute, from: tick) != cal.component(.minute, from: now) {
+                now = tick
+            }
+        }
         .onReceive(gitTimer) { _ in resolveGit(force: false) }
     }
 

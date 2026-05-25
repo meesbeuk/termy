@@ -187,14 +187,23 @@ private struct PaneCellView: View {
                     PaneCloseButton {
                         sessions.closePane(pane.id)
                     }
+                    // Sit in the top-right corner. The scrollbar has
+                    // been shortened from the top by `paneCloseTopInset`
+                    // (TerminalSurface.swift) so the X has clear space
+                    // here without overlapping the scroll thumb.
                     .padding(.top, 4)
-                    .padding(.trailing, 22)
+                    .padding(.trailing, 3)
+                    .zIndex(10)
                 }
             }
             .onTapGesture {
                 tab.activePaneId = pane.id
                 if let view = pane.terminalView {
                     view.window?.makeFirstResponder(view)
+                    NotificationCenter.default.post(
+                        name: TermyTerminalView.focusChangedNotification,
+                        object: view
+                    )
                 }
             }
             .contextMenu {

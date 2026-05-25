@@ -87,13 +87,25 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// Bounded by lastPreviewBuffer's cap so a 1GB transcript doesn't
     /// scan forever.
     func recentVisibleText() -> String {
-        let pattern = "\\x1B\\[[0-?]*[ -/]*[@-~]"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else {
-            return lastPreviewBuffer
-        }
         let range = NSRange(lastPreviewBuffer.startIndex..., in: lastPreviewBuffer)
-        return regex.stringByReplacingMatches(in: lastPreviewBuffer, range: range, withTemplate: "")
+        return Self.ansiCSIRegex.stringByReplacingMatches(
+            in: lastPreviewBuffer, range: range, withTemplate: ""
+        )
     }
+
+    /// Compiled once per app lifecycle. Previously this regex was built
+    /// fresh inside both `recentVisibleText()` and `stripAnsiCSI()` —
+    /// the latter runs per LINE in `scanForTriggers`, so a streaming
+    /// command produced one `NSRegularExpression` alloc per output
+    /// line. Caching cuts that to zero. Pattern matches CSI sequences:
+    /// `ESC [`, optional params (`0-?`), optional intermediates (` -/`),
+    /// final byte (`@-~`).
+    static let ansiCSIRegex: NSRegularExpression = {
+        // try! is safe — this literal compiles or the binary doesn't
+        // ship. The pattern was previously `try?`-checked at every
+        // call site as a paranoid guard; lift that to startup.
+        try! NSRegularExpression(pattern: "\\x1B\\[[0-?]*[ -/]*[@-~]")
+    }()
 
     /// Absolute row positions (in the scrollback line buffer) where
     /// the shell emitted an OSC 133;A (prompt start). Lets `⌘↑/⌘↓`
@@ -157,6 +169,23 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// enough to catch short-running commands.
     private let activeByteThreshold = 64
 
+    // MARK: - Inactive-pane caret reinforcement
+    //
+    // SwiftTerm draws a 3pt hollow stroke caret when its view isn't
+    // first responder (Apple/CaretView.swift). On bright glass / busy
+    // wallpapers the stroke blends with the foreground theme color and
+    // is effectively invisible — users can't tell where the cursor is
+    // in inactive split panes. Overlay a higher-contrast filled rect
+    // with a brighter border on top, only when this pane is NOT first
+    // responder and its parent window IS key.
+    private var inactiveCaretLayer: CALayer?
+
+    // MARK: - Drag-and-drop state
+    //
+    // While a Finder drag hovers, paint a 2pt accent border on the
+    // pane to confirm the drop target. Removed on exit/end.
+    private var dragHighlightLayer: CALayer?
+
     // MARK: - User-scroll lock (anti-stick-to-bottom)
     //
     // SwiftTerm auto-snaps the viewport to the live tail every time new
@@ -182,15 +211,27 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// view at 0.9998 instead of 1.0.
     private let scrollPositionTailEpsilon: Double = 0.005
 
-    private func updateUserScrollState() {
+    /// Re-evaluate the lock state from current yDisp/scrollPosition.
+    /// Called synchronously inside `dataReceived` (per chunk) so the
+    /// lock is always in sync with the latest user scroll — no async
+    /// dispatch, no stale `lockedRow`, no race between scroll wheel
+    /// events and chunk arrivals.
+    private func recomputeScrollLock() {
+        guard canScroll else {
+            releaseScrollLock()
+            return
+        }
         let atTail = scrollPosition >= (1.0 - scrollPositionTailEpsilon)
         if atTail {
             releaseScrollLock()
         } else {
             userScrolledAway = true
-            if lockedRow == nil {
-                lockedRow = getTerminal().buffer.yDisp
-            }
+            // ALWAYS update to current yDisp — if the user scrolled
+            // since the last chunk, follow them. Without this, the
+            // sync restore would yank them back to the original
+            // locked row instead of the row they just scrolled to,
+            // which is the "scrolling feels glitchy" symptom.
+            lockedRow = getTerminal().buffer.yDisp
         }
     }
 
@@ -214,15 +255,26 @@ final class TermyTerminalView: LocalProcessTerminalView {
 
     private func installScrollMonitor() {
         if scrollMonitor != nil { return }
+        // Lightweight monitor — kept solely to recompute the lock when
+        // the user scrolls back to the tail while no chunks are
+        // streaming. If we relied only on per-chunk recomputation in
+        // dataReceived, scrolling-to-bottom in a quiet pane wouldn't
+        // release the lock until the next chunk arrived. The actual
+        // lock TARGET (`lockedRow`) is updated inside dataReceived
+        // synchronously from the current yDisp, not from this monitor,
+        // so there's no race with chunks anymore.
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             guard let self else { return event }
-            // Only react when the event was dispatched to a view in
-            // OUR window AND it landed in our bounds (or in the
-            // scroller). Cheap point-in-rect check via the event's
-            // location-in-window converted to our coordinate space.
             if let win = self.window, event.window === win {
                 DispatchQueue.main.async { [weak self] in
-                    self?.updateUserScrollState()
+                    guard let self else { return }
+                    // Just check the at-tail predicate and release if so.
+                    // Setting the lock is the job of dataReceived's
+                    // synchronous path.
+                    if self.canScroll,
+                       self.scrollPosition >= (1.0 - self.scrollPositionTailEpsilon) {
+                        self.releaseScrollLock()
+                    }
                 }
             }
             return event
@@ -362,11 +414,13 @@ final class TermyTerminalView: LocalProcessTerminalView {
         // transient snap-to-tail that happens between each chunk
         // arriving and the async restore landing, breaking the
         // lock after a single chunk.
-        let observedAway = scrollPosition < 1.0 - scrollPositionTailEpsilon
-        if observedAway && lockedRow == nil {
-            userScrolledAway = true
-            lockedRow = getTerminal().buffer.yDisp
-        }
+        // Synchronously re-evaluate the lock state from current yDisp.
+        // This is the single source of truth — no scrollWheel-monitor
+        // race, no stale `lockedRow`. If the user scrolled since the
+        // last chunk, lockedRow is updated to follow them. If they
+        // returned to the tail, the lock is released. Gate is inside
+        // `recomputeScrollLock` (canScroll + at-tail).
+        recomputeScrollLock()
         let lockedScrollRow = lockedRow
 
         recordIfEnabled(slice)
@@ -402,27 +456,24 @@ final class TermyTerminalView: LocalProcessTerminalView {
             }
             super.dataReceived(slice: slice)
         }
-        // If the user had scrolled up to read earlier content, undo
-        // SwiftTerm's auto-snap-to-bottom by restoring yDisp. The
-        // row content the user was reading hasn't moved (new output
-        // is added below their view), so re-pinning to the same
-        // yDisp puts them right back where they were.
-        if let row = lockedScrollRow {
-            // Dispatch async — SwiftTerm calls `ensureCaretIsVisible()`
-            // synchronously after parsing input, and that helper
-            // snaps yDisp to yBase whenever the cursor is out of
-            // viewport (which it is, by definition, when the user
-            // has scrolled away). Running our restore inside the
-            // same runloop turn means SwiftTerm's snap runs AFTER
-            // us and clobbers the restore. Async means we run on
-            // the next turn, after the snap.
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                let term = self.getTerminal()
-                if term.buffer.yDisp != row {
-                    self.scrollTo(row: row, notifyAccessibility: false)
-                }
-            }
+        // Reposition the inactive-caret overlay (if any) so it tracks
+        // the cursor as the shell moves it. Cheap: early-returns if
+        // there's no overlay attached.
+        updateInactiveCaret()
+        // Single synchronous restore. SwiftTerm's snap-to-bottom
+        // happens inside `terminal.scroll()` during super.dataReceived
+        // (Terminal.swift L5291: `if !userScrolling { buffer.yDisp =
+        // buffer.yBase }`), all in this runloop turn. The view's
+        // drawRect hasn't fired yet, so pulling yDisp back here means
+        // the snap NEVER renders — no flash, no jitter, no double-paint.
+        //
+        // No async fallback needed: ensureCaretIsVisible (the only
+        // SwiftTerm path that snaps yDisp post-dataReceived) fires
+        // from `send(data:)` — keyboard input — and that path SHOULD
+        // release the lock (typing brings you back to live). For
+        // every output-arrival path, this sync restore is sufficient.
+        if let row = lockedScrollRow, getTerminal().buffer.yDisp != row {
+            scrollTo(row: row, notifyAccessibility: false)
         }
         return
     }
@@ -575,10 +626,8 @@ final class TermyTerminalView: LocalProcessTerminalView {
     }
 
     private func stripAnsiCSI(_ s: String) -> String {
-        let pattern = "\\x1B\\[[0-?]*[ -/]*[@-~]"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return s }
         let range = NSRange(s.startIndex..., in: s)
-        return regex.stringByReplacingMatches(in: s, range: range, withTemplate: "")
+        return Self.ansiCSIRegex.stringByReplacingMatches(in: s, range: range, withTemplate: "")
     }
 
     /// Refactored out of the inline body so cinema mode can call the
@@ -765,9 +814,14 @@ final class TermyTerminalView: LocalProcessTerminalView {
 
     /// Lazy-install the per-view idle-check timer. Tears down with the
     /// view (timers are invalidated in deinit) so we don't leak.
+    /// 1.0s interval is plenty: the user-visible idle threshold is
+    /// ≥ 4s (cachedIdleThreshold default), so checking twice as often
+    /// just burned runloop wakeups. With N active panes we now do
+    /// N wakes/sec instead of 2N — meaningful on the heavy multi-pane
+    /// claude-streaming workflows.
     private func ensureIdleTimer() {
         if idleTimer != nil { return }
-        let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.tickIdle()
         }
         // Run on the common runloop mode so the timer keeps firing during
@@ -809,6 +863,12 @@ final class TermyTerminalView: LocalProcessTerminalView {
         typewriterTimer?.invalidate()
         recorder?.close()
         if let observer = keyWindowObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = resignKeyObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = focusChangedObserver {
             NotificationCenter.default.removeObserver(observer)
         }
         if let monitor = cinemaKeyMonitor {
@@ -858,12 +918,36 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// viewDidMoveToWindow can race the window becoming key on cold launch.
     /// Re-attempts the claim whenever the window flips to key.
     private var keyWindowObserver: NSObjectProtocol?
+    /// Observer for windowDidResignKey — hides the inactive-caret
+    /// reinforcement layer when the whole window backgrounds (every
+    /// caret should dim to match macOS terminal convention).
+    private var resignKeyObserver: NSObjectProtocol?
+    /// Observer for the Termy-internal focus-changed notification.
+    /// Each pane fires this when it claims focus; every pane listens
+    /// and re-evaluates whether it should be showing its inactive
+    /// caret overlay.
+    private var focusChangedObserver: NSObjectProtocol?
+
+    /// Posted by every focus-mutating site (PaneCellView tap, attempt-
+    /// FocusClaim, command palette pane switches, the app-wide left-
+    /// mouse-down monitor). Drives the inactive-caret overlay update.
+    /// SwiftTerm's `becomeFirstResponder`/`resignFirstResponder` are
+    /// declared non-open so we can't observe focus changes by override.
+    static let focusChangedNotification = Notification.Name("TermyTerminalFocusChanged")
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if let observer = keyWindowObserver {
             NotificationCenter.default.removeObserver(observer)
             keyWindowObserver = nil
+        }
+        if let observer = resignKeyObserver {
+            NotificationCenter.default.removeObserver(observer)
+            resignKeyObserver = nil
+        }
+        if let observer = focusChangedObserver {
+            NotificationCenter.default.removeObserver(observer)
+            focusChangedObserver = nil
         }
         // Install the cinema-mode keystroke timestamp monitor exactly
         // once per view. The monitor fires for ALL window key events,
@@ -903,7 +987,23 @@ final class TermyTerminalView: LocalProcessTerminalView {
             queue: .main
         ) { [weak self] _ in
             self?.attemptFocusClaim()
+            self?.updateInactiveCaret()
         }
+        resignKeyObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateInactiveCaret()
+        }
+        focusChangedObserver = NotificationCenter.default.addObserver(
+            forName: TermyTerminalView.focusChangedNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateInactiveCaret()
+        }
+        updateInactiveCaret()
     }
 
     private func attemptFocusClaim() {
@@ -912,8 +1012,161 @@ final class TermyTerminalView: LocalProcessTerminalView {
             guard let self, let window else { return }
             if Self.shouldClaimFocus(over: window.firstResponder) {
                 window.makeFirstResponder(self)
+                NotificationCenter.default.post(
+                    name: TermyTerminalView.focusChangedNotification,
+                    object: self
+                )
+            }
+            // Force one appearance refresh even if we didn't claim — on
+            // cold launch SwiftTerm's becomeFirstResponder may have
+            // fired while our frame was `.zero`, positioning the caret
+            // off-screen. Re-applying installColors retriggers
+            // updateDisplay → updateCursorPosition with the real frame
+            // so the caret paints. (Fixes single-pane caret-at-launch.)
+            self.onNeedsAppearanceRefresh?()
+        }
+    }
+
+    /// Walk subviews to find SwiftTerm's `CaretView`. The class is
+    /// internal to SwiftTerm so we match by name — fragile if SwiftTerm
+    /// renames it, but recovery is graceful (overlay just doesn't appear).
+    private func findSwiftTermCaretView() -> NSView? {
+        for subview in subviews {
+            if String(describing: type(of: subview)) == "CaretView" {
+                return subview
             }
         }
+        return nil
+    }
+
+    /// Show or hide the bright filled overlay that reinforces the
+    /// SwiftTerm hollow caret. Reads first-responder + window-key state
+    /// live so it doesn't depend on observing notifications correctly.
+    func updateInactiveCaret() {
+        guard let caretView = findSwiftTermCaretView() else {
+            inactiveCaretLayer?.removeFromSuperlayer()
+            inactiveCaretLayer = nil
+            return
+        }
+        let windowIsKey = window?.isKeyWindow ?? false
+        let isFirstResponder = window?.firstResponder === self
+        // Only reinforce when window is active AND a sibling pane has
+        // focus. When the window is backgrounded, mirror macOS terminal
+        // convention: every caret dims.
+        let shouldShow = windowIsKey && !isFirstResponder && !caretView.isHidden
+
+        if !shouldShow {
+            inactiveCaretLayer?.removeFromSuperlayer()
+            inactiveCaretLayer = nil
+            return
+        }
+        wantsLayer = true
+        let overlay = inactiveCaretLayer ?? makeInactiveCaretLayer()
+        if inactiveCaretLayer == nil {
+            self.layer?.addSublayer(overlay)
+            inactiveCaretLayer = overlay
+        }
+        // Match SwiftTerm's caretView frame. Disable implicit animations
+        // so cursor movement doesn't slide.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        overlay.frame = caretView.frame
+        let fg = nativeForegroundColor
+        overlay.backgroundColor = fg.withAlphaComponent(0.55).cgColor
+        overlay.borderColor = fg.withAlphaComponent(0.95).cgColor
+        CATransaction.commit()
+    }
+
+    private func makeInactiveCaretLayer() -> CALayer {
+        let layer = CALayer()
+        layer.borderWidth = 1.5
+        layer.cornerRadius = 1
+        layer.actions = ["position": NSNull(), "bounds": NSNull(), "frame": NSNull()]
+        return layer
+    }
+
+    // MARK: - Drag-and-drop (Finder file paths)
+    //
+    // The view already calls `registerForDraggedTypes([.fileURL])` in
+    // makeNSView; without the protocol methods below, drops were
+    // silently rejected. On drop, shell-quote the path(s) and send to
+    // the PTY. Multi-select drops produce space-separated paths.
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: nil) else {
+            return []
+        }
+        showDragHighlight()
+        return .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: nil) ? .copy : []
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        hideDragHighlight()
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        hideDragHighlight()
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: nil)
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        hideDragHighlight()
+        guard let urls = sender.draggingPasteboard.readObjects(
+            forClasses: [NSURL.self], options: nil
+        ) as? [URL], !urls.isEmpty else {
+            return false
+        }
+        // Focus this pane before sending — dropping on a sibling pane
+        // should both focus it AND insert. Without makeFirstResponder
+        // here, the dropped path would go to whichever pane was
+        // previously first responder.
+        window?.makeFirstResponder(self)
+        NotificationCenter.default.post(
+            name: TermyTerminalView.focusChangedNotification, object: self
+        )
+        let quoted = urls.map { TermyTerminalView.shellQuote($0.path) }.joined(separator: " ")
+        send(txt: quoted)
+        return true
+    }
+
+    /// POSIX-safe shell quoting. Bare-word for paths containing only
+    /// portable filename characters; single-quoted with `'\''` escapes
+    /// for everything else. Avoids `\` escapes (zsh/bash agree on
+    /// single-quote semantics; backslash rules differ).
+    static func shellQuote(_ path: String) -> String {
+        if path.isEmpty { return "''" }
+        let safe = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789@%+=:,./-_")
+        if path.unicodeScalars.allSatisfy({ safe.contains($0) }) {
+            return path
+        }
+        let escaped = path.replacingOccurrences(of: "'", with: "'\\''")
+        return "'\(escaped)'"
+    }
+
+    private func showDragHighlight() {
+        wantsLayer = true
+        if dragHighlightLayer == nil {
+            let l = CALayer()
+            l.frame = bounds
+            l.borderWidth = 2
+            l.borderColor = NSColor.controlAccentColor.cgColor
+            l.cornerRadius = 6
+            l.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+            layer?.addSublayer(l)
+            dragHighlightLayer = l
+        }
+    }
+
+    private func hideDragHighlight() {
+        dragHighlightLayer?.removeFromSuperlayer()
+        dragHighlightLayer = nil
     }
 
     static func shouldClaimFocus(over responder: NSResponder?) -> Bool {
@@ -926,6 +1179,55 @@ final class TermyTerminalView: LocalProcessTerminalView {
         // Default: anything else (SwiftUI hosting view, generic NSView,
         // unknown) is fair game. Terminal is the primary input target.
         return true
+    }
+
+    // MARK: - Scrollbar top inset (room for pane close button)
+    //
+    // SwiftTerm pins its NSScroller subview to the pane's top edge via
+    // Auto Layout (`scroller.topAnchor.constraint(equalTo: topAnchor)`).
+    // The per-pane close X lands on top of the scroll-up arrow,
+    // making it hard to distinguish AND non-clickable when the thumb
+    // is at the very top. Override by deactivating SwiftTerm's top
+    // constraint and installing our own with a constant offset.
+    // Frame-based overrides in `layout()` don't work — Auto Layout
+    // re-applies its computed frame on every pass and undoes the change.
+    private static let paneCloseTopInset: CGFloat = 26
+    private var scrollerTopInsetConstraint: NSLayoutConstraint?
+
+    private func installScrollerTopInset() {
+        guard scrollerTopInsetConstraint == nil, let scroller = findScrollerSubview() else {
+            return
+        }
+        // Deactivate the existing top constraint on the scroller (the
+        // one SwiftTerm added with constant=0). Iterate parent + scroller
+        // constraints because Auto Layout chooses the common ancestor
+        // for constraint storage, which is `self` here.
+        for c in constraints {
+            let matchesFirst = (c.firstItem as? NSScroller) === scroller && c.firstAttribute == .top
+            let matchesSecond = (c.secondItem as? NSScroller) === scroller && c.secondAttribute == .top
+            if matchesFirst || matchesSecond {
+                c.isActive = false
+            }
+        }
+        let inset = scroller.topAnchor.constraint(equalTo: topAnchor, constant: Self.paneCloseTopInset)
+        inset.priority = .required
+        inset.isActive = true
+        scrollerTopInsetConstraint = inset
+    }
+
+    private func findScrollerSubview() -> NSScroller? {
+        for subview in subviews {
+            if let scroller = subview as? NSScroller { return scroller }
+        }
+        return nil
+    }
+
+    override func layout() {
+        super.layout()
+        // Lazy install once the scroller subview exists (SwiftTerm
+        // adds it during its own setup, which may post-date our
+        // viewDidMoveToWindow).
+        installScrollerTopInset()
     }
 
     // MARK: - Live-resize coalescing
@@ -1365,9 +1667,12 @@ struct TerminalSurface: NSViewRepresentable {
                         view.recorderDidChangeCwd(dir)
                     }
                     // Debounce persist — `cd`-heavy workflows hit this on every
-                    // hop, and UserDefaults writes are not free.
+                    // hop, and UserDefaults writes are not free. 1.0s
+                    // catches the end of any reasonable cd-burst (z,
+                    // autoenv, scripted `find -exec cd`) without saving
+                    // a stale intermediate cwd as the "current" one.
                     self.persistTimer?.invalidate()
-                    self.persistTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+                    self.persistTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
                         DispatchQueue.main.async { self?.sessions.persist() }
                     }
                 }

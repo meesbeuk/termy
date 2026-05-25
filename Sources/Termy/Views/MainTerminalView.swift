@@ -369,6 +369,10 @@ struct MainTerminalView: View {
                 // not already on the target view.
                 if window.firstResponder !== view {
                     window.makeFirstResponder(view)
+                    NotificationCenter.default.post(
+                        name: TermyTerminalView.focusChangedNotification,
+                        object: view
+                    )
                 }
                 return
             }
