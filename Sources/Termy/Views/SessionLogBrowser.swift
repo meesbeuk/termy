@@ -33,7 +33,7 @@ struct SessionLogBrowser: View {
                 detail
             }
         }
-        .frame(width: 720, height: 520)
+        .frame(maxWidth: 720, maxHeight: 520)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.modal))
         .shadow(color: .black.opacity(DS.Modal.shadowOpacity),
@@ -172,7 +172,7 @@ struct SessionLogBrowser: View {
                     .font(.system(size: 36))
                     .foregroundStyle(DS.Colors.tertiary)
                 Text(logs.isEmpty
-                     ? "Recording is off"
+                     ? "No sessions recorded yet"
                      : "Select a session to preview")
                     .font(DS.Typo.body)
                     .foregroundStyle(DS.Colors.tertiary)

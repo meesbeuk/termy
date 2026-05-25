@@ -22,7 +22,7 @@ struct QuickSelectPicker: View {
             Divider().opacity(0.3)
             content
         }
-        .frame(width: 640, height: 480)
+        .frame(maxWidth: 640, maxHeight: 480)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.modal))
         .shadow(color: .black.opacity(DS.Modal.shadowOpacity),

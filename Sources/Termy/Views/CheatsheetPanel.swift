@@ -19,7 +19,7 @@ struct CheatsheetPanel: View {
                 detail
             }
         }
-        .frame(width: 640, height: 480)
+        .frame(maxWidth: 640, maxHeight: 480)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.modal))
         .shadow(color: .black.opacity(DS.Modal.shadowOpacity),
@@ -79,13 +79,14 @@ struct CheatsheetPanel: View {
 }
 
 enum ShortcutCategory: String, CaseIterable, Identifiable {
-    case tabs, splits, search, display, window
+    case tabs, splits, search, ai, display, window
     var id: String { rawValue }
     var title: String {
         switch self {
         case .tabs: return "Tabs"
         case .splits: return "Splits"
         case .search: return "Search & nav"
+        case .ai: return "AI & data"
         case .display: return "Display"
         case .window: return "Windows"
         }
@@ -95,6 +96,7 @@ enum ShortcutCategory: String, CaseIterable, Identifiable {
         case .tabs: return "rectangle.stack"
         case .splits: return "rectangle.split.2x1"
         case .search: return "magnifyingglass"
+        case .ai: return "sparkles"
         case .display: return "textformat.size"
         case .window: return "macwindow"
         }
@@ -122,9 +124,18 @@ enum ShortcutCategory: String, CaseIterable, Identifiable {
         case .search: return [
             ("Find in scrollback",        "⌘F"),
             ("Next / previous match",     "⌘G / ⌘⇧G"),
+            ("Use selection for find",    "⌘E"),
             ("Recent directories",        "⌘⌥/"),
+            ("Jump prev / next prompt",   "⌘↑ / ⌘↓"),
+            ("Scroll to top / bottom",    "⌘⇧↑ / ⌘⇧↓"),
             ("Command palette",           "⌘⇧P"),
+            ("Quick select (URLs, paths)", "⌘⇧/"),
             ("Cheatsheet (this panel)",   "⌘/"),
+        ]
+        case .ai: return [
+            ("Agent sessions",            "⌘⇧A"),
+            ("Session logs",              "⌘⇧L"),
+            ("Paste from history",        "⌘⇧V"),
         ]
         case .display: return [
             ("Clear screen",              "⌘K"),

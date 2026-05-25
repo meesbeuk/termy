@@ -118,6 +118,7 @@ Press `?` in the title strip for the in-app cheatsheet. Quick reference:
 
 Termy is shipping rapidly. Recent releases:
 
+- **v0.10.1** — Polish pass: cheatsheet now lists every shortcut (Agent Sessions / Session Logs / Paste History / Quick Select / Use Selection for Find / jump-to-prompt / scroll-to-edge — was missing from the in-app help), Diagnostics report actually shows the env Termy advertises to tools (TERM_PROGRAM, LC_TERMINAL, TERM_FEATURES — were showing as "—"), Command Palette can no longer crash when switching filter category, modal overlays shrink to fit small windows, `termy://palette` / `termy://welcome` / `termy://diagnostics` now reliably show on URL invocation.
 - **v0.10.0** — Resize/scrollback bug fixed (history no longer wiped on font/split resize), caret auto-focuses on launch + tab switch, activity stripe, hover-to-open links, transcript-style session logs, **Clear all logs**, notification redesign (no more prompt-soup body lines).
 - **v0.9.33** — QuickSelect (⌘⇧/) — Bucket A complete (URLs / file paths / git hashes / IPs from scrollback, click to open).
 - **v0.9.32** — Agent Sessions panel (⌘⇧A) — browse every recent Claude Code session, jump back into its directory.

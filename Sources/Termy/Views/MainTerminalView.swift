@@ -99,8 +99,12 @@ struct MainTerminalView: View {
 
             overlays
         }
-        .frame(minWidth: 480, idealWidth: 920, maxWidth: .infinity,
-               minHeight: 320, idealHeight: 620, maxHeight: .infinity)
+        // Bumped from 480x320 — the previous floor let users drag the
+        // window into a state where overlays (palette, onboarding, etc.)
+        // collapsed below readable. 560x400 is still compact enough for
+        // side-by-side window layouts but leaves room for modal chrome.
+        .frame(minWidth: 560, idealWidth: 920, maxWidth: .infinity,
+               minHeight: 400, idealHeight: 620, maxHeight: .infinity)
         .background(WindowBackdrop(hostedWindow: $hostedWindow))
         // Forward the captured NSWindow down so closeTab can target the
         // right window in multi-window setups (NSApp.keyWindow can be a sibling).
@@ -206,6 +210,7 @@ struct MainTerminalView: View {
                         showingRecentDirs = false
                     }
                 )
+                .padding(DS.Spacing.l)
             }
             .transition(.opacity)
             .zIndex(10)
@@ -218,6 +223,7 @@ struct MainTerminalView: View {
                     .environmentObject(sessions)
                     .environmentObject(settings)
                     .environmentObject(workflows)
+                    .padding(DS.Spacing.l)
             }
             .transition(.opacity)
             .zIndex(11)
@@ -227,6 +233,7 @@ struct MainTerminalView: View {
                 Color.black.opacity(0.10).ignoresSafeArea()
                     .onTapGesture { showingCheatsheet = false }
                 CheatsheetPanel(onDismiss: { showingCheatsheet = false })
+                    .padding(DS.Spacing.l)
             }
             .transition(.opacity)
             .zIndex(12)
@@ -236,6 +243,7 @@ struct MainTerminalView: View {
                 Color.black.opacity(0.10).ignoresSafeArea()
                     .onTapGesture { showingSessionLogs = false }
                 SessionLogBrowser(onDismiss: { showingSessionLogs = false })
+                    .padding(DS.Spacing.l)
             }
             .transition(.opacity)
             .zIndex(13)
@@ -245,6 +253,7 @@ struct MainTerminalView: View {
                 Color.black.opacity(0.10).ignoresSafeArea()
                     .onTapGesture { showingPasteHistory = false }
                 PasteHistoryPicker(onDismiss: { showingPasteHistory = false })
+                    .padding(DS.Spacing.l)
             }
             .transition(.opacity)
             .zIndex(14)
@@ -255,6 +264,7 @@ struct MainTerminalView: View {
                     .onTapGesture { showingAgentPanel = false }
                 AgentPanel(onDismiss: { showingAgentPanel = false })
                     .environmentObject(sessions)
+                    .padding(DS.Spacing.l)
             }
             .transition(.opacity)
             .zIndex(15)
@@ -265,6 +275,7 @@ struct MainTerminalView: View {
                     .onTapGesture { showingQuickSelect = false }
                 QuickSelectPicker(onDismiss: { showingQuickSelect = false })
                     .environmentObject(sessions)
+                    .padding(DS.Spacing.l)
             }
             .transition(.opacity)
             .zIndex(16)
@@ -274,6 +285,7 @@ struct MainTerminalView: View {
                 Color.black.opacity(0.10).ignoresSafeArea()
                     .onTapGesture { showingDiagnostics = false }
                 DiagnosticsSheet(onDismiss: { showingDiagnostics = false })
+                    .padding(DS.Spacing.l)
             }
             .transition(.opacity)
             .zIndex(17)
@@ -286,6 +298,7 @@ struct MainTerminalView: View {
                 // they've read it.
                 Color.black.opacity(0.18).ignoresSafeArea()
                 OnboardingSheet(onDismiss: { showingOnboarding = false })
+                    .padding(DS.Spacing.l)
             }
             .transition(.opacity)
             .zIndex(20)

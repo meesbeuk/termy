@@ -103,7 +103,7 @@ struct DSModal<Content: View>: View {
             }
         }
         .padding(DS.Modal.padding)
-        .frame(width: DS.Modal.width)
+        .frame(maxWidth: DS.Modal.width)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.modal))
         .shadow(

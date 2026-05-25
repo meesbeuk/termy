@@ -35,7 +35,7 @@ struct CommandPalette: View {
                 content
             }
         }
-        .frame(width: 640, height: 480)
+        .frame(maxWidth: 640, maxHeight: 480)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.modal))
         .shadow(color: .black.opacity(DS.Modal.shadowOpacity),
@@ -58,7 +58,12 @@ struct CommandPalette: View {
                 Button("") { onDismiss() }
                     .keyboardShortcut(.escape, modifiers: [])
                 Button("") {
-                    if !filtered.isEmpty { commit(filtered[selected]) }
+                    // Clamp in case state lags filter / query updates by a
+                    // frame — better than a crash if `selected` somehow
+                    // drifted past `filtered.count`.
+                    guard !filtered.isEmpty else { return }
+                    let idx = min(max(selected, 0), filtered.count - 1)
+                    commit(filtered[idx])
                 }
                 .keyboardShortcut(.return, modifiers: [])
                 Button("") {
@@ -73,6 +78,10 @@ struct CommandPalette: View {
             .opacity(0).allowsHitTesting(false).frame(width: 0, height: 0)
         )
         .onChange(of: query) { _, _ in selected = 0 }
+        // Switching the sidebar filter can shrink the result list to fewer
+        // items than the previous `selected` index — without resetting,
+        // pressing ↵ would crash on `filtered[selected]`.
+        .onChange(of: filter) { _, _ in selected = 0 }
     }
 
     private var header: some View {

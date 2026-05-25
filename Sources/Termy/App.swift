@@ -465,11 +465,19 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
         // immediately. If we're cold-launching, the first scene's onAppear
         // will drain the queue after it finishes restoring tabs.
         if NSApp.windows.contains(where: { $0.isVisible }) {
-            if !fileURLs.isEmpty {
-                NotificationCenter.default.post(name: .terminalOpenFiles, object: nil)
-            }
-            if !termyURLs.isEmpty {
-                NotificationCenter.default.post(name: .terminalOpenTermyURL, object: nil)
+            // `NSApp.activate` is asynchronous — when the user just clicked
+            // a `termy://` URL from another app, the receiving window
+            // doesn't become key for ~100ms. Firing notifications synchronously
+            // here means the `isKeyWindow()` guard in TerminalHandlers
+            // silently drops them. A short asyncAfter lets activation
+            // settle before we post.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                if !fileURLs.isEmpty {
+                    NotificationCenter.default.post(name: .terminalOpenFiles, object: nil)
+                }
+                if !termyURLs.isEmpty {
+                    NotificationCenter.default.post(name: .terminalOpenTermyURL, object: nil)
+                }
             }
         } else {
             openNewWindow?()

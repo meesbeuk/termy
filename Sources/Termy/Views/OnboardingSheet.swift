@@ -46,7 +46,12 @@ struct OnboardingSheet: View {
             Divider().opacity(0.3)
             footer
         }
-        .frame(width: 620, height: 540)
+        // maxWidth/maxHeight instead of fixed dimensions so the sheet
+        // shrinks to fit small windows. Combined with the .padding() on
+        // the parent overlay (in MainTerminalView), the sheet never clips
+        // off the top — the header stays visible and the body's existing
+        // ScrollView absorbs vertical overflow.
+        .frame(maxWidth: 620, maxHeight: 540)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.modal))
         .shadow(color: .black.opacity(DS.Modal.shadowOpacity),

@@ -29,7 +29,7 @@ struct AgentPanel: View {
                 detail
             }
         }
-        .frame(width: 760, height: 540)
+        .frame(maxWidth: 760, maxHeight: 540)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.modal))
         .shadow(color: .black.opacity(DS.Modal.shadowOpacity),

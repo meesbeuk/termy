@@ -82,7 +82,7 @@ struct DiagnosticsSheet: View {
             .padding(.horizontal, DS.Spacing.xl)
             .padding(.vertical, DS.Spacing.s)
         }
-        .frame(width: 640, height: 520)
+        .frame(maxWidth: 640, maxHeight: 520)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.modal))
         .shadow(color: .black.opacity(DS.Modal.shadowOpacity),
@@ -172,17 +172,30 @@ struct DiagnosticsSheet: View {
         #endif
     }
 
-    /// Reads from the SHELL's environment (what the child process saw)
-    /// not Termy's own ProcessInfo. We achieve this by reading the
-    /// value we INJECTED into the child env in TerminalSessions —
-    /// that's what tools running in the pane actually see.
+    /// Reads from the env Termy injects into every pane's child shell.
+    /// `ProcessInfo.processInfo.environment` would show Termy's OWN env
+    /// (mostly unset for TERM_PROGRAM / LC_TERMINAL when Termy launches
+    /// from Finder) — which is misleading because tools probing
+    /// capabilities see the injected child env, not Termy's. Mirror
+    /// TerminalSessions.processEnvironment here so the report reflects
+    /// what tools actually observe.
     private func env(_ key: String) -> String? {
-        // For diagnostic display we read Termy's own env (these are the
-        // values we set in processEnvironment, so they reflect what the
-        // shell would inherit). LC_TERMINAL etc. were set by Termy at
-        // pane launch.
-        ProcessInfo.processInfo.environment[key]
+        Self.advertisedEnv[key]
     }
+
+    private static let advertisedEnv: [String: String] = {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        var env = ProcessInfo.processInfo.environment
+        env["TERM"] = "xterm-256color"
+        env["COLORTERM"] = "truecolor"
+        env["TERM_PROGRAM"] = "iTerm.app"
+        env["TERM_PROGRAM_VERSION"] = version
+        env["TERMY"] = version
+        env["LC_TERMINAL"] = "iTerm2"
+        env["LC_TERMINAL_VERSION"] = version
+        env["TERM_FEATURES"] = "title,sixel,kitty,iterm2"
+        return env
+    }()
 
     private func copyReport() {
         let envKeys = ["TERM", "TERM_PROGRAM", "TERM_PROGRAM_VERSION",
