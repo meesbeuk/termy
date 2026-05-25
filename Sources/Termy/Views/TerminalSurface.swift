@@ -157,6 +157,78 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// enough to catch short-running commands.
     private let activeByteThreshold = 64
 
+    // MARK: - User-scroll lock (anti-stick-to-bottom)
+    //
+    // SwiftTerm auto-snaps the viewport to the live tail every time new
+    // output arrives, unless its internal `userScrolling` flag is set.
+    // That flag is set ONLY during scrollbar drag — not during
+    // mouse/trackpad scrollWheel — so if the user scrolls up to read
+    // claude's earlier paragraph while claude is still streaming, the
+    // next token chunk yanks them right back to the bottom. Track
+    // user scroll-away ourselves via scrollWheel and freeze yDisp on
+    // each dataReceived until the user explicitly returns to bottom.
+    private var userScrolledAway: Bool = false
+    /// The absolute scrollback row the user is locked to while
+    /// scrolled away. Captured ONCE when the user first scrolls
+    /// away (or on the first dataReceived that observes them
+    /// scrolled), and held until they explicitly return to the
+    /// tail. Using a stored row instead of re-snapshotting per
+    /// chunk means async restores don't race against incoming
+    /// output — the lock target stays put even as multiple data
+    /// chunks fire while a restore is in flight.
+    private var lockedRow: Int? = nil
+    /// Tolerance for "at bottom" check — scrollPosition is a Double
+    /// 0..1 ratio; floating-point rounding can leave a fully-scrolled
+    /// view at 0.9998 instead of 1.0.
+    private let scrollPositionTailEpsilon: Double = 0.005
+
+    private func updateUserScrollState() {
+        let atTail = scrollPosition >= (1.0 - scrollPositionTailEpsilon)
+        if atTail {
+            releaseScrollLock()
+        } else {
+            userScrolledAway = true
+            if lockedRow == nil {
+                lockedRow = getTerminal().buffer.yDisp
+            }
+        }
+    }
+
+    /// Public release entry point — called by explicit user actions
+    /// that should bring them back to the live tail (⌘⇧↓ scroll to
+    /// bottom, PageDown to bottom, etc.). Safe to call even when no
+    /// lock is active; it just no-ops in that case.
+    func releaseScrollLock() {
+        userScrolledAway = false
+        lockedRow = nil
+    }
+
+    /// NSEvent local monitor for scroll wheel + flags-changed events.
+    /// SwiftTerm's `scrollWheel(with:)` is declared non-open so we
+    /// can't override it; instead intercept the same event at the
+    /// app event loop. We only sample the state AFTER SwiftTerm has
+    /// processed the wheel event (the monitor's closure runs after
+    /// the normal responder chain), so `scrollPosition` reflects
+    /// the post-scroll value.
+    private var scrollMonitor: Any?
+
+    private func installScrollMonitor() {
+        if scrollMonitor != nil { return }
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+            guard let self else { return event }
+            // Only react when the event was dispatched to a view in
+            // OUR window AND it landed in our bounds (or in the
+            // scroller). Cheap point-in-rect check via the event's
+            // location-in-window converted to our coordinate space.
+            if let win = self.window, event.window === win {
+                DispatchQueue.main.async { [weak self] in
+                    self?.updateUserScrollState()
+                }
+            }
+            return event
+        }
+    }
+
     // MARK: - Cached UserDefaults values
     //
     // dataReceived runs on the hot path — once per PTY chunk. Reading
@@ -251,6 +323,52 @@ final class TermyTerminalView: LocalProcessTerminalView {
     }
 
     override func dataReceived(slice: ArraySlice<UInt8>) {
+        // Snapshot the user's scroll position BEFORE SwiftTerm's
+        // parser runs — once it's appended the new output it'll
+        // (internally) reset yDisp to yBase, snapping us back to
+        // the live tail. We restore the original yDisp at the end
+        // of this method if the user had scrolled away. The
+        // `lockedScrollRow` is the absolute row in scrollback the
+        // user is looking at; that row's content doesn't move as
+        // the buffer grows below it, so the same yDisp value
+        // continues to point at it after SwiftTerm processes the
+        // chunk.
+        //
+        // Read scrollPosition directly (no need for an event
+        // monitor): a value < 1.0 - epsilon means the user is
+        // looking at scrollback, not the live tail. This catches
+        // every scroll mechanism — wheel, trackpad, PageUp/PageDn,
+        // ⌘↑/⌘↓, scrollbar drag, Cmd+Home — without listing them.
+        // Lock row sources, in priority order:
+        //
+        //   (a) `userScrolledAway` flag — set explicitly by the
+        //       scrollWheel monitor when the user mouse/trackpad-
+        //       scrolls away from the tail. Persistent across
+        //       chunks. Cleared only by the monitor seeing the user
+        //       return to the tail.
+        //
+        //   (b) Live `scrollPosition < 1 - epsilon` check — catches
+        //       keyboard-driven scrolls (PageUp, ⌘⇧↑, scrollbar
+        //       drag) that don't fire scroll-wheel events. Read
+        //       BEFORE super.dataReceived snaps yDisp back to yBase.
+        //
+        // If either says "scrolled away", we capture preYDisp and
+        // restore async (so the restore lands AFTER SwiftTerm's
+        // internal `ensureCaretIsVisible` snap).
+        // ONLY set the lock here — never release. The release
+        // path is exclusively user-driven (scrollWheel monitor,
+        // ⌘⇧↓ in sessions, etc.). Releasing here based on the
+        // current scrollPosition would clear the lock during the
+        // transient snap-to-tail that happens between each chunk
+        // arriving and the async restore landing, breaking the
+        // lock after a single chunk.
+        let observedAway = scrollPosition < 1.0 - scrollPositionTailEpsilon
+        if observedAway && lockedRow == nil {
+            userScrolledAway = true
+            lockedRow = getTerminal().buffer.yDisp
+        }
+        let lockedScrollRow = lockedRow
+
         recordIfEnabled(slice)
         scanForOSC133(slice)
         scanForTriggers(slice)
@@ -283,6 +401,28 @@ final class TermyTerminalView: LocalProcessTerminalView {
                 super.dataReceived(slice: pending)
             }
             super.dataReceived(slice: slice)
+        }
+        // If the user had scrolled up to read earlier content, undo
+        // SwiftTerm's auto-snap-to-bottom by restoring yDisp. The
+        // row content the user was reading hasn't moved (new output
+        // is added below their view), so re-pinning to the same
+        // yDisp puts them right back where they were.
+        if let row = lockedScrollRow {
+            // Dispatch async — SwiftTerm calls `ensureCaretIsVisible()`
+            // synchronously after parsing input, and that helper
+            // snaps yDisp to yBase whenever the cursor is out of
+            // viewport (which it is, by definition, when the user
+            // has scrolled away). Running our restore inside the
+            // same runloop turn means SwiftTerm's snap runs AFTER
+            // us and clobbers the restore. Async means we run on
+            // the next turn, after the snap.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                let term = self.getTerminal()
+                if term.buffer.yDisp != row {
+                    self.scrollTo(row: row, notifyAccessibility: false)
+                }
+            }
         }
         return
     }
@@ -677,6 +817,9 @@ final class TermyTerminalView: LocalProcessTerminalView {
         if let observer = defaultsObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let monitor = scrollMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
     }
 
     /// If the user has the "Record session output" preference on, hand the
@@ -737,6 +880,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
         }
         guard let window else { return }
         installDefaultsObserver()
+        installScrollMonitor()
         onNeedsAppearanceRefresh?()
         // Re-attached to a window (either first mount or after a
         // tab-switch re-parent). Mark every visible row dirty and

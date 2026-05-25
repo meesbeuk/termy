@@ -413,6 +413,10 @@ final class TerminalSessions: ObservableObject {
     /// upper bound that SwiftTerm itself will accept.
     func scrollActiveToBottom() {
         guard let view = currentSession?.terminalView else { return }
+        // Explicit user request to return to the live tail —
+        // release the anti-stick-to-bottom lock so subsequent
+        // output auto-snaps as expected.
+        (view as? TermyTerminalView)?.releaseScrollLock()
         let term = view.getTerminal()
         // rows-1 is the cursor position when at the live tail. The
         // terminal will re-render the live area properly from this.

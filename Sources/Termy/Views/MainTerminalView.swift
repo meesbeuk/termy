@@ -1113,8 +1113,15 @@ private struct TabChip: View {
                 .fill(Color.primary.opacity(isActive ? 0.12 : (isHovering ? 0.06 : 0)))
         )
         .contentShape(Rectangle())
+        // Single tap selects. Double-tap-to-rename was removed —
+        // SwiftUI's combined single+double tap gesture introduces a
+        // ~250ms delay on every tab switch (waiting to see if a
+        // second click arrives), and even with the delay users were
+        // accidentally entering rename mode every time they
+        // double-clicked too quickly to switch tabs. Rename lives in
+        // the right-click context menu now — predictable, no
+        // sensitivity, no delay on tab selection.
         .onTapGesture { onSelect() }
-        .onTapGesture(count: 2) { startRename() }
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.12)) { isHovering = hovering }
         }
