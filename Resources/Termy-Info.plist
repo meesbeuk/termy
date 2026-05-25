@@ -42,6 +42,19 @@
     <false/>
     <key>SUAllowsAutomaticUpdates</key>
     <true/>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>Termy</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>termy</string>
+            </array>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+        </dict>
+    </array>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>

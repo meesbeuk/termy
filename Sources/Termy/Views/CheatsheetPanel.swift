@@ -105,6 +105,7 @@ enum ShortcutCategory: String, CaseIterable, Identifiable {
         case .tabs: return [
             ("New tab",                   "⌘T"),
             ("Duplicate tab",             "⌘⇧T"),
+            ("Reopen closed tab",         "⌘⇧Z"),
             ("Close pane (cascades)",     "⌘W"),
             ("Next / previous tab",       "⌘⇧] / ⌘⇧["),
             ("Jump to tab 1-8",           "⌘1-8"),

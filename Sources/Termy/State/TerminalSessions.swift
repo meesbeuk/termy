@@ -129,6 +129,19 @@ final class TerminalSessions: ObservableObject {
     /// payload, so no sibling window restores the same state.
     nonisolated(unsafe) static var legacyKeyConsumed: Bool = false
 
+    /// LIFO stack of recently-closed tab snapshots — drives ⌘⇧Z
+    /// "Reopen Closed Tab". Capped at 20 so undo history doesn't grow
+    /// unbounded across a long Termy session. Per-window because reopening
+    /// in a different window than the one the tab was closed in would
+    /// surprise users with multi-window setups.
+    private var closedTabHistory: [ClosedTabSnapshot] = []
+    private let closedHistoryCap = 20
+
+    /// True when there's at least one entry on the closed-tab stack — used
+    /// by the menu item / command palette entry to decide whether to enable
+    /// the action.
+    var canReopenClosedTab: Bool { !closedTabHistory.isEmpty }
+
     init(restoreKey: String = UUID().uuidString) {
         self.restoreKey = restoreKey
         Self.registerWindowKey(restoreKey)
@@ -259,7 +272,21 @@ final class TerminalSessions: ObservableObject {
     /// Close every tab except the given one. Used by the tab right-click
     /// menu's "Close Other Tabs" item — common terminal-app affordance.
     func closeOtherTabs(keeping id: UUID) {
-        for tab in tabs where tab.id != id {
+        // Snapshot each closing tab so ⌘⇧Z can walk back through them
+        // (most-recently-closed first — same LIFO semantics as a single
+        // close).
+        for (idx, tab) in tabs.enumerated() where tab.id != id {
+            let snapshot = ClosedTabSnapshot(
+                originalIndex: idx,
+                orientation: tab.orientation,
+                paneCwds: tab.panes.map { $0.cwd },
+                paneProfileIDs: tab.panes.map { $0.profileID },
+                tagColor: tab.tagColor,
+                broadcastInput: tab.broadcastInput,
+                customTitle: tab.customTitle,
+                paneFractions: tab.paneFractions
+            )
+            pushClosedSnapshot(snapshot)
             for pane in tab.panes { pane.terminalView?.terminate() }
         }
         tabs.removeAll { $0.id != id }
@@ -267,8 +294,63 @@ final class TerminalSessions: ObservableObject {
         persist()
     }
 
+    /// Pop the most recently closed tab and reinsert it at its original
+    /// position (clamped to current bounds). Returns true if anything was
+    /// restored — drives the menu/command-palette enabled state via
+    /// `canReopenClosedTab`.
+    @discardableResult
+    func reopenLastClosedTab() -> Bool {
+        guard let snapshot = closedTabHistory.popLast() else { return false }
+        let resolvedProfiles = snapshot.paneProfileIDs.map { id -> Profile? in
+            guard let id else { return nil }
+            return profileStore?.profiles.first(where: { $0.id == id })
+        }
+        // Use the snapshot's cwd-per-pane but fall back to home if the
+        // directory has vanished since close (the user `rm -rf`d the
+        // working dir between close and reopen).
+        let fm = FileManager.default
+        let sessions = zip(snapshot.paneCwds, resolvedProfiles).map { cwd, profile -> TerminalSession in
+            let resolved = fm.fileExists(atPath: cwd) ? cwd : NSHomeDirectory()
+            return TerminalSession(initialCwd: resolved, profile: profile)
+        }
+        let tab = TerminalTab(panes: sessions, orientation: snapshot.orientation)
+        tab.tagColor = snapshot.tagColor
+        tab.broadcastInput = snapshot.broadcastInput
+        tab.customTitle = snapshot.customTitle
+        if snapshot.paneFractions.count == sessions.count {
+            tab.paneFractions = snapshot.paneFractions
+        }
+        let insertAt = max(0, min(snapshot.originalIndex, tabs.count))
+        tabs.insert(tab, at: insertAt)
+        selectedTabId = tab.id
+        persist()
+        return true
+    }
+
+    private func pushClosedSnapshot(_ snapshot: ClosedTabSnapshot) {
+        closedTabHistory.append(snapshot)
+        if closedTabHistory.count > closedHistoryCap {
+            closedTabHistory.removeFirst(closedTabHistory.count - closedHistoryCap)
+        }
+    }
+
     func closeTab(_ id: UUID) {
         guard let idx = tabs.firstIndex(where: { $0.id == id }) else { return }
+        // Snapshot before tearing down panes so ⌘⇧Z can restore the layout
+        // (cwds + orientation + tag + custom title). Shells are NOT restored
+        // — that'd require forking a new PTY per pane, which loses scrollback
+        // anyway. The reopened tab is a fresh shell in the same cwd.
+        let snapshot = ClosedTabSnapshot(
+            originalIndex: idx,
+            orientation: tabs[idx].orientation,
+            paneCwds: tabs[idx].panes.map { $0.cwd },
+            paneProfileIDs: tabs[idx].panes.map { $0.profileID },
+            tagColor: tabs[idx].tagColor,
+            broadcastInput: tabs[idx].broadcastInput,
+            customTitle: tabs[idx].customTitle,
+            paneFractions: tabs[idx].paneFractions
+        )
+        pushClosedSnapshot(snapshot)
         for pane in tabs[idx].panes { pane.terminalView?.terminate() }
         let wasSelected = selectedTabId == id
         tabs.remove(at: idx)
@@ -297,6 +379,34 @@ final class TerminalSessions: ObservableObject {
     func clearCurrent() {
         currentSession?.terminalView?.terminal.resetToInitialState()
         currentSession?.terminalView?.feed(text: "\u{001B}[2J\u{001B}[H")
+    }
+
+    /// Select every cell in the active pane's scrollback + viewport, copy
+    /// the resulting text to the system pasteboard. Pairs with the
+    /// "Copy Scrollback" command palette entry — obvious user intent of
+    /// "give me everything in this pane as text" with one click instead
+    /// of a manual click-drag-from-top. SwiftTerm's `selectAll(_:)` +
+    /// `copy(_:)` are both `open` instance methods on its MacTerminalView
+    /// base class, so they work without poking at internal state.
+    func copyCurrentScrollback() {
+        guard let view = currentSession?.terminalView else { return }
+        view.selectAll(NSObject())
+        view.copy(NSObject())
+    }
+
+    /// Scroll the active pane to the very top of the scrollback buffer.
+    /// SwiftTerm's `scrollTo(row:)` accepts an absolute row; clamps at 0
+    /// internally if we ask lower than the buffer start.
+    func scrollActiveToTop() {
+        currentSession?.terminalView?.scrollTo(row: 0)
+    }
+
+    /// Scroll the active pane to the bottom (live viewport). Pass a
+    /// deliberately huge row index — SwiftTerm clamps to the last valid
+    /// row inside `scrollTo`. Avoids reaching for internal yBase / yDisp
+    /// constants that aren't part of the documented public surface.
+    func scrollActiveToBottom() {
+        currentSession?.terminalView?.scrollTo(row: Int.max / 2)
     }
 
     /// Type a string + Enter into the active pane's shell. Terminals use CR
@@ -492,4 +602,20 @@ final class TerminalSessions: ObservableObject {
         self.selectedTabId = restored.first?.id
         return .restored
     }
+}
+
+/// Frozen snapshot of a tab at the moment it was closed. Used to back the
+/// ⌘⇧Z "Reopen Closed Tab" stack. Carries enough to rebuild the layout
+/// (cwds, orientation, divider fractions, tag color, custom title) but not
+/// the shell process — that gets re-forked when the tab restores, since
+/// SwiftTerm doesn't expose a way to detach + reattach a live PTY.
+struct ClosedTabSnapshot {
+    let originalIndex: Int
+    let orientation: PaneOrientation
+    let paneCwds: [String]
+    let paneProfileIDs: [UUID?]
+    let tagColor: TabTagColor
+    let broadcastInput: Bool
+    let customTitle: String?
+    let paneFractions: [CGFloat]
 }

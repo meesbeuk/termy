@@ -16,6 +16,11 @@ struct CommandPalette: View {
     @State private var selected: Int = 0
     @State private var filter: PaletteFilter = .all
     @FocusState private var focused: Bool
+    /// Cached SSH hosts so we don't re-parse `~/.ssh/config` on every
+    /// keystroke. The palette stays open just long enough that the user's
+    /// ssh config isn't going to change under us; if they edit it while
+    /// the palette is open they can reopen to refresh.
+    @State private var sshHosts: [SSHHost] = []
 
     var body: some View {
         // Chrome mirrors the Settings sheet exactly: same size, single divider
@@ -35,7 +40,15 @@ struct CommandPalette: View {
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.modal))
         .shadow(color: .black.opacity(DS.Modal.shadowOpacity),
                 radius: DS.Modal.shadowRadius, x: 0, y: DS.Modal.shadowY)
-        .onAppear { focused = true }
+        .onAppear {
+            focused = true
+            // Load SSH hosts once per palette open — off the main thread
+            // since it walks the filesystem for `Include` globs.
+            Task.detached(priority: .userInitiated) {
+                let hosts = SSHHostsReader.read()
+                await MainActor.run { sshHosts = hosts }
+            }
+        }
         // Hidden buttons with keyboard shortcuts — onKeyPress doesn't fire
         // when a TextField has focus (the TextField swallows the event), so
         // we route Escape / Return / Arrows through Buttons which respect
@@ -171,6 +184,11 @@ struct CommandPalette: View {
                                  action: { sessions.openTab() }))
         items.append(PaletteItem(kind: .action, title: "Duplicate Tab", subtitle: "⌘⇧T",
                                  action: { sessions.duplicateCurrentTab() }))
+        if sessions.canReopenClosedTab {
+            items.append(PaletteItem(kind: .action, title: "Reopen Closed Tab",
+                                     subtitle: "⌘⇧Z — restore the most recently closed tab",
+                                     action: { sessions.reopenLastClosedTab() }))
+        }
         items.append(PaletteItem(kind: .action, title: "Split Horizontally", subtitle: "⌘D",
                                  action: { sessions.splitHorizontal() }))
         items.append(PaletteItem(kind: .action, title: "Split Vertically", subtitle: "⌘⇧D",
@@ -188,7 +206,39 @@ struct CommandPalette: View {
                                  action: {
             NotificationCenter.default.post(name: .terminalOpenSessionLogs, object: nil)
         }))
-        for host in SSHHostsReader.read() {
+        items.append(PaletteItem(kind: .action, title: "Diagnostics",
+                                 subtitle: "What Termy advertises to tools — paste in a GitHub issue",
+                                 action: {
+            NotificationCenter.default.post(name: .terminalOpenDiagnostics, object: nil)
+        }))
+        items.append(PaletteItem(kind: .action, title: "Settings",
+                                 subtitle: "⌘, — preferences, themes, profiles, notifications",
+                                 action: {
+            NotificationCenter.default.post(name: .terminalOpenSettings, object: nil)
+        }))
+        items.append(PaletteItem(kind: .action, title: "Keyboard Cheatsheet",
+                                 subtitle: "⌘/ — every shortcut Termy knows",
+                                 action: {
+            NotificationCenter.default.post(name: .terminalOpenCheatsheet, object: nil)
+        }))
+        if let store = sessions.profileStore {
+            items.append(PaletteItem(kind: .action, title: "Quake Drop-down",
+                                     subtitle: "⌃` — slide-in terminal panel",
+                                     action: {
+                QuickTerminalController.shared.toggle(settings: settings, profiles: store)
+            }))
+        }
+        items.append(PaletteItem(kind: .action, title: "Toggle Always on Top",
+                                 subtitle: "Pin this window above all others",
+                                 action: {
+            NotificationCenter.default.post(name: .terminalToggleAlwaysOnTop, object: nil)
+        }))
+        items.append(PaletteItem(kind: .action, title: "Copy Scrollback",
+                                 subtitle: "Copy the active pane's full scrollback to the clipboard",
+                                 action: {
+            NotificationCenter.default.post(name: .terminalCopyScrollback, object: nil)
+        }))
+        for host in sshHosts {
             items.append(PaletteItem(kind: .ssh,
                                      title: "SSH: \(host.alias)",
                                      subtitle: host.sshCommand,

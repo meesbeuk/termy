@@ -21,6 +21,8 @@ struct TerminalHandlers: ViewModifier {
     let showPasteHistory: () -> Void
     let showAgentPanel: () -> Void
     let showQuickSelect: () -> Void
+    let showDiagnostics: () -> Void
+    let showOnboarding: () -> Void
 
     func body(content: Content) -> some View {
         content
@@ -38,7 +40,6 @@ struct TerminalHandlers: ViewModifier {
             .modifier(NotificationHandlersB(
                 sessions: sessions,
                 isKeyWindow: isKeyWindow,
-                hostedWindow: hostedWindow,
                 showRecentDirs: showRecentDirs,
                 showPalette: showPalette,
                 showCheatsheet: showCheatsheet,
@@ -47,6 +48,13 @@ struct TerminalHandlers: ViewModifier {
                 showPasteHistory: showPasteHistory,
                 showAgentPanel: showAgentPanel,
                 showQuickSelect: showQuickSelect
+            ))
+            .modifier(NotificationHandlersC(
+                sessions: sessions,
+                isKeyWindow: isKeyWindow,
+                hostedWindow: hostedWindow,
+                showDiagnostics: showDiagnostics,
+                showOnboarding: showOnboarding
             ))
     }
 }
@@ -120,7 +128,6 @@ private struct NotificationHandlersA: ViewModifier {
 private struct NotificationHandlersB: ViewModifier {
     let sessions: TerminalSessions
     let isKeyWindow: () -> Bool
-    let hostedWindow: () -> NSWindow?
     let showRecentDirs: () -> Void
     let showPalette: () -> Void
     let showCheatsheet: () -> Void
@@ -140,6 +147,9 @@ private struct NotificationHandlersB: ViewModifier {
             }
             .onReceive(NotificationCenter.default.publisher(for: .terminalDuplicateTab)) { _ in
                 if isKeyWindow() { sessions.duplicateCurrentTab() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalReopenClosed)) { _ in
+                if isKeyWindow() { sessions.reopenLastClosedTab() }
             }
             .onReceive(NotificationCenter.default.publisher(for: .terminalRecentDirs)) { _ in
                 if isKeyWindow() { showRecentDirs() }
@@ -175,6 +185,38 @@ private struct NotificationHandlersB: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .terminalOpenQuickSelect)) { _ in
                 if isKeyWindow() { showQuickSelect() }
             }
+    }
+}
+
+/// New-in-v0.11 handlers (Diagnostics, onboarding, scroll, copy, termy://,
+/// always-on-top toggle). Split from NotificationHandlersB so neither
+/// modifier's `body` exceeds Swift's chained-modifier type-check budget.
+/// Adding more here is fine until ~15-ish onReceives; beyond that, split
+/// again.
+private struct NotificationHandlersC: ViewModifier {
+    let sessions: TerminalSessions
+    let isKeyWindow: () -> Bool
+    let hostedWindow: () -> NSWindow?
+    let showDiagnostics: () -> Void
+    let showOnboarding: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .terminalOpenDiagnostics)) { _ in
+                if isKeyWindow() { showDiagnostics() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalShowOnboarding)) { _ in
+                if isKeyWindow() { showOnboarding() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalCopyScrollback)) { _ in
+                if isKeyWindow() { sessions.copyCurrentScrollback() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalScrollToTop)) { _ in
+                if isKeyWindow() { sessions.scrollActiveToTop() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalScrollToBottom)) { _ in
+                if isKeyWindow() { sessions.scrollActiveToBottom() }
+            }
             // LaunchServices handed us files to open (Finder double-click on
             // .sh, .command, +x binary). Only the key window opens the tabs
             // so each file produces exactly one tab regardless of how many
@@ -185,13 +227,29 @@ private struct NotificationHandlersB: ViewModifier {
                 TerminalAppDelegate.pendingOpenURLs.removeAll()
                 for url in urls { sessions.openFile(url) }
             }
+            // termy:// URLs — `termy://open?cwd=…`, `termy://run?command=…&cwd=…`,
+            // `termy://new`, `termy://palette`. Same key-window-only drain
+            // pattern so a queue handed in during cold launch doesn't fire
+            // in every restored window.
+            .onReceive(NotificationCenter.default.publisher(for: .terminalOpenTermyURL)) { _ in
+                guard isKeyWindow() else { return }
+                let urls = TerminalAppDelegate.pendingTermyURLs
+                TerminalAppDelegate.pendingTermyURLs.removeAll()
+                for url in urls { TermyURLDispatcher.handle(url, in: sessions) }
+            }
             .onReceive(NotificationCenter.default.publisher(for: .terminalToggleAlwaysOnTop)) { _ in
                 guard isKeyWindow(), let window = hostedWindow() else { return }
-                // .floating keeps the window above all normal windows;
-                // .normal sends it back into the standard z-order. Toggle.
-                window.level = (window.level == .floating) ? .normal : .floating
+                Self.toggleAlwaysOnTop(window)
             }
-            // Window resize is handled by SwiftTerm directly via autoresizing
-            // mask set in TerminalSurface.makeNSView — no manual observer needed.
+    }
+
+    /// Hoisted into a static helper so it lives outside the @ViewBuilder
+    /// expression tree — the inline ternary inside an onReceive closure
+    /// was tipping the type checker over its complexity budget.
+    private static func toggleAlwaysOnTop(_ window: NSWindow) {
+        // .floating keeps the window above all normal windows;
+        // .normal sends it back into the standard z-order.
+        let newLevel: NSWindow.Level = (window.level == .floating) ? .normal : .floating
+        window.level = newLevel
     }
 }

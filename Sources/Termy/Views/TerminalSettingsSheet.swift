@@ -795,6 +795,8 @@ private struct ProfileRow: View {
 
 private struct ProfileEditor: View {
     @Binding var draft: Profile
+    @State private var newEnvKey: String = ""
+    @State private var newEnvValue: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.xs) {
@@ -826,7 +828,107 @@ private struct ProfileEditor: View {
                 }
                 .labelsHidden().pickerStyle(.menu).controlSize(.small)
             }
+            envEditor
         }
+    }
+
+    /// Env-vars editor — was previously model-only with no UI, so users had
+    /// to edit UserDefaults JSON by hand to set things like
+    /// `NODE_OPTIONS=--max-old-space-size=4096` or `ANTHROPIC_API_KEY=...`
+    /// per profile. Renders as a compact list of key=value rows with an
+    /// inline "add row" footer.
+    @ViewBuilder
+    private var envEditor: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.xs) {
+            HStack {
+                Text("Environment")
+                    .font(DS.Typo.tiny)
+                    .foregroundStyle(DS.Colors.tertiary)
+                    .frame(width: 70, alignment: .leading)
+                Spacer()
+                if !draft.environmentExtras.isEmpty {
+                    Text("\(draft.environmentExtras.count) override\(draft.environmentExtras.count == 1 ? "" : "s")")
+                        .font(DS.Typo.tiny)
+                        .foregroundStyle(DS.Colors.tertiary)
+                }
+            }
+            // Sorted so the order is stable across edits (dictionaries are
+            // unordered) — without this, removing one row reshuffles others
+            // unpredictably as the keys rehash.
+            ForEach(draft.environmentExtras.keys.sorted(), id: \.self) { key in
+                envRow(key: key, value: draft.environmentExtras[key] ?? "")
+            }
+            HStack(spacing: 4) {
+                TextField("KEY", text: $newEnvKey)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                    .font(DS.Typo.monoCaption)
+                    .frame(maxWidth: 110)
+                Text("=").foregroundStyle(DS.Colors.tertiary).font(DS.Typo.caption)
+                TextField("value", text: $newEnvValue)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                    .font(DS.Typo.monoCaption)
+                Button(action: commitNewEnv) {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundStyle(canAddEnv ? DS.Colors.accent : DS.Colors.tertiary)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canAddEnv)
+                .help("Add env var")
+            }
+            .padding(.leading, 76)
+            Text("Injected into every shell launched with this profile. Useful for per-project API keys, NODE_OPTIONS, custom PATH prefixes, etc.")
+                .font(DS.Typo.tiny)
+                .foregroundStyle(DS.Colors.tertiary)
+                .padding(.leading, 76)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 4)
+    }
+
+    @ViewBuilder
+    private func envRow(key: String, value: String) -> some View {
+        HStack(spacing: 4) {
+            Text(key)
+                .font(DS.Typo.monoCaption)
+                .foregroundStyle(DS.Colors.primary)
+                .frame(maxWidth: 110, alignment: .leading)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Text("=").foregroundStyle(DS.Colors.tertiary).font(DS.Typo.caption)
+            TextField("", text: Binding(
+                get: { draft.environmentExtras[key] ?? value },
+                set: { newValue in draft.environmentExtras[key] = newValue }
+            ))
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .font(DS.Typo.monoCaption)
+            Button(action: { draft.environmentExtras.removeValue(forKey: key) }) {
+                Image(systemName: "minus.circle")
+                    .foregroundStyle(DS.Colors.tertiary)
+            }
+            .buttonStyle(.plain)
+            .help("Remove \(key)")
+        }
+        .padding(.leading, 76)
+    }
+
+    private var canAddEnv: Bool {
+        let trimmed = newEnvKey.trimmingCharacters(in: .whitespaces)
+        // POSIX env-var names: letters / digits / underscore; first char
+        // non-digit. We don't strictly enforce that (some shells tolerate
+        // more) but we DO reject empty + whitespace-only + `=`-containing
+        // keys, which would silently break the shell's `env` parsing.
+        return !trimmed.isEmpty && !trimmed.contains("=") && !trimmed.contains(" ")
+    }
+
+    private func commitNewEnv() {
+        let key = newEnvKey.trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty else { return }
+        draft.environmentExtras[key] = newEnvValue
+        newEnvKey = ""
+        newEnvValue = ""
     }
 
     @ViewBuilder

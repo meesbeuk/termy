@@ -105,6 +105,10 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalDuplicateTab, object: nil)
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
+                Button("Reopen Closed Tab") {
+                    NotificationCenter.default.post(name: .terminalReopenClosed, object: nil)
+                }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
                 Button("Recent Directories…") {
                     NotificationCenter.default.post(name: .terminalRecentDirs, object: nil)
                 }
@@ -130,6 +134,18 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalFindSelection, object: nil)
                 }
                 .keyboardShortcut("e", modifiers: .command)
+                Divider()
+                Button("Scroll to Top") {
+                    NotificationCenter.default.post(name: .terminalScrollToTop, object: nil)
+                }
+                .keyboardShortcut(.upArrow, modifiers: [.command, .shift])
+                Button("Scroll to Bottom") {
+                    NotificationCenter.default.post(name: .terminalScrollToBottom, object: nil)
+                }
+                .keyboardShortcut(.downArrow, modifiers: [.command, .shift])
+                Button("Copy Scrollback") {
+                    NotificationCenter.default.post(name: .terminalCopyScrollback, object: nil)
+                }
             }
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") { updater.checkForUpdates() }
@@ -146,6 +162,20 @@ struct TermyApp: App {
                     if let url = URL(string: "https://github.com/meesbeuk/termy#readme") {
                         NSWorkspace.shared.open(url)
                     }
+                }
+                Button("Keyboard Cheatsheet…") {
+                    NotificationCenter.default.post(name: .terminalOpenCheatsheet, object: nil)
+                }
+                Button("Welcome to Termy…") {
+                    // Re-show the first-launch welcome whenever the user
+                    // asks for it. Doesn't un-flip `OnboardingState.isCompleted`
+                    // — we just route the same notification that auto-fires
+                    // on a real first launch.
+                    NotificationCenter.default.post(name: .terminalShowOnboarding, object: nil)
+                }
+                Divider()
+                Button("Run Diagnostics…") {
+                    NotificationCenter.default.post(name: .terminalOpenDiagnostics, object: nil)
                 }
                 Button("Report an Issue…") {
                     if let url = URL(string: "https://github.com/meesbeuk/termy/issues/new") {
@@ -244,6 +274,18 @@ extension Notification.Name {
     static let terminalFocusNextPane = Notification.Name("mees.terminal.focusNext")
     static let terminalFocusPreviousPane = Notification.Name("mees.terminal.focusPrev")
     static let terminalDuplicateTab = Notification.Name("mees.terminal.dupTab")
+    static let terminalReopenClosed = Notification.Name("mees.terminal.reopenClosed")
+    static let terminalOpenDiagnostics = Notification.Name("mees.terminal.openDiagnostics")
+    static let terminalCopyScrollback = Notification.Name("mees.terminal.copyScrollback")
+    static let terminalScrollToTop = Notification.Name("mees.terminal.scrollToTop")
+    static let terminalScrollToBottom = Notification.Name("mees.terminal.scrollToBottom")
+    static let terminalCopyLastOutput = Notification.Name("mees.terminal.copyLastOutput")
+    /// Posted when LaunchServices hands us one or more `termy://` URLs (or
+    /// when an in-app menu like the command palette wants to simulate one
+    /// for testing). Key window drains `TerminalAppDelegate.pendingTermyURLs`.
+    static let terminalOpenTermyURL = Notification.Name("mees.terminal.openTermyURL")
+    /// Help → "Welcome to Termy…" — manually re-shows the onboarding sheet.
+    static let terminalShowOnboarding = Notification.Name("mees.terminal.showOnboarding")
     static let terminalRecentDirs = Notification.Name("mees.terminal.recentDirs")
     static let terminalOpenPalette = Notification.Name("mees.terminal.palette")
     /// Fires when LaunchServices hands us files to open (Finder double-click
@@ -311,6 +353,13 @@ struct TerminalWindowRoot: View {
                     TerminalAppDelegate.pendingOpenURLs.removeAll()
                     for url in urls { sessions.openFile(url) }
                 }
+                // Same for any pending termy:// URLs handed in during cold
+                // launch — drain them into TermyURLDispatcher.
+                if !TerminalAppDelegate.pendingTermyURLs.isEmpty {
+                    let urls = TerminalAppDelegate.pendingTermyURLs
+                    TerminalAppDelegate.pendingTermyURLs.removeAll()
+                    for url in urls { TermyURLDispatcher.handle(url, in: sessions) }
+                }
             }
     }
 
@@ -344,6 +393,11 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
     /// window's onAppear (cold-launch case) or the key window's
     /// `.terminalOpenFiles` handler (already-running case).
     static var pendingOpenURLs: [URL] = []
+    /// `termy://` URLs queued by LaunchServices — drained the same way as
+    /// pendingOpenURLs but routed through the key window's
+    /// `.terminalOpenTermyURL` handler instead, since their semantics are
+    /// different (open a tab in a path, run a command, etc.).
+    static var pendingTermyURLs: [URL] = []
     /// Set when the app is shutting down so window .onDisappear handlers
     /// don't unregister their restoreKey — we want them preserved so each
     /// window comes back on the next launch.
@@ -366,21 +420,57 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         TerminalSessions.pendingRestoreKeys = kept
+        // Upgrade-safety: if any persisted state exists (per-window keys,
+        // the legacy single-key restore payload, or even a custom theme /
+        // font size the user set), they're not a first-launch user. Mark
+        // onboarding as completed so the welcome sheet never appears
+        // mid-upgrade. Fresh installs see none of these → we leave the
+        // onboarding flag unset and MainTerminalView pops the sheet.
+        let defaults = UserDefaults.standard
+        let legacyEvidence = !saved.isEmpty
+            || defaults.array(forKey: "mees.terminal.restoreTabs.v2") != nil
+            || defaults.string(forKey: "termy.themeID") != nil
+            || defaults.double(forKey: "termy.fontSize") > 0
+            || defaults.data(forKey: "termy.profiles.v1") != nil
+        if legacyEvidence && !OnboardingState.isCompleted {
+            OnboardingState.markCompleted()
+        }
         NSApp.activate(ignoringOtherApps: true)
     }
 
     /// Called by LaunchServices when the user double-clicks a file whose UTI
-    /// we claim in Info.plist (public.shell-script, public.unix-executable).
-    /// We stash the URLs and let the SwiftUI scene drain them — the scene
-    /// owns `TerminalSessions`, which is where new tabs actually get added.
+    /// we claim in Info.plist (public.shell-script, public.unix-executable),
+    /// OR clicks a `termy://` URL anywhere on the system. File URLs land in
+    /// the same queue the SwiftUI scene drains; termy:// URLs are routed
+    /// through `handleTermyURL` so they can dispatch into the current
+    /// session model (cwd new tab, send command, etc.).
     func application(_ application: NSApplication, open urls: [URL]) {
-        TerminalAppDelegate.pendingOpenURLs.append(contentsOf: urls)
+        var fileURLs: [URL] = []
+        var termyURLs: [URL] = []
+        for url in urls {
+            if url.scheme?.lowercased() == "termy" {
+                termyURLs.append(url)
+            } else {
+                fileURLs.append(url)
+            }
+        }
+        if !fileURLs.isEmpty {
+            TerminalAppDelegate.pendingOpenURLs.append(contentsOf: fileURLs)
+        }
+        if !termyURLs.isEmpty {
+            TerminalAppDelegate.pendingTermyURLs.append(contentsOf: termyURLs)
+        }
         NSApp.activate(ignoringOtherApps: true)
         // If a window is already up, the key window's handler picks it up
         // immediately. If we're cold-launching, the first scene's onAppear
         // will drain the queue after it finishes restoring tabs.
         if NSApp.windows.contains(where: { $0.isVisible }) {
-            NotificationCenter.default.post(name: .terminalOpenFiles, object: nil)
+            if !fileURLs.isEmpty {
+                NotificationCenter.default.post(name: .terminalOpenFiles, object: nil)
+            }
+            if !termyURLs.isEmpty {
+                NotificationCenter.default.post(name: .terminalOpenTermyURL, object: nil)
+            }
         } else {
             openNewWindow?()
         }
@@ -474,6 +564,67 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
             NotificationCenter.default.post(name: .terminalNewTab, object: nil)
         } else {
             openNewWindow?()
+        }
+    }
+}
+
+/// Decodes Termy's `termy://` URL scheme and dispatches actions against
+/// the supplied `TerminalSessions`. Recognised verbs:
+///
+///   - `termy://open?cwd=/path`            — open a fresh tab in that cwd
+///   - `termy://run?command=ls&cwd=/path`  — open tab in cwd, run command
+///   - `termy://new`                        — open a default tab
+///   - `termy://palette`                    — open the command palette
+///   - `termy://settings`                   — open Settings
+///
+/// Unknown verbs are ignored silently rather than throwing — a URL
+/// payload coming from outside the app shouldn't be able to crash Termy.
+@MainActor
+enum TermyURLDispatcher {
+    static func handle(_ url: URL, in sessions: TerminalSessions) {
+        guard url.scheme?.lowercased() == "termy" else { return }
+        // `host` carries the verb (`open`, `run`, ...); `path` is unused.
+        let verb = (url.host ?? "").lowercased()
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let items = components?.queryItems ?? []
+        func param(_ name: String) -> String? {
+            items.first(where: { $0.name == name })?.value
+        }
+
+        switch verb {
+        case "new", "":
+            sessions.openTab()
+        case "open":
+            if let cwd = param("cwd"), !cwd.isEmpty,
+               FileManager.default.fileExists(atPath: cwd) {
+                sessions.openTabIn(cwd: cwd)
+            } else {
+                sessions.openTab()
+            }
+        case "run":
+            // Need a command to be useful — fall back to plain new tab
+            // when the URL forgot the param.
+            guard let cmd = param("command"), !cmd.isEmpty else {
+                sessions.openTab()
+                return
+            }
+            if let cwd = param("cwd"), !cwd.isEmpty,
+               FileManager.default.fileExists(atPath: cwd) {
+                sessions.openTabIn(cwd: cwd)
+            } else {
+                sessions.openTab()
+            }
+            // The PTY needs a beat to print its prompt before we type into
+            // it — same 400 ms delay used by `pendingInitialCommand`.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                sessions.sendToActivePane(cmd)
+            }
+        case "palette":
+            NotificationCenter.default.post(name: .terminalOpenPalette, object: nil)
+        case "settings":
+            NotificationCenter.default.post(name: .terminalOpenSettings, object: nil)
+        default:
+            break
         }
     }
 }

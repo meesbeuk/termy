@@ -16,6 +16,8 @@ struct MainTerminalView: View {
     @State private var showingPasteHistory = false
     @State private var showingAgentPanel = false
     @State private var showingQuickSelect = false
+    @State private var showingDiagnostics = false
+    @State private var showingOnboarding = false
     @State private var findInitialQuery: String?
     @State private var hostedWindow: NSWindow?
     @State private var keyMonitor: Any?
@@ -113,6 +115,18 @@ struct MainTerminalView: View {
             if new != nil {
                 removeKeyMonitor()
                 installKeyMonitor()
+                // First-launch welcome — only ONE window shows it per app
+                // launch even if multiple windows restore, because we flip
+                // the completed flag the moment we show it. Dispatched
+                // async so the window has time to lay out the terminal
+                // behind the modal first; a flash-of-empty-window before
+                // the sheet would look glitchy.
+                if !OnboardingState.isCompleted {
+                    OnboardingState.markCompleted()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        showingOnboarding = true
+                    }
+                }
             } else {
                 removeKeyMonitor()
             }
@@ -161,7 +175,9 @@ struct MainTerminalView: View {
             showSessionLogs: { showingSessionLogs = true },
             showPasteHistory: { showingPasteHistory = true },
             showAgentPanel: { showingAgentPanel = true },
-            showQuickSelect: { showingQuickSelect = true }
+            showQuickSelect: { showingQuickSelect = true },
+            showDiagnostics: { showingDiagnostics = true },
+            showOnboarding: { showingOnboarding = true }
         ))
         .sheet(isPresented: $showingSettings) {
             TerminalSettingsSheet(onClose: { showingSettings = false })
@@ -252,6 +268,27 @@ struct MainTerminalView: View {
             }
             .transition(.opacity)
             .zIndex(16)
+        }
+        if showingDiagnostics {
+            ZStack {
+                Color.black.opacity(0.10).ignoresSafeArea()
+                    .onTapGesture { showingDiagnostics = false }
+                DiagnosticsSheet(onDismiss: { showingDiagnostics = false })
+            }
+            .transition(.opacity)
+            .zIndex(17)
+        }
+        if showingOnboarding {
+            ZStack {
+                // Slightly stronger backdrop than the other modals — onboarding
+                // is intentionally attention-grabbing on first launch and the
+                // user shouldn't accidentally tap into the terminal before
+                // they've read it.
+                Color.black.opacity(0.18).ignoresSafeArea()
+                OnboardingSheet(onDismiss: { showingOnboarding = false })
+            }
+            .transition(.opacity)
+            .zIndex(20)
         }
     }
 
