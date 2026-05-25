@@ -6,6 +6,29 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.11.2</title>
+            <description><![CDATA[
+                <h2>v0.11.2 — Scroll lock + less sensitive tab rename</h2>
+<p>Two focused fixes on top of v0.11.1's scrollback work.</p>
+<ul>
+  <li><b>The viewport stops yanking back to the bottom while you're trying to read.</b> Scrolling up — by mouse wheel, trackpad, PageUp, ⌘⇧↑, or scrollbar drag — now <em>locks</em> the viewport at whatever row you landed on. Subsequent output from claude or whatever's running keeps accumulating in the buffer below, but YOUR view stays put. Use ⌘⇧↓ (or scroll/PageDown back to the live tail) to release the lock; the next chunk of output auto-snaps to the bottom again, same as it always did before you scrolled. SwiftTerm's built-in <code>userScrolling</code> flag only triggers on scrollbar drag — wheel/trackpad scrolls were leaving the lock disengaged and the viewport snapping back on every PTY chunk, which made reading claude's earlier paragraph mid-stream impossible. Termy now tracks scroll-away state itself and restores yDisp async after SwiftTerm's internal <code>ensureCaretIsVisible</code> snap.</li>
+  <li><b>Tab title rename no longer fires on accidental click.</b> The double-tap-to-rename gesture is gone; rename is now exclusively right-click → "Rename Tab…". The combined single+double tap gesture was adding a ~250 ms delay to every tab switch (SwiftUI's gesture system has to wait for the double-tap window before firing the single-tap), and even with that delay users were tripping into rename mode whenever they double-clicked too quickly to switch tabs. Switching tabs is now instant and predictable.</li>
+</ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 12:57:47 +0000</pubDate>
+            <sparkle:version>55</sparkle:version>
+            <sparkle:shortVersionString>0.11.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.11.2/Termy.dmg"
+                sparkle:version="55"
+                sparkle:shortVersionString="0.11.2"
+                length="3251048"
+                sparkle:edSignature="X6WNqmdMX1VKs1fxWZ7b8lGSqFuxfZMORwYRIaEmYvETLdothenP2//EnmN4c+JuXyMdkEkCjLYc4ImXOzxOBA=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.11.1</title>
             <description><![CDATA[
                 <h2>v0.11.1 — Scrollback stays put + smarter notifications + perf cache</h2>
