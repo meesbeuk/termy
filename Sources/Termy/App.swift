@@ -623,6 +623,15 @@ enum TermyURLDispatcher {
             NotificationCenter.default.post(name: .terminalOpenPalette, object: nil)
         case "settings":
             NotificationCenter.default.post(name: .terminalOpenSettings, object: nil)
+        case "welcome", "onboarding":
+            // Re-show the first-launch welcome sheet on demand, same path
+            // as Help → "Welcome to Termy…". Useful for scripted tours
+            // and for testing the sheet without resetting state.
+            NotificationCenter.default.post(name: .terminalShowOnboarding, object: nil)
+        case "diagnostics":
+            NotificationCenter.default.post(name: .terminalOpenDiagnostics, object: nil)
+        case "cheatsheet":
+            NotificationCenter.default.post(name: .terminalOpenCheatsheet, object: nil)
         default:
             break
         }
