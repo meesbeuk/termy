@@ -46,7 +46,10 @@ fi
 # convention every Mac user recognises — drag-to-install.
 echo "── Building DMG ──"
 WORK=/tmp/termy-dmg-staging
-DMG=/tmp/Termy-${TAG}.dmg
+# Asset name must stay "Termy.dmg" — appcast.xml URLs hard-code that filename
+# under each release tag (e.g. /releases/download/vX.Y.Z/Termy.dmg). Anything
+# else 404s for existing Sparkle clients.
+DMG=/tmp/Termy.dmg
 rm -rf "$WORK" "$DMG"
 mkdir -p "$WORK"
 cp -R /Applications/Termy.app "$WORK/Termy.app"
