@@ -21,14 +21,21 @@ import AppKit
 final class TermyNotifications {
     static let shared = TermyNotifications()
     private var permissionRequested = false
+    /// Recently-fired (body) → timestamp. Used to dedupe repeated
+    /// "Command finished" pings that the idle heuristic would
+    /// otherwise stack one per claude redraw cycle. 30-second window
+    /// is short enough to let real repeated commands fire again,
+    /// long enough to coalesce a burst.
+    private var recentBodies: [String: Date] = [:]
+    private let dedupeWindow: TimeInterval = 30
 
     /// Bell hook — called from SwiftTerm's `bell(source:)` override.
     func bell(window: NSWindow?, cwd: String?, preview: String? = nil) {
         guard UserDefaults.standard.bool(forKey: "termy.notifyOnBell") else { return }
         if shouldSuppress(window: window) { return }
-        post(
-            title: "Termy",
-            subtitle: "Bell",
+        postDeduped(
+            title: titleFor(cwd: cwd),
+            subtitle: "🔔 Bell",
             body: composedBody(cwd: cwd, preview: preview),
             sound: soundEnabled()
         )
@@ -36,15 +43,48 @@ final class TermyNotifications {
 
     /// Idle hook — called by TermyTerminalView when output transitions
     /// from "active" to "settled for N seconds".
-    func commandSettled(window: NSWindow?, cwd: String?, preview: String?) {
+    func commandSettled(window: NSWindow?, cwd: String?, preview: String?, viaOSC133: Bool = false) {
         guard UserDefaults.standard.bool(forKey: "termy.notifyOnIdle") else { return }
         if shouldSuppress(window: window) { return }
-        post(
-            title: "Termy",
-            subtitle: "Command finished",
+        // The idle heuristic fires whenever output goes quiet — but
+        // TUIs like claude pause constantly between token generation
+        // batches without actually "finishing". The OSC 133 path is
+        // accurate; the heuristic path is noisy. Suppress the
+        // heuristic when we can't tell either way. Users with
+        // shell integration set up still get accurate pings.
+        let suppressHeuristic = UserDefaults.standard.object(forKey: "termy.notifyOnlyOSC133") as? Bool ?? true
+        if suppressHeuristic && !viaOSC133 { return }
+        postDeduped(
+            title: titleFor(cwd: cwd),
+            subtitle: "✓ Command finished",
             body: composedBody(cwd: cwd, preview: preview),
             sound: soundEnabled()
         )
+    }
+
+    /// Notification title: the cwd basename (or "Termy" if empty).
+    /// Much more informative than always saying "Termy" — at a glance
+    /// the user knows WHICH project pinged them.
+    private func titleFor(cwd: String?) -> String {
+        guard let cwd, !cwd.isEmpty else { return "Termy" }
+        let folded = foldHome(cwd)
+        let basename = (folded as NSString).lastPathComponent
+        if basename.isEmpty || basename == "/" { return folded }
+        return basename
+    }
+
+    /// Post deduped: skip if we fired an identical body recently.
+    /// Also evicts entries older than the dedupe window so the dict
+    /// can't grow unbounded.
+    private func postDeduped(title: String, subtitle: String, body: String, sound: Bool) {
+        let now = Date()
+        recentBodies = recentBodies.filter { now.timeIntervalSince($0.value) < dedupeWindow }
+        let key = "\(subtitle)|\(body)"
+        if let last = recentBodies[key], now.timeIntervalSince(last) < dedupeWindow {
+            return
+        }
+        recentBodies[key] = now
+        post(title: title, subtitle: subtitle, body: body, sound: sound)
     }
 
     /// Trigger hook — called by TermyTerminalView when an active trigger's
@@ -55,9 +95,9 @@ final class TermyNotifications {
     func triggerFired(trigger: Trigger, matched: String, window: NSWindow?, cwd: String?) {
         if shouldSuppress(window: window) { return }
         if case let .notify(title, urgent) = trigger.action {
-            post(
-                title: "Termy",
-                subtitle: title,
+            postDeduped(
+                title: titleFor(cwd: cwd),
+                subtitle: urgent ? "⚠ \(title)" : title,
                 body: composedBody(cwd: cwd, preview: matched),
                 sound: urgent || soundEnabled()
             )

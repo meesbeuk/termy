@@ -18,7 +18,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// parameter carries the most recent chunk of received text so the
     /// notification can show *what* finished, not just *that* something
     /// finished. Wired up in TerminalSurface to call TermyNotifications.
-    var onCommandSettled: ((_ preview: String?) -> Void)?
+    var onCommandSettled: ((_ preview: String?, _ viaOSC133: Bool) -> Void)?
 
     /// Fires when this pane transitions between "actively producing
     /// output" and "settled". Drives the activity stripe rendered above
@@ -157,6 +157,42 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// enough to catch short-running commands.
     private let activeByteThreshold = 64
 
+    // MARK: - Cached UserDefaults values
+    //
+    // dataReceived runs on the hot path — once per PTY chunk. Reading
+    // from UserDefaults is fast but not free (each read goes through
+    // CFPreferences). Cache the values we touch per-byte and refresh
+    // them only when UserDefaults actually changes. Saves a measurable
+    // chunk of CPU on output-heavy sessions (claude streaming, `cat
+    // bigfile`, build logs).
+    private var cachedCinemaMode = false
+    private var cachedCinemaCps: Double = 80
+    private var cachedRecordSessions = false
+    private var cachedIdleThreshold: TimeInterval = 4
+    private var defaultsObserver: NSObjectProtocol?
+
+    private func refreshCachedDefaults() {
+        let d = UserDefaults.standard
+        cachedCinemaMode = d.bool(forKey: "termy.cinemaMode")
+        let cps = d.double(forKey: "termy.cinemaCps")
+        cachedCinemaCps = cps > 0 ? cps : 80
+        cachedRecordSessions = d.bool(forKey: "termy.recordSessions")
+        let th = d.double(forKey: "termy.idleThresholdSeconds")
+        cachedIdleThreshold = th > 0 ? th : 4
+    }
+
+    private func installDefaultsObserver() {
+        if defaultsObserver != nil { return }
+        refreshCachedDefaults()
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshCachedDefaults()
+        }
+    }
+
     override func bell(source: Terminal) {
         super.bell(source: source)
         onBell?()
@@ -218,11 +254,11 @@ final class TermyTerminalView: LocalProcessTerminalView {
         recordIfEnabled(slice)
         scanForOSC133(slice)
         scanForTriggers(slice)
-        scanForFullScreenClear(slice)
+        scanForTUIRedraw(slice)
         trackIdleBytes(slice)
 
         // Display path: paced or immediate.
-        let cinema = UserDefaults.standard.bool(forKey: "termy.cinemaMode")
+        let cinema = cachedCinemaMode
         // Two reasons to bypass the pacer:
         //   1) Very small slices that arrive AT a keystroke are the
         //      shell echoing the typed character. We can't pace
@@ -277,9 +313,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
         // 1 byte per tick at 60Hz = 60 cps; 2 bytes/tick = 120 cps;
         // etc. Cap the per-tick chunk so a queue surge can't blast
         // through in one frame and ruin the typewriter effect.
-        let cps = UserDefaults.standard.double(forKey: "termy.cinemaCps")
-        let effective = cps > 0 ? cps : 80.0
-        let perTick = max(1, Int((effective / 60.0).rounded(.up)))
+        let perTick = max(1, Int((cachedCinemaCps / 60.0).rounded(.up)))
         let take = min(perTick, typewriterQueue.count)
         let chunk = ArraySlice(typewriterQueue.prefix(take))
         typewriterQueue.removeFirst(take)
@@ -317,84 +351,87 @@ final class TermyTerminalView: LocalProcessTerminalView {
         }
     }
 
-    /// Sliding window of the last two bytes seen in dataReceived, used
-    /// by `scanForFullScreenClear` to match `\e[2J` even across chunk
-    /// boundaries (SwiftTerm hands us partial reads constantly).
-    private var clearScanLast: UInt8 = 0
-    private var clearScanState: Int = 0  // 0=idle, 1=saw ESC, 2=saw ESC [
-    /// Throttle to avoid feeding multiple `\e[3J`s for a single redraw
-    /// burst — claude often emits several clear sequences in a row when
-    /// repainting its UI, but one scrollback wipe per burst is enough.
-    private var lastScrollbackClearAt: Date = .distantPast
+    // MARK: - TUI-redraw detection (anti-cascading-banner)
+    //
+    // Apps that use the alt-screen properly (vim, less, htop) keep
+    // their UI out of scrollback. Apps that don't (claude in
+    // particular) just emit `\e[2J\e[H` and redraw their whole UI
+    // every time, leaving every previous render permanently
+    // accumulated in scrollback. After a few splits/resizes the user
+    // ends up with the welcome banner stacked 4-5 times.
+    //
+    // Heuristic: count `\e[2J` (full-screen erase) events in a rolling
+    // 5-second window. ONE in 5s is a normal `clear` command — leave
+    // scrollback alone, the user might want it back. THREE+ in 5s is
+    // a TUI repainting itself — start suppressing the next renders
+    // by sending `\e[3J` (erase scrollback) right after each `\e[2J`,
+    // so the TUI's last render is what stays visible without
+    // history accumulation.
+    //
+    // The detection is sticky for `tuiModeStickWindow` seconds after
+    // the last `\e[2J` so we keep suppressing through the TUI's
+    // entire session, then unsticks so a later shell `clear`
+    // preserves scrollback again.
+    private var clearTimes: [Date] = []
+    private var lastClearAt: Date = .distantPast
+    private var tuiModeActive: Bool = false
+    private let tuiModeWindow: TimeInterval = 5
+    private let tuiModeStickWindow: TimeInterval = 30
+    private let tuiModeThreshold: Int = 3
+    // CSI parser state for the `\e[2J` matcher.
+    private var tuiScanState: Int = 0
+    private var tuiScanParam: UInt8 = 0
 
-    /// Watch for the ANSI "Erase in Display, full screen" sequence
-    /// (`\e[2J`) — the canonical "I'm a TUI repainting the screen"
-    /// signal that claude, vim's :redraw, less, htop etc. emit. When
-    /// we see one we ALSO feed `\e[3J` (clear scrollback) right after
-    /// so the previous render doesn't accumulate in scrollback as the
-    /// user resizes or the TUI auto-refreshes. This is what makes
-    /// claude's welcome banner stop stacking up 4-5 times in
-    /// scrollback after a few splits/resizes — every repaint
-    /// completes by wiping the now-stale lines above the viewport
-    /// instead of pushing them into history.
-    ///
-    /// `clear` (the shell command) emits `\e[H\e[2J` too — so this
-    /// also means `clear` actually clears scrollback, which is what
-    /// most users intuitively expect. Users who relied on iTerm's
-    /// "clear keeps scrollback" can disable with the
-    /// `termy.clearScrollbackOnFullScreenErase` default.
-    private func scanForFullScreenClear(_ slice: ArraySlice<UInt8>) {
-        let opt = UserDefaults.standard.object(forKey: "termy.clearScrollbackOnFullScreenErase") as? Bool
-        guard (opt ?? true) else { return }
-        // 200ms throttle: a single user-driven repaint can emit
-        // \e[2J multiple times. Don't fire the scrollback wipe more
-        // than ~5 times per second.
+    private func scanForTUIRedraw(_ slice: ArraySlice<UInt8>) {
+        if !slice.contains(0x1B) && tuiScanState == 0 { return }
         for byte in slice {
-            switch clearScanState {
+            switch tuiScanState {
             case 0:
-                if byte == 0x1B { clearScanState = 1 }
+                if byte == 0x1B { tuiScanState = 1; tuiScanParam = 0 }
             case 1:
-                if byte == 0x5B {       // '['
-                    clearScanState = 2
-                } else if byte == 0x1B {
-                    // back-to-back ESC keeps us in state 1
-                } else {
-                    clearScanState = 0
-                }
+                if byte == 0x5B { tuiScanState = 2; tuiScanParam = 0 }
+                else if byte != 0x1B { tuiScanState = 0 }
             case 2:
-                // We're inside a CSI. The "Erase in Display" command
-                // is `\e[<param>J` where param ∈ {0, 1, 2, 3}.
-                // `\e[2J` is full-screen erase. The previous byte
-                // (clearScanLast) tells us the parameter.
-                if byte == 0x4A {       // 'J'
-                    if clearScanLast == 0x32 {   // '2'
-                        triggerScrollbackClear()
-                    }
-                    clearScanState = 0
-                } else if (byte >= 0x30 && byte <= 0x3F) || byte == 0x3B {
-                    // Inside parameter bytes — keep scanning
-                } else {
-                    // Any other CSI final byte ends this sequence.
-                    clearScanState = 0
+                if byte == 0x4A {  // 'J'
+                    if tuiScanParam == 0x32 { handleFullScreenClear() }
+                    tuiScanState = 0
+                } else if (byte >= 0x30 && byte <= 0x39) {  // digit
+                    tuiScanParam = byte
+                } else if byte == 0x3B || byte == 0x3F {
+                    // multi-param or DEC private; not a 2J even if a 2 appears
+                    tuiScanParam = 0
+                } else if (byte >= 0x40 && byte <= 0x7E) {
+                    // CSI final byte, not J
+                    tuiScanState = 0
                 }
             default:
-                clearScanState = 0
+                tuiScanState = 0
             }
-            clearScanLast = byte
         }
     }
 
-    private func triggerScrollbackClear() {
+    private func handleFullScreenClear() {
         let now = Date()
-        if now.timeIntervalSince(lastScrollbackClearAt) < 0.2 { return }
-        lastScrollbackClearAt = now
-        // Dispatch async so the \e[3J lands AFTER the \e[2J's
-        // own processing in SwiftTerm — otherwise the order in the
-        // PTY parser is undefined and we may clear scrollback
-        // before the current screen has been cleared+redrawn.
+        clearTimes.append(now)
+        clearTimes.removeAll { now.timeIntervalSince($0) > tuiModeWindow }
+        // Sticky: once we identified TUI mode, keep it for the stick
+        // window so claude's slower redraw pace doesn't fall out of
+        // the 5s detection window and prematurely re-enable history.
+        if clearTimes.count >= tuiModeThreshold {
+            tuiModeActive = true
+            lastClearAt = now
+        } else if tuiModeActive && now.timeIntervalSince(lastClearAt) > tuiModeStickWindow {
+            tuiModeActive = false
+        }
+        guard tuiModeActive else { return }
+        // Send \e[3J asynchronously so it lands after SwiftTerm has
+        // processed the \e[2J it follows. Without the async hop the
+        // parser would interleave the two and not all of the cleared
+        // content makes it into scrollback for us to wipe.
         DispatchQueue.main.async { [weak self] in
             self?.feed(text: "\u{001B}[3J")
         }
+        lastClearAt = now
     }
 
     private func stripAnsiCSI(_ s: String) -> String {
@@ -446,6 +483,12 @@ final class TermyTerminalView: LocalProcessTerminalView {
     ///   - `D[;exit]` — command finished. Fire the notification
     ///     immediately and suppress the idle fallback for the next tick.
     private func scanForOSC133(_ slice: ArraySlice<UInt8>) {
+        // Fast path: most output chunks (plain text from a shell
+        // command's stdout) contain no ESC bytes at all. Skip the
+        // per-byte loop entirely. Saves a meaningful amount of CPU
+        // on output-heavy sessions (build logs, `cat large_file`,
+        // ls of huge directories).
+        if !inOSC && !slice.contains(0x1B) { return }
         for byte in slice {
             if !inOSC {
                 if byte == 0x1B {                  // ESC
@@ -502,7 +545,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
                 isCurrentlyActive = false
                 onActivityChanged?(false)
                 let preview = tailLine(from: lastPreviewBuffer)
-                onCommandSettled?(preview)
+                onCommandSettled?(preview, true)
             }
             osc133JustFired = false
             // Record this prompt's absolute row so ⌘↑/⌘↓ can jump back.
@@ -531,7 +574,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
             isCurrentlyActive = false
             osc133JustFired = true
             onActivityChanged?(false)
-            onCommandSettled?(preview)
+            onCommandSettled?(preview, true)
         default:
             break
         }
@@ -608,12 +651,14 @@ final class TermyTerminalView: LocalProcessTerminalView {
             osc133JustFired = false
             return
         }
-        let threshold = UserDefaults.standard.double(forKey: "termy.idleThresholdSeconds")
-        let effective = threshold > 0 ? threshold : 4.0
-        if Date().timeIntervalSince(lastDataAt) >= effective {
+        if Date().timeIntervalSince(lastDataAt) >= cachedIdleThreshold {
             isCurrentlyActive = false
             onActivityChanged?(false)
-            onCommandSettled?(tailLine(from: lastPreviewBuffer))
+            // viaOSC133=false — this is the heuristic path, which is
+            // suppressed by default in TermyNotifications because it's
+            // way too noisy for TUI sessions (claude pauses between
+            // generation cycles trigger it constantly).
+            onCommandSettled?(tailLine(from: lastPreviewBuffer), false)
             idleTimer?.invalidate()
             idleTimer = nil
         }
@@ -629,6 +674,9 @@ final class TermyTerminalView: LocalProcessTerminalView {
         if let monitor = cinemaKeyMonitor {
             NSEvent.removeMonitor(monitor)
         }
+        if let observer = defaultsObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     /// If the user has the "Record session output" preference on, hand the
@@ -636,7 +684,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// first byte and silently degrades on any IO failure — recording is
     /// best-effort, never load-bearing.
     private func recordIfEnabled(_ slice: ArraySlice<UInt8>) {
-        let enabled = UserDefaults.standard.bool(forKey: "termy.recordSessions")
+        let enabled = cachedRecordSessions
         guard enabled else {
             if recorder != nil {
                 recorder?.close()
@@ -688,6 +736,7 @@ final class TermyTerminalView: LocalProcessTerminalView {
             }
         }
         guard let window else { return }
+        installDefaultsObserver()
         onNeedsAppearanceRefresh?()
         // Re-attached to a window (either first mount or after a
         // tab-switch re-parent). Mark every visible row dirty and
@@ -770,24 +819,12 @@ final class TermyTerminalView: LocalProcessTerminalView {
             super.setFrameSize(NSSize(width: final.width + 0.5, height: final.height))
             super.setFrameSize(final)
         }
-        // Same significant-change scrollback clear as the
-        // programmatic-resize path. Without this, dragging the
-        // window narrower while claude is running leaves stacked
-        // welcome-banner copies in scrollback (each SIGWINCH
-        // makes claude redraw, which appends to scrollback since
-        // claude doesn't use alt-screen). Threshold matches the
-        // non-live path so behavior is consistent regardless of
-        // whether the user drags the window or splits a pane.
+        // Scrollback is intentionally NOT cleared here. See
+        // nudgeAndRefreshAfterResize() for the long explanation —
+        // preserving user history is more important than the
+        // cosmetic mess that some TUIs leave when they redraw on
+        // SIGWINCH.
         let term = getTerminal()
-        if preLiveResizeCols > 0 && preLiveResizeRows > 0 {
-            let colChange = abs(Double(term.cols - preLiveResizeCols)) / Double(preLiveResizeCols)
-            let rowChange = abs(Double(term.rows - preLiveResizeRows)) / Double(preLiveResizeRows)
-            let opt = UserDefaults.standard.object(forKey: "termy.clearScrollbackOnSignificantResize") as? Bool
-            let clearEnabled = opt ?? true
-            if clearEnabled && (colChange > 0.30 || rowChange > 0.30) {
-                feed(text: "\u{001B}[3J")
-            }
-        }
         term.refresh(startRow: 0, endRow: term.rows - 1)
         needsDisplay = true
     }
@@ -869,27 +906,14 @@ final class TermyTerminalView: LocalProcessTerminalView {
         super.setFrameSize(NSSize(width: current.width + 0.5, height: current.height))
         super.setFrameSize(current)
         let term = getTerminal()
-        // Significant grid change (>30% in either axis) almost
-        // always means a split, split-close, or drastic window
-        // resize. In that case, send the ANSI "Erase Scrollback"
-        // sequence (CSI 3 J) BEFORE the reflow lands on the next
-        // tick. This wipes the accumulated mess that TUIs without
-        // alt-screen mode (claude, etc.) leave behind every time
-        // they redraw on SIGWINCH — without it, every split-cycle
-        // stacks another welcome banner in the scrollback. Tiny
-        // adjustments (drag-resize the divider 1-2 cells) skip the
-        // wipe so the user doesn't lose scrollback over nothing.
-        let cols = term.cols
-        let rows = term.rows
-        if preResizeCols > 0 && preResizeRows > 0 {
-            let colChange = abs(Double(cols - preResizeCols)) / Double(preResizeCols)
-            let rowChange = abs(Double(rows - preResizeRows)) / Double(preResizeRows)
-            let opt = UserDefaults.standard.object(forKey: "termy.clearScrollbackOnSignificantResize") as? Bool
-            let clearEnabled = opt ?? true
-            if clearEnabled && (colChange > 0.30 || rowChange > 0.30) {
-                feed(text: "\u{001B}[3J")
-            }
-        }
+        // NO scrollback clears here. v0.11.0 used to fire \e[3J on
+        // significant grid change to clean up cascading TUI redraws,
+        // but it also nuked legitimate history any time the user
+        // closed a split or aggressively resized — making it
+        // impossible to scroll back to earlier content in the
+        // surviving pane. The cascading-banner artifact is the
+        // lesser evil; users can ⌘K to clear scrollback manually
+        // when a TUI leaves a mess.
         term.refresh(startRow: 0, endRow: max(0, term.rows - 1))
         needsDisplay = true
         displayIfNeeded()
@@ -1008,12 +1032,13 @@ struct TerminalSurface: NSViewRepresentable {
                 session.isActive = active
             }
         }
-        view.onCommandSettled = { [weak session] preview in
+        view.onCommandSettled = { [weak session] preview, viaOSC133 in
             guard let session else { return }
             TermyNotifications.shared.commandSettled(
                 window: session.terminalView?.window,
                 cwd: session.cwd,
-                preview: preview
+                preview: preview,
+                viaOSC133: viaOSC133
             )
         }
         // Wire the trigger pipeline. Triggers come from a shared
