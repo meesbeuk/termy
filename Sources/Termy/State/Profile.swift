@@ -46,8 +46,8 @@ struct Profile: Identifiable, Codable, Equatable {
 
     /// Random 10-char alphanumeric seed. Stable per profile across launches.
     static func randomSeed() -> String {
-        let chars = Array("abcdefghijklmnopqrstuvwxyz0123456789")
-        return String((0..<10).map { _ in chars.randomElement()! })
+        let chars: [Character] = Array("abcdefghijklmnopqrstuvwxyz0123456789")
+        return String((0..<10).map { _ in chars.randomElement() ?? "a" })
     }
 
     /// Resolve the effective shell path (honoring $SHELL if empty).

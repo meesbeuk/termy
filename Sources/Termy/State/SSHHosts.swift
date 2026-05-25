@@ -138,8 +138,11 @@ enum SSHHostsReader {
         for rawLine in text.split(separator: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if line.isEmpty || line.hasPrefix("#") { continue }
-            // Tokenize on whitespace; key value form.
-            let parts = line.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+            // Tokenize on any whitespace (space or tab) — ssh_config permits
+            // tabs as separators, and `Host\talias` is common when generated
+            // by scripts. Earlier code split only on " " and missed every
+            // tab-separated entry.
+            let parts = line.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
             guard let key = parts.first?.lowercased() else { continue }
             let value = parts.dropFirst().joined(separator: " ")
             if key == "host" {

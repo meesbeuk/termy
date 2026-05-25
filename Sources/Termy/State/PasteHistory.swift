@@ -31,8 +31,13 @@ final class PasteHistoryStore: ObservableObject {
 
     func startPolling() {
         guard pollTimer == nil else { return }
+        // Timer's callback is non-isolated, but `tick()` is @MainActor. Hop
+        // back onto the main actor explicitly so Swift 6 mode is happy and
+        // we don't accidentally read NSPasteboard / mutate @Published state
+        // off the main thread. The runloop adds the timer to the main
+        // runloop so the dispatch is effectively a no-op latency-wise.
         let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
-            self?.tick()
+            Task { @MainActor in self?.tick() }
         }
         RunLoop.main.add(t, forMode: .common)
         pollTimer = t
@@ -50,6 +55,13 @@ final class PasteHistoryStore: ObservableObject {
     }
 
     private func tick() {
+        // Skip polling cycles when no Termy window is visible — there's
+        // no one to paste into, and even if the user copies something
+        // while Termy is hidden, we'll catch it on the next tick once a
+        // window comes back. Saves a pasteboard syscall + string copy
+        // every 500ms while the app is idle in the background.
+        let hasVisibleWindow = NSApp.windows.contains { $0.isVisible && !$0.isMiniaturized }
+        guard hasVisibleWindow else { return }
         let pb = NSPasteboard.general
         let current = pb.changeCount
         guard current != lastChangeCount else { return }

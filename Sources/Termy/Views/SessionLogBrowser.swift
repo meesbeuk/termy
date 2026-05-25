@@ -218,7 +218,11 @@ struct SessionLogBrowser: View {
                 }
             }
             if Task.isCancelled { return }
-            await MainActor.run { contentMatchCounts = counts }
+            // Make the dictionary immutable before crossing the actor
+            // boundary so Swift 6 mode doesn't complain about capturing a
+            // mutable variable in a concurrently-executing closure.
+            let final = counts
+            await MainActor.run { contentMatchCounts = final }
         }
     }
 

@@ -119,10 +119,19 @@ struct StatusBar: View {
     }
 
     private var clockString: String {
+        Self.clockFormatter.string(from: now)
+    }
+
+    /// Cached because DateFormatter allocation is heavy (locale resolution,
+    /// calendar lookup) and the status bar re-evaluates `clockString` on
+    /// every render — including unrelated re-renders triggered by cwd /
+    /// branch / `now` changes. Static dispatch + one shared formatter keeps
+    /// chrome rendering off the profiler.
+    private static let clockFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
-        return f.string(from: now)
-    }
+        return f
+    }()
 
     /// Walk up from cwd looking for a .git directory; if found, read HEAD.
     /// Pure filesystem — no shell fork, no git binary required.

@@ -111,14 +111,17 @@ final class QuickTerminalController {
     /// ⌃`. NSScreen.main reflects the menubar-owning screen, which on
     /// multi-monitor setups is often NOT where the user is working. Falls
     /// back to .main when no mouseScreen is available (e.g. headless tests).
-    private func screen() -> NSScreen {
+    private func screen() -> NSScreen? {
         let mouse = NSEvent.mouseLocation
         let hit = NSScreen.screens.first { NSPointInRect(mouse, $0.frame) }
-        return hit ?? NSScreen.main ?? NSScreen.screens.first!
+        return hit ?? NSScreen.main ?? NSScreen.screens.first
     }
 
     private func expandedFrame() -> NSRect {
-        let s = screen()
+        // No displays attached (headless test rig, or every screen just
+        // unplugged) — return a sane 800×400 rect so we never produce a
+        // zero-sized panel that AppKit treats specially.
+        guard let s = screen() else { return NSRect(x: 0, y: 0, width: 800, height: 400) }
         let v = s.visibleFrame
         let fraction = settingsRef?.quakeHeightFraction ?? 0.45
         let height = round(v.height * fraction)
