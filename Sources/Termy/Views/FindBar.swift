@@ -16,6 +16,11 @@ struct FindBar: View {
     @State private var caseSensitive: Bool = false
     @State private var regex: Bool = false
     @State private var lastSearchHadHit: Bool = true
+    /// Total match count for the current query, computed by scanning the
+    /// terminal's recent text buffer when the query stabilises. nil means
+    /// "haven't counted yet" — UI just shows the no-hit dot if applicable.
+    @State private var totalMatches: Int? = nil
+    @State private var countDebounceTask: Task<Void, Never>? = nil
 
     var body: some View {
         HStack(spacing: DS.Spacing.xs) {
@@ -35,19 +40,37 @@ struct FindBar: View {
                 if new.isEmpty {
                     view?.clearSearch()
                     lastSearchHadHit = true
+                    totalMatches = nil
+                    countDebounceTask?.cancel()
                 } else {
                     // Search-as-you-type lands on the first match; ⏎ / ⇧⏎
                     // cycles from there.
                     lastSearchHadHit = view?.findNext(new, options: options) ?? false
+                    scheduleCount(for: new)
                 }
             }
 
-            // No-hit indicator — small dot keeps the bar compact.
-            if !query.isEmpty && !lastSearchHadHit {
-                Circle()
-                    .fill(DS.Colors.danger.opacity(0.85))
-                    .frame(width: 6, height: 6)
-                    .help("No match")
+            // No-hit indicator — small dot keeps the bar compact. When we
+            // do have matches and a count is available, show the count
+            // instead for the "3 matches" affordance every modern editor's
+            // find bar has.
+            if !query.isEmpty {
+                if !lastSearchHadHit {
+                    Circle()
+                        .fill(DS.Colors.danger.opacity(0.85))
+                        .frame(width: 6, height: 6)
+                        .help("No match")
+                } else if let count = totalMatches, count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(DS.Colors.tertiary)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(
+                            Capsule().fill(DS.Colors.chipBg)
+                        )
+                        .help("\(count) match\(count == 1 ? "" : "es") in recent scrollback")
+                }
             }
 
             ToggleChip(label: "Aa", isOn: caseSensitive, help: "Case sensitive") {
@@ -108,7 +131,46 @@ struct FindBar: View {
 
     private func dismiss() {
         view?.clearSearch()
+        countDebounceTask?.cancel()
         onClose()
+    }
+
+    /// Asynchronously count occurrences of `q` in the active pane's
+    /// recent text buffer. Debounced so we don't run a regex per keystroke
+    /// while the user is still typing. The count is bounded by
+    /// `recentVisibleText()` which caps at ~4KB — not the whole scrollback,
+    /// but enough for the "is this rare or common?" gut check the user
+    /// actually wants from a match count.
+    private func scheduleCount(for q: String) {
+        countDebounceTask?.cancel()
+        countDebounceTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 180_000_000)
+            if Task.isCancelled { return }
+            guard let termyView = view as? TermyTerminalView else {
+                totalMatches = nil
+                return
+            }
+            let text = termyView.recentVisibleText()
+            let count: Int
+            if regex {
+                let opts: NSRegularExpression.Options = caseSensitive ? [] : [.caseInsensitive]
+                if let re = try? NSRegularExpression(pattern: q, options: opts) {
+                    count = re.numberOfMatches(in: text, range: NSRange(text.startIndex..., in: text))
+                } else {
+                    count = 0
+                }
+            } else {
+                let opts: String.CompareOptions = caseSensitive ? [] : [.caseInsensitive]
+                var c = 0
+                var searchRange = text.startIndex..<text.endIndex
+                while let r = text.range(of: q, options: opts, range: searchRange) {
+                    c += 1
+                    searchRange = r.upperBound..<text.endIndex
+                }
+                count = c
+            }
+            totalMatches = count
+        }
     }
 }
 

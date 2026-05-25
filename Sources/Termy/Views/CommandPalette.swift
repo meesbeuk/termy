@@ -201,6 +201,18 @@ struct CommandPalette: View {
         items.append(PaletteItem(kind: .action, title: "Toggle Broadcast Input",
                                  subtitle: "Mirror keys to all panes in this tab",
                                  action: { sessions.currentTab?.broadcastInput.toggle() }))
+        // Trigger packs — one row per pack so the user can flip them
+        // without opening Settings. Subtitle reports current state.
+        for pack in TriggerPack.allCases {
+            let registry = TriggerRegistry.shared
+            let isOn = registry.enabledPacks.contains(pack)
+            items.append(PaletteItem(
+                kind: .action,
+                title: "\(isOn ? "Disable" : "Enable") triggers: \(pack.name)",
+                subtitle: pack.description,
+                action: { registry.setPack(pack, enabled: !isOn) }
+            ))
+        }
         items.append(PaletteItem(kind: .action, title: "Session Logs",
                                  subtitle: "⌘⇧L — browse past recordings",
                                  action: {
