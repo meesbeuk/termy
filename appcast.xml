@@ -6,6 +6,32 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.11.1</title>
+            <description><![CDATA[
+                <h2>v0.11.1 — Scrollback stays put + smarter notifications + perf cache</h2>
+<p>Follow-up to v0.11.0. The aggressive "wipe scrollback on every resize / every TUI clear-screen" of v0.11.0 fixed cascading welcome banners but nuked legitimate history in the process — closing a split pane was deleting hours of conversation in the surviving pane. v0.11.1 keeps scrollback intact while still suppressing the TUI cascade, plus cleans up the notification spam and shaves real CPU off the hot path.</p>
+<ul>
+  <li><b>Scrollback no longer gets deleted on split close or window resize.</b> The previous unconditional <code>\e[3J</code> on any &gt;30% size change is gone. Verified: 100 lines of shell output stay intact through split → close → resize → claude session → more resizes.</li>
+  <li><b>TUI cascade is now suppressed adaptively.</b> Termy tracks how often full-screen clears (<code>\e[2J</code>) happen — a single one (the <code>clear</code> command) leaves scrollback alone, but ≥3 in a 5-second window flips the pane into "TUI mode" and auto-trims the now-stale renders for the next 30s. Net effect: claude's welcome banner stops stacking 4× after splits, AND your shell scrollback survives the same operation.</li>
+  <li><b>Notifications redesigned.</b> Title now uses the cwd basename ("termy" instead of generic "Termy") so you can tell at a glance WHICH project pinged you. ✓/🔔/⚠ glyphs on subtitles. Dedupe inside a 30-second window so the same body can't fire 6× in a row. The noisy idle-heuristic path is now suppressed by default — only OSC 133 shell-integration "command finished" pings fire (re-enable with <code>defaults write com.mees.termy termy.notifyOnlyOSC133 -bool false</code>).</li>
+  <li><b>Performance pass on the hot path.</b> dataReceived now caches every per-byte UserDefaults read (cinemaMode, cinemaCps, recordSessions, idleThreshold) via a single CFPreferences-change observer instead of re-reading 4× per PTY chunk. The OSC 133 scanner now early-exits when the chunk contains no ESC byte, which saves a per-byte loop on the common case of plain command output. Idle-detection timer now tears down when the pane settles instead of ticking forever at 2 Hz per pane.</li>
+  <li><b>SwiftTerm draw fix from v0.11.0 retained:</b> split-close no longer leaves a blank pane (was caused by <code>scrollTo(Int.max/2)</code> poisoning <code>yDisp</code>); focus actually moves to the new pane after ⌘T / ⌘D; <code>Buffer.isCursorInViewPort</code> overflow crash sidestepped; scrollback default still 10000 lines.</li>
+</ul>
+            ]]></description>
+            <pubDate>Mon, 25 May 2026 12:09:05 +0000</pubDate>
+            <sparkle:version>54</sparkle:version>
+            <sparkle:shortVersionString>0.11.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.11.1/Termy.dmg"
+                sparkle:version="54"
+                sparkle:shortVersionString="0.11.1"
+                length="3252999"
+                sparkle:edSignature="mfI8m9q+MXGz9UJFdEGwtbAymZ0Mv67zOkX7bJxLSFXmt7wwmbik60Iqj3IVf/8lLD4yn2YsW8GdJ7O73rpgCw=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.11.0</title>
             <description><![CDATA[
                 <h2>v0.11.0 — Multi-pane reliability + scrollback fixes</h2>
