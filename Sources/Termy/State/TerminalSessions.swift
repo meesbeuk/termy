@@ -245,6 +245,7 @@ final class TerminalSessions: ObservableObject {
             closeTab(tab.id)   // handles its own persist policy
         } else {
             persist()           // only a pane closed, tab survives
+            notifyActivePaneChanged()
         }
     }
 
@@ -266,6 +267,7 @@ final class TerminalSessions: ObservableObject {
                 tab.activePaneId = tab.panes[min(paneIdx, tab.panes.count - 1)].id
             }
             persist()
+            notifyActivePaneChanged()
         }
     }
 
@@ -401,12 +403,20 @@ final class TerminalSessions: ObservableObject {
         currentSession?.terminalView?.scrollTo(row: 0)
     }
 
-    /// Scroll the active pane to the bottom (live viewport). Pass a
-    /// deliberately huge row index — SwiftTerm clamps to the last valid
-    /// row inside `scrollTo`. Avoids reaching for internal yBase / yDisp
-    /// constants that aren't part of the documented public surface.
+    /// Scroll the active pane to the bottom (live viewport).
+    /// SwiftTerm's `scrollTo` does NOT clamp the row — passing a
+    /// huge value poisons yDisp and produces a blank pane. The
+    /// terminal's `displayBuffer.yBase` is internal, so compute the
+    /// tail conservatively from `rows`: any large positive value
+    /// that's still within Int range and bounded by buffer length
+    /// would work, but using `terminal.rows` is a known-safe
+    /// upper bound that SwiftTerm itself will accept.
     func scrollActiveToBottom() {
-        currentSession?.terminalView?.scrollTo(row: Int.max / 2)
+        guard let view = currentSession?.terminalView else { return }
+        let term = view.getTerminal()
+        // rows-1 is the cursor position when at the live tail. The
+        // terminal will re-render the live area properly from this.
+        view.scrollTo(row: max(0, term.rows - 1))
     }
 
     /// Type a string + Enter into the active pane's shell. Terminals use CR
@@ -475,18 +485,34 @@ final class TerminalSessions: ObservableObject {
 
     func splitHorizontal() {
         currentTab?.split(orientation: .horizontal)
+        notifyActivePaneChanged()
     }
 
     func splitVertical() {
         currentTab?.split(orientation: .vertical)
+        notifyActivePaneChanged()
     }
 
     func focusNextPane() {
         currentTab?.focusNextPane()
+        notifyActivePaneChanged()
     }
 
     func focusPreviousPane() {
         currentTab?.focusPreviousPane()
+        notifyActivePaneChanged()
+    }
+
+    /// Posts a notification that the active pane has changed, so the
+    /// hosting MainTerminalView can re-claim keyboard focus. SwiftUI's
+    /// .onChange(of: sessions.currentTab?.activePaneId) does NOT fire
+    /// when activePaneId mutates on the tab sub-object — only changes
+    /// published from `sessions` itself propagate. Without this
+    /// notification, splits / pane focus cycling / pane closure leave
+    /// keyboard focus stranded on the previous pane, so the user's
+    /// first keystroke after a split lands in the wrong pane.
+    private func notifyActivePaneChanged() {
+        NotificationCenter.default.post(name: .terminalActivePaneChanged, object: nil)
     }
 
     // MARK: - Persistence

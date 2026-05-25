@@ -48,16 +48,40 @@ struct MainTerminalView: View {
                 }
 
                 ZStack(alignment: .topTrailing) {
-                    if let tab = sessions.currentTab {
-                        // No .id() — letting SwiftUI diff in place keeps the
-                        // terminal NSView alive across renders so the grid
-                        // doesn't get re-instantiated and double-render stale
-                        // text on resize.
+                    // Render EVERY tab's PaneLayout in a ZStack, only
+                    // the selected one visible. SwiftTerm's NSView does
+                    // not reliably redraw its scrollback after being
+                    // unmounted and re-parented (SwiftUI's behavior when
+                    // a different tab becomes current and the previous
+                    // tab's NSView is torn down). Keeping all tabs
+                    // mounted at all times means the active tab's NSView
+                    // never leaves the window — so tab switches preserve
+                    // every pane's history with zero re-parenting cost.
+                    // Hit-testing is gated to the selected tab so
+                    // background tabs can't intercept clicks/keystrokes,
+                    // and opacity rather than `if` keeps the view tree
+                    // structure stable.
+                    ForEach(sessions.tabs) { tab in
+                        let isSelected = tab.id == sessions.selectedTabId
                         PaneLayout(tab: tab, sessions: sessions, settings: settings)
                             .padding(.horizontal, settings.paddingPreset.horizontal)
                             .padding(.vertical, settings.paddingPreset.vertical)
-                    } else {
-                        EmptyView()
+                            // Park inactive tabs WAY off-screen so they
+                            // stay mounted (no re-parenting → no
+                            // scrollback loss) but don't bleed their
+                            // clear-bg SwiftTerm draws through the
+                            // active tab. compositingGroup + opacity(0)
+                            // works for hiding but appears to confuse
+                            // SwiftUI's layout passes for the active
+                            // tab after pane-count changes (split
+                            // close), leaving the visible pane blank
+                            // until the next keystroke. An offset is a
+                            // plain layout transform that doesn't go
+                            // through CALayer compositing, so it doesn't
+                            // mess with the active tab's draw path.
+                            .offset(x: isSelected ? 0 : -100_000, y: 0)
+                            .allowsHitTesting(isSelected)
+                            .zIndex(isSelected ? 1 : 0)
                     }
                     if showingFind {
                         Color.clear
@@ -144,7 +168,15 @@ struct MainTerminalView: View {
             syncWindowTitle()
             focusActivePane()
         }
-        .onChange(of: sessions.currentTab?.activePaneId) { _, _ in focusActivePane() }
+        // Pane focus changes inside the current tab (split, focus
+        // cycle, close pane) don't propagate through SwiftUI's
+        // .onChange chain because they mutate a sub-object's
+        // @Published property, not `sessions` itself. The
+        // sessions methods post .terminalActivePaneChanged after
+        // each mutation; observe it here to claim keyboard focus.
+        .onReceive(NotificationCenter.default.publisher(for: .terminalActivePaneChanged)) { _ in
+            focusActivePane()
+        }
         .onChange(of: sessions.currentSession?.cwd) { _, _ in syncWindowTitle() }
         .onChange(of: sessions.currentSession?.title) { _, _ in syncWindowTitle() }
         .onChange(of: sessions.currentTab?.customTitle) { _, _ in syncWindowTitle() }
@@ -309,15 +341,40 @@ struct MainTerminalView: View {
     /// otherwise leave the prior tab's view focused (or no view focused at
     /// all on a fresh window), so the user has to click into the terminal
     /// before keystrokes route to the PTY and the caret stays hollow.
-    /// Dispatched async so it runs after SwiftUI has mounted the new view
-    /// in the hierarchy — calling makeFirstResponder before the view is
-    /// in a window is a no-op.
+    ///
+    /// For a brand-new tab (⌘T) the NSView is created lazily by
+    /// `TerminalSurface.makeNSView` during the same render pass that fires
+    /// this .onChange, so the very first focus attempt finds
+    /// `session.terminalView == nil`. Retry on the next few runloop ticks
+    /// until the view appears (or we give up after ~250ms). Without the
+    /// retry, ⌘T leaves keystroke focus on the PREVIOUS tab's pane and
+    /// the user's first typed command lands in the wrong tab.
     private func focusActivePane() {
+        attemptFocusActivePane(retriesRemaining: 6)
+    }
+
+    private func attemptFocusActivePane(retriesRemaining: Int) {
         DispatchQueue.main.async {
-            guard let view = sessions.currentSession?.terminalView,
-                  let window = view.window ?? hostedWindow else { return }
-            if TermyTerminalView.shouldClaimFocus(over: window.firstResponder) {
-                window.makeFirstResponder(view)
+            if let view = sessions.currentSession?.terminalView,
+               let window = view.window ?? hostedWindow {
+                // Don't gate on `shouldClaimFocus` here. A tab/pane
+                // change is an explicit user-driven focus move; the
+                // current firstResponder is almost always the
+                // PREVIOUS pane's TerminalView (also a TermyTerminalView)
+                // which shouldClaimFocus refuses to displace. That
+                // guard exists for unrelated render-pass focus claims
+                // and would silently strand keystrokes on the wrong
+                // pane forever after every ⌘T / ⌘D. Tab-switch handler
+                // is authoritative: take focus unconditionally if it's
+                // not already on the target view.
+                if window.firstResponder !== view {
+                    window.makeFirstResponder(view)
+                }
+                return
+            }
+            guard retriesRemaining > 0 else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
+                attemptFocusActivePane(retriesRemaining: retriesRemaining - 1)
             }
         }
     }

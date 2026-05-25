@@ -11,25 +11,33 @@ struct PaneLayout: View {
     @ObservedObject var settings: TerminalSettings
 
     var body: some View {
-        Group {
-            if tab.panes.count == 1, let only = tab.panes.first {
-                paneCell(only, single: true)
-            } else {
-                GeometryReader { geo in
-                    let isHorizontal = tab.orientation == .horizontal
-                    let total = isHorizontal ? geo.size.width : geo.size.height
-                    let fractions = normalisedFractions(panes: tab.panes.count)
-                    let sizes = absoluteSizes(fractions: fractions, total: total)
-                    Group {
-                        if isHorizontal {
-                            HStack(spacing: 0) { contents(sizes: sizes, isHorizontal: true, total: total) }
-                        } else {
-                            VStack(spacing: 0) { contents(sizes: sizes, isHorizontal: false, total: total) }
-                        }
-                    }
-                    .frame(width: geo.size.width, height: geo.size.height)
+        // Always render through the same GeometryReader + ForEach path,
+        // even for a single pane. The earlier fast-path that returned
+        // `paneCell(only)` directly for the single-pane case meant that
+        // switching between two single-pane tabs left the same
+        // NSViewRepresentable position in place — SwiftUI would call
+        // updateNSView with the new session but never makeNSView, so the
+        // old tab's NSView stayed mounted and displayed while the new
+        // tab's TerminalSession.terminalView remained nil (no shell
+        // ever started). Same root cause wiped history on the first
+        // split: going from the direct paneCell branch to the ForEach
+        // branch was a structural change that tore down the existing
+        // pane's view tree position. Unifying the path makes
+        // ForEach's `id: \.element.id` the sole identity source, so
+        // both tab switches and splits diff correctly per pane.
+        GeometryReader { geo in
+            let isHorizontal = tab.orientation == .horizontal
+            let total = isHorizontal ? geo.size.width : geo.size.height
+            let fractions = normalisedFractions(panes: tab.panes.count)
+            let sizes = absoluteSizes(fractions: fractions, total: total)
+            Group {
+                if isHorizontal {
+                    HStack(spacing: 0) { contents(sizes: sizes, isHorizontal: true, total: total) }
+                } else {
+                    VStack(spacing: 0) { contents(sizes: sizes, isHorizontal: false, total: total) }
                 }
             }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
     }
 
@@ -39,6 +47,7 @@ struct PaneLayout: View {
     /// frame.
     @ViewBuilder
     private func contents(sizes: [CGFloat], isHorizontal: Bool, total: CGFloat) -> some View {
+        let single = tab.panes.count == 1
         ForEach(Array(tab.panes.enumerated()), id: \.element.id) { idx, pane in
             if idx > 0 {
                 ResizableDivider(
@@ -46,7 +55,7 @@ struct PaneLayout: View {
                     onDrag: { delta in resize(at: idx - 1, delta: delta, total: total) }
                 )
             }
-            paneCell(pane, single: false)
+            paneCell(pane, single: single)
                 .frame(
                     width: isHorizontal ? sizes[idx] : nil,
                     height: isHorizontal ? nil : sizes[idx]

@@ -286,6 +286,13 @@ extension Notification.Name {
     static let terminalOpenTermyURL = Notification.Name("mees.terminal.openTermyURL")
     /// Help → "Welcome to Termy…" — manually re-shows the onboarding sheet.
     static let terminalShowOnboarding = Notification.Name("mees.terminal.showOnboarding")
+    /// Fired when the active pane changes via split / focus cycling /
+    /// pane closure. MainTerminalView observes this to claim keyboard
+    /// focus for the new active pane. .onChange on the published
+    /// activePaneId of the current tab doesn't fire reliably because
+    /// SwiftUI only tracks `sessions`-level publishes, not changes on
+    /// sub-objects accessed through it.
+    static let terminalActivePaneChanged = Notification.Name("mees.terminal.activePaneChanged")
     static let terminalRecentDirs = Notification.Name("mees.terminal.recentDirs")
     static let terminalOpenPalette = Notification.Name("mees.terminal.palette")
     /// Fires when LaunchServices hands us files to open (Finder double-click

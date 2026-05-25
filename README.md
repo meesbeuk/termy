@@ -31,13 +31,13 @@ iTerm2 is dated. Warp is cloud-locked. Apple's Terminal.app is barebones. **Term
 
 ## Install
 
-```sh
-# Latest release
-open https://github.com/meesbeuk/termy/releases/latest
-# Drag Termy.app to /Applications and right-click → Open the first time.
-```
+1. Download the latest `Termy.app.zip` from [releases](https://github.com/meesbeuk/termy/releases/latest)
+2. Unzip and drag `Termy.app` into `/Applications`
+3. The first launch will hit Apple's Gatekeeper ("Apple could not verify Termy is free of malware"). One of:
+   - **Easiest:** open Terminal and run `xattr -dr com.apple.quarantine /Applications/Termy.app`, then double-click Termy normally.
+   - **GUI route:** click **Done** on the warning, then System Settings → Privacy & Security → scroll to "Termy.app was blocked" → **Open Anyway**.
 
-Subsequent versions auto-update via Sparkle. EdDSA-signed since v0.9.4.
+Subsequent versions auto-update via Sparkle. EdDSA-signed since v0.9.4. (Gatekeeper requires an Apple Developer ID + notarization to bypass on first install; until then the `xattr` one-liner above is the fix.)
 
 **Build from source:**
 ```sh
@@ -118,6 +118,7 @@ Press `?` in the title strip for the in-app cheatsheet. Quick reference:
 
 Termy is shipping rapidly. Recent releases:
 
+- **v0.11.0** — Multi-pane reliability + scrollback fixes. New tab no longer shares the previous tab's NSView (was silently cloning). Split-close no longer leaves a blank pane (was caused by `scrollTo(Int.max/2)` poisoning yDisp). Focus actually moves to the new pane after ⌘T / ⌘D (previously stranded keystrokes on the OLD pane). Scrollback bumped 500 → 10 000 lines so splits don't permanently drop history. TUI welcome banners (claude) no longer stack 4× in scrollback after a resize — Termy clears scrollback on >30% pane size change. Cinema mode actually honours the cps slider now (was clamped to 30 + defeated by a "catch-up" heuristic). Crash fixed in SwiftTerm's `isCursorInViewPort`. Idle timer tears down when panes settle.
 - **v0.10.1** — Polish pass: cheatsheet now lists every shortcut (Agent Sessions / Session Logs / Paste History / Quick Select / Use Selection for Find / jump-to-prompt / scroll-to-edge — was missing from the in-app help), Diagnostics report actually shows the env Termy advertises to tools (TERM_PROGRAM, LC_TERMINAL, TERM_FEATURES — were showing as "—"), Command Palette can no longer crash when switching filter category, modal overlays shrink to fit small windows, `termy://palette` / `termy://welcome` / `termy://diagnostics` now reliably show on URL invocation.
 - **v0.10.0** — Resize/scrollback bug fixed (history no longer wiped on font/split resize), caret auto-focuses on launch + tab switch, activity stripe, hover-to-open links, transcript-style session logs, **Clear all logs**, notification redesign (no more prompt-soup body lines).
 - **v0.9.33** — QuickSelect (⌘⇧/) — Bucket A complete (URLs / file paths / git hashes / IPs from scrollback, click to open).

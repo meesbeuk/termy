@@ -108,14 +108,32 @@ final class TermyTerminalView: LocalProcessTerminalView {
     // characters-per-second rate so streaming output looks "smooth
     // typewriter" instead of frame-coalesced bursts on camera.
     //
-    // Important: ONLY the visible display is paced. Tracking (OSC 133
-    // command-finished, idle heuristic, session recording) still runs
-    // at real-time arrival so notifications fire when commands actually
-    // finish, not when the paced display catches up. Large bursts
-    // (paste, file dumps > 200B) bypass the queue and render
-    // immediately — pacing a `cat large_file` would just be annoying.
+    // Critically: pace command OUTPUT only, never the echo-back of
+    // typed characters. The PTY doesn't tag bytes as "echo" vs
+    // "output" — the shell echoes back typed chars through the same
+    // stdout stream as command output. Heuristic: bytes arriving
+    // within `cinemaInputEchoWindow` of the last keystroke are
+    // treated as echo and bypass the pacer. Bytes arriving after a
+    // quiet keyboard period are command output and get queued.
+    // Without this gate, typing into the prompt feels laggy because
+    // each echoed character renders one timer-tick later instead of
+    // instantly.
     private var typewriterQueue: [UInt8] = []
     private var typewriterTimer: Timer?
+    private var lastKeyDownAt: Date = .distantPast
+    /// Bytes arriving within this window of the last keystroke are
+    /// treated as terminal echo of the user's input, not as command
+    /// output, and bypass the cinema pacer entirely. ~200ms covers
+    /// even slow PTY roundtrips on local shells and pasted input
+    /// where multiple keystrokes fire in rapid succession.
+    private let cinemaInputEchoWindow: TimeInterval = 0.2
+    /// Local NSEvent monitor used to stamp `lastKeyDownAt` when the
+    /// user types into THIS view. Installed once per view in
+    /// viewDidMoveToWindow; nil'd in deinit. Can't override
+    /// `keyDown(with:)` directly because SwiftTerm's
+    /// LocalProcessTerminalView declares it as a non-open Swift
+    /// method, so subclass overrides are rejected at compile time.
+    private var cinemaKeyMonitor: Any?
 
     // MARK: - Session recording (optional, off by default)
     //
@@ -197,20 +215,37 @@ final class TermyTerminalView: LocalProcessTerminalView {
     }
 
     override func dataReceived(slice: ArraySlice<UInt8>) {
-        // Tracking always runs at real-time arrival, regardless of
-        // cinema-mode pacing. Notifications / OSC 133 / recording all
-        // depend on the actual byte timing, not the paced display.
         recordIfEnabled(slice)
         scanForOSC133(slice)
         scanForTriggers(slice)
+        scanForFullScreenClear(slice)
         trackIdleBytes(slice)
 
         // Display path: paced or immediate.
         let cinema = UserDefaults.standard.bool(forKey: "termy.cinemaMode")
-        if cinema && slice.count <= 200 {
+        // Two reasons to bypass the pacer:
+        //   1) Very small slices that arrive AT a keystroke are the
+        //      shell echoing the typed character. We can't pace
+        //      those without making typing feel laggy. Three-byte
+        //      window catches \r\n on Enter and most modifier+key
+        //      echoes too.
+        //   2) The queue would overflow — `cat large_file`
+        //      shouldn't take 10 minutes even with cinema on.
+        //      Drain the existing queue first so on-screen order
+        //      stays correct, then flush the burst immediately.
+        let isTinyEchoBurst = slice.count <= 3 && Date().timeIntervalSince(lastKeyDownAt) < cinemaInputEchoWindow
+        let queueWouldOverflow = typewriterQueue.count + slice.count > 8192
+        if cinema && !isTinyEchoBurst && !queueWouldOverflow {
             typewriterQueue.append(contentsOf: slice)
             ensureTypewriterTimer()
         } else {
+            if !typewriterQueue.isEmpty {
+                let pending = ArraySlice(typewriterQueue)
+                typewriterQueue.removeAll()
+                typewriterTimer?.invalidate()
+                typewriterTimer = nil
+                super.dataReceived(slice: pending)
+            }
             super.dataReceived(slice: slice)
         }
         return
@@ -218,10 +253,14 @@ final class TermyTerminalView: LocalProcessTerminalView {
 
     private func ensureTypewriterTimer() {
         if typewriterTimer != nil { return }
-        let cps = UserDefaults.standard.double(forKey: "termy.cinemaCps")
-        let effective = cps > 0 ? cps : 80.0
-        let interval = 1.0 / max(30.0, min(500.0, effective))
-        let t = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+        // Fixed 60Hz tick rate for smooth visual pacing. Per-tick byte
+        // count is computed from the user's `cps` setting so the
+        // ACTUAL throughput matches what they asked for. Previously
+        // the drain divided the queue size by 8 every tick (an
+        // "auto-catch-up" heuristic), which made a 200-char paragraph
+        // render in <1s no matter what cps was set to — completely
+        // defeating the cps slider.
+        let t = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             self?.drainTypewriter()
         }
         RunLoop.main.add(t, forMode: .common)
@@ -234,11 +273,14 @@ final class TermyTerminalView: LocalProcessTerminalView {
             typewriterTimer = nil
             return
         }
-        // Drain a few bytes per tick, with auto-catch-up if the queue
-        // grew large — keeps the apparent rate close to the target cps
-        // without compounding latency on bursty streams.
-        let chunkSize = max(1, typewriterQueue.count / 8)
-        let take = min(chunkSize, typewriterQueue.count)
+        // Drain bytes at the user-configured chars-per-second rate.
+        // 1 byte per tick at 60Hz = 60 cps; 2 bytes/tick = 120 cps;
+        // etc. Cap the per-tick chunk so a queue surge can't blast
+        // through in one frame and ruin the typewriter effect.
+        let cps = UserDefaults.standard.double(forKey: "termy.cinemaCps")
+        let effective = cps > 0 ? cps : 80.0
+        let perTick = max(1, Int((effective / 60.0).rounded(.up)))
+        let take = min(perTick, typewriterQueue.count)
         let chunk = ArraySlice(typewriterQueue.prefix(take))
         typewriterQueue.removeFirst(take)
         super.dataReceived(slice: chunk)
@@ -272,6 +314,86 @@ final class TermyTerminalView: LocalProcessTerminalView {
                     break  // one notification per line is plenty
                 }
             }
+        }
+    }
+
+    /// Sliding window of the last two bytes seen in dataReceived, used
+    /// by `scanForFullScreenClear` to match `\e[2J` even across chunk
+    /// boundaries (SwiftTerm hands us partial reads constantly).
+    private var clearScanLast: UInt8 = 0
+    private var clearScanState: Int = 0  // 0=idle, 1=saw ESC, 2=saw ESC [
+    /// Throttle to avoid feeding multiple `\e[3J`s for a single redraw
+    /// burst — claude often emits several clear sequences in a row when
+    /// repainting its UI, but one scrollback wipe per burst is enough.
+    private var lastScrollbackClearAt: Date = .distantPast
+
+    /// Watch for the ANSI "Erase in Display, full screen" sequence
+    /// (`\e[2J`) — the canonical "I'm a TUI repainting the screen"
+    /// signal that claude, vim's :redraw, less, htop etc. emit. When
+    /// we see one we ALSO feed `\e[3J` (clear scrollback) right after
+    /// so the previous render doesn't accumulate in scrollback as the
+    /// user resizes or the TUI auto-refreshes. This is what makes
+    /// claude's welcome banner stop stacking up 4-5 times in
+    /// scrollback after a few splits/resizes — every repaint
+    /// completes by wiping the now-stale lines above the viewport
+    /// instead of pushing them into history.
+    ///
+    /// `clear` (the shell command) emits `\e[H\e[2J` too — so this
+    /// also means `clear` actually clears scrollback, which is what
+    /// most users intuitively expect. Users who relied on iTerm's
+    /// "clear keeps scrollback" can disable with the
+    /// `termy.clearScrollbackOnFullScreenErase` default.
+    private func scanForFullScreenClear(_ slice: ArraySlice<UInt8>) {
+        let opt = UserDefaults.standard.object(forKey: "termy.clearScrollbackOnFullScreenErase") as? Bool
+        guard (opt ?? true) else { return }
+        // 200ms throttle: a single user-driven repaint can emit
+        // \e[2J multiple times. Don't fire the scrollback wipe more
+        // than ~5 times per second.
+        for byte in slice {
+            switch clearScanState {
+            case 0:
+                if byte == 0x1B { clearScanState = 1 }
+            case 1:
+                if byte == 0x5B {       // '['
+                    clearScanState = 2
+                } else if byte == 0x1B {
+                    // back-to-back ESC keeps us in state 1
+                } else {
+                    clearScanState = 0
+                }
+            case 2:
+                // We're inside a CSI. The "Erase in Display" command
+                // is `\e[<param>J` where param ∈ {0, 1, 2, 3}.
+                // `\e[2J` is full-screen erase. The previous byte
+                // (clearScanLast) tells us the parameter.
+                if byte == 0x4A {       // 'J'
+                    if clearScanLast == 0x32 {   // '2'
+                        triggerScrollbackClear()
+                    }
+                    clearScanState = 0
+                } else if (byte >= 0x30 && byte <= 0x3F) || byte == 0x3B {
+                    // Inside parameter bytes — keep scanning
+                } else {
+                    // Any other CSI final byte ends this sequence.
+                    clearScanState = 0
+                }
+            default:
+                clearScanState = 0
+            }
+            clearScanLast = byte
+        }
+    }
+
+    private func triggerScrollbackClear() {
+        let now = Date()
+        if now.timeIntervalSince(lastScrollbackClearAt) < 0.2 { return }
+        lastScrollbackClearAt = now
+        // Dispatch async so the \e[3J lands AFTER the \e[2J's
+        // own processing in SwiftTerm — otherwise the order in the
+        // PTY parser is undefined and we may clear scrollback
+        // before the current screen has been cleared+redrawn.
+        DispatchQueue.main.async { [weak self] in
+            self?.feed(text: "\u{001B}[3J")
         }
     }
 
@@ -472,10 +594,16 @@ final class TermyTerminalView: LocalProcessTerminalView {
     }
 
     private func tickIdle() {
-        guard isCurrentlyActive else { return }
-        // If OSC 133 already fired for this burst, the heuristic is just
-        // chasing a settled state — suppress it so the user doesn't get
-        // two notifications.
+        // Tear down the timer once the pane settles. Previously the
+        // 0.5Hz idle timer kept ticking forever after the first burst
+        // of output, returning early on every fire — N panes ×
+        // 2 wake-ups/second forever. Reconstructed on the next active
+        // burst via ensureIdleTimer.
+        guard isCurrentlyActive else {
+            idleTimer?.invalidate()
+            idleTimer = nil
+            return
+        }
         if osc133JustFired {
             osc133JustFired = false
             return
@@ -486,6 +614,8 @@ final class TermyTerminalView: LocalProcessTerminalView {
             isCurrentlyActive = false
             onActivityChanged?(false)
             onCommandSettled?(tailLine(from: lastPreviewBuffer))
+            idleTimer?.invalidate()
+            idleTimer = nil
         }
     }
 
@@ -495,6 +625,9 @@ final class TermyTerminalView: LocalProcessTerminalView {
         recorder?.close()
         if let observer = keyWindowObserver {
             NotificationCenter.default.removeObserver(observer)
+        }
+        if let monitor = cinemaKeyMonitor {
+            NSEvent.removeMonitor(monitor)
         }
     }
 
@@ -541,8 +674,30 @@ final class TermyTerminalView: LocalProcessTerminalView {
             NotificationCenter.default.removeObserver(observer)
             keyWindowObserver = nil
         }
+        // Install the cinema-mode keystroke timestamp monitor exactly
+        // once per view. The monitor fires for ALL window key events,
+        // but we only stamp when the firstResponder is THIS view —
+        // so a keystroke aimed at a sibling pane or the find bar
+        // doesn't suppress pacing on this pane's command output.
+        if cinemaKeyMonitor == nil {
+            cinemaKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                if let self, let w = self.window, w.firstResponder === self {
+                    self.lastKeyDownAt = Date()
+                }
+                return event
+            }
+        }
         guard let window else { return }
         onNeedsAppearanceRefresh?()
+        // Re-attached to a window (either first mount or after a
+        // tab-switch re-parent). Mark every visible row dirty and
+        // request a redraw so the scrollback paints onto the new
+        // surface. Without this, switching back to a tab whose pane
+        // was previously unmounted shows a blank terminal even
+        // though the buffer is intact.
+        let term = getTerminal()
+        term.refresh(startRow: 0, endRow: max(0, term.rows - 1))
+        needsDisplay = true
         // Claim focus on initial attach AND any time the window becomes
         // key. On a cold-launch boot the window isn't always key yet at
         // viewDidMoveToWindow time, so a single attempt would leave the
@@ -596,25 +751,76 @@ final class TermyTerminalView: LocalProcessTerminalView {
     // resize that crossed a cell boundary wiped the user's command history.
     // SwiftTerm 1.13 reflows correctly; trust it and keep scrollback intact.
 
+    /// Captured at viewWillStartLiveResize so we can detect a
+    /// significant width change across the entire drag (not just
+    /// per-tick) and clear scrollback once when the user lets go.
+    private var preLiveResizeCols: Int = 0
+    private var preLiveResizeRows: Int = 0
+
+    override func viewWillStartLiveResize() {
+        super.viewWillStartLiveResize()
+        preLiveResizeCols = getTerminal().cols
+        preLiveResizeRows = getTerminal().rows
+    }
+
     override func viewDidEndLiveResize() {
         super.viewDidEndLiveResize()
-        // Settle the grid at the final size. Nudge by half a point first to
-        // force SwiftTerm's processSizeChange (which early-returns when the
-        // size matches the current frame). Only do this when the grid would
-        // actually change — a sub-cell drag doesn't need a reflow flush.
         let final = frame.size
         if wouldChangeCellGrid(newSize: final) {
             super.setFrameSize(NSSize(width: final.width + 0.5, height: final.height))
             super.setFrameSize(final)
         }
-        // Full refresh from the buffer so any stale draw region clears.
-        getTerminal().refresh(startRow: 0, endRow: getTerminal().rows - 1)
+        // Same significant-change scrollback clear as the
+        // programmatic-resize path. Without this, dragging the
+        // window narrower while claude is running leaves stacked
+        // welcome-banner copies in scrollback (each SIGWINCH
+        // makes claude redraw, which appends to scrollback since
+        // claude doesn't use alt-screen). Threshold matches the
+        // non-live path so behavior is consistent regardless of
+        // whether the user drags the window or splits a pane.
+        let term = getTerminal()
+        if preLiveResizeCols > 0 && preLiveResizeRows > 0 {
+            let colChange = abs(Double(term.cols - preLiveResizeCols)) / Double(preLiveResizeCols)
+            let rowChange = abs(Double(term.rows - preLiveResizeRows)) / Double(preLiveResizeRows)
+            let opt = UserDefaults.standard.object(forKey: "termy.clearScrollbackOnSignificantResize") as? Bool
+            let clearEnabled = opt ?? true
+            if clearEnabled && (colChange > 0.30 || rowChange > 0.30) {
+                feed(text: "\u{001B}[3J")
+            }
+        }
+        term.refresh(startRow: 0, endRow: term.rows - 1)
         needsDisplay = true
     }
 
+    /// Snapshot of the cell grid before each setFrameSize call.
+    /// Used to detect "significant" resizes (>~30% in either axis)
+    /// so we can clear scrollback to remove the accumulated mess
+    /// from TUI apps that don't use alt-screen (claude in particular
+    /// redraws its banner on every SIGWINCH, leaving stacked copies
+    /// in scrollback after every split/close).
+    private var preResizeCols: Int = 0
+    private var preResizeRows: Int = 0
+
     override func setFrameSize(_ newSize: NSSize) {
         let wasZeroSized = frame.size.width <= 0 || frame.size.height <= 0
+        // Capture pre-resize grid for the significant-change check
+        // below. Reading these properties is cheap.
+        preResizeCols = getTerminal().cols
+        preResizeRows = getTerminal().rows
         guard inLiveResize else {
+            // After SwiftTerm reflows yDisp can point at a row that no
+            // longer makes sense for the new grid (e.g. right pane
+            // closes → left pane goes full-width → reflow shrinks
+            // total physical line count → old yDisp is past EOF and
+            // viewport renders blank). After a non-live grid change,
+            // always pin to the tail. Yanking a scrolled-back user to
+            // the live tail on resize is mildly annoying, but better
+            // than rendering an empty pane they have to click into to
+            // recover. Don't try to use SwiftTerm's
+            // `isCursorInViewPort` as a "were we at the tail"
+            // detector — its formula (`yBase + 2*yDisp`) overflows
+            // and crashes the app with deep scrollback.
+            let gridWillChange = wouldChangeCellGrid(newSize: newSize)
             super.setFrameSize(newSize)
             // First time we land at a real size, ask the host to re-apply
             // appearance. updateDisplay (and therefore caret positioning)
@@ -627,6 +833,19 @@ final class TermyTerminalView: LocalProcessTerminalView {
                     self?.onNeedsAppearanceRefresh?()
                 }
             }
+            // Non-live resize that changed the grid (split close,
+            // window snap-resize, programmatic set-size). Re-poke
+            // SwiftTerm with a tiny size nudge so its processSizeChange
+            // re-runs against the settled frame (it early-returns when
+            // size matches), then pin the viewport to the live tail
+            // and force a full redisplay. Without this nudge, the
+            // viewport renders blank after a split-close until the
+            // next keystroke kicks SwiftTerm into drawing.
+            if gridWillChange {
+                DispatchQueue.main.async { [weak self] in
+                    self?.nudgeAndRefreshAfterResize()
+                }
+            }
             return
         }
         // In a live resize: update NSView's frame directly, skipping
@@ -636,6 +855,45 @@ final class TermyTerminalView: LocalProcessTerminalView {
         // the scrollback buffer is not mutated.
         callNSViewSetFrameSize(newSize)
         needsDisplay = true
+    }
+
+    /// Sibling to viewDidEndLiveResize, called from the async path
+    /// after a non-live grid change. Can't use `super` inside an
+    /// `[weak self]` closure (Swift 6 restriction), so the actual
+    /// re-poke lives here as an instance method where `super` is
+    /// directly callable.
+    private func nudgeAndRefreshAfterResize() {
+        let current = frame.size
+        // Half-point nudge re-runs SwiftTerm's processSizeChange
+        // (which early-returns when size matches the cached size).
+        super.setFrameSize(NSSize(width: current.width + 0.5, height: current.height))
+        super.setFrameSize(current)
+        let term = getTerminal()
+        // Significant grid change (>30% in either axis) almost
+        // always means a split, split-close, or drastic window
+        // resize. In that case, send the ANSI "Erase Scrollback"
+        // sequence (CSI 3 J) BEFORE the reflow lands on the next
+        // tick. This wipes the accumulated mess that TUIs without
+        // alt-screen mode (claude, etc.) leave behind every time
+        // they redraw on SIGWINCH — without it, every split-cycle
+        // stacks another welcome banner in the scrollback. Tiny
+        // adjustments (drag-resize the divider 1-2 cells) skip the
+        // wipe so the user doesn't lose scrollback over nothing.
+        let cols = term.cols
+        let rows = term.rows
+        if preResizeCols > 0 && preResizeRows > 0 {
+            let colChange = abs(Double(cols - preResizeCols)) / Double(preResizeCols)
+            let rowChange = abs(Double(rows - preResizeRows)) / Double(preResizeRows)
+            let opt = UserDefaults.standard.object(forKey: "termy.clearScrollbackOnSignificantResize") as? Bool
+            let clearEnabled = opt ?? true
+            if clearEnabled && (colChange > 0.30 || rowChange > 0.30) {
+                feed(text: "\u{001B}[3J")
+            }
+        }
+        term.refresh(startRow: 0, endRow: max(0, term.rows - 1))
+        needsDisplay = true
+        displayIfNeeded()
+        setNeedsDisplay(bounds)
     }
 
     /// Estimates whether super.setFrameSize(newSize) would change SwiftTerm's
@@ -699,7 +957,34 @@ struct TerminalSurface: NSViewRepresentable {
 
     func makeNSView(context: Context) -> LocalProcessTerminalView {
         if let existing = session.terminalView {
-            applyAppearance(existing)
+            // Cached path — the user switched away from this session
+            // and back. The cached NSView was unmounted from its prior
+            // SwiftUI hosting and is being re-parented into this one.
+            //
+            // 1) Re-wire processDelegate to the NEW coordinator. The
+            //    old coordinator was deallocated when its representable
+            //    tore down. Without this re-wire, title and cwd
+            //    updates stop flowing when the view is re-mounted —
+            //    AND the auto-close-when-shell-exits hook breaks
+            //    because processTerminated is dispatched through the
+            //    coordinator.
+            // 2) Force a full SwiftTerm redraw on the next runloop
+            //    tick. SwiftTerm's display state is tied to the view
+            //    being mounted in a window; after a re-parent, the
+            //    on-screen text is blank even though the scrollback
+            //    buffer is intact. Marking every row dirty +
+            //    needsDisplay re-renders the scrollback into the new
+            //    surface. Dispatched async so AppKit has finished the
+            //    layout pass that gives the view its real frame
+            //    before we ask SwiftTerm to repaint into it.
+            existing.processDelegate = context.coordinator
+            applyAppearance(existing, coordinator: context.coordinator)
+            DispatchQueue.main.async { [weak existing] in
+                guard let existing else { return }
+                let term = existing.getTerminal()
+                term.refresh(startRow: 0, endRow: max(0, term.rows - 1))
+                existing.needsDisplay = true
+            }
             return existing
         }
 
@@ -789,6 +1074,16 @@ struct TerminalSurface: NSViewRepresentable {
             execName: nil,
             currentDirectory: session.initialCwd
         )
+
+        // Bump scrollback from SwiftTerm's 500-line default to 10000.
+        // 500 is laughably small for AI workflows: a single claude
+        // response easily fills 100+ lines, and the moment you split
+        // a pane (halving its width) all those lines wrap and the
+        // physical row count doubles or triples — blowing past 500
+        // and dropping the oldest history permanently. 10000 covers
+        // hours of work even with aggressive wrapping. The memory
+        // cost is modest (~few MB per pane) and bounded.
+        view.getTerminal().changeScrollback(10000)
 
         session.terminalView = view
 
@@ -883,6 +1178,7 @@ struct TerminalSurface: NSViewRepresentable {
 
         func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {
             // SwiftTerm handles PTY resize internally; nothing extra to do.
+            // We force the redraw from setFrameSize → nudgeAndRefreshAfterResize.
         }
 
         func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
