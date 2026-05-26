@@ -3,6 +3,23 @@ import AppKit
 import ObjectiveC.runtime
 import SwiftTerm
 
+/// SwiftTerm's CursorStyle enum doesn't expose a string parser by default.
+/// We store the rawValue string in UserDefaults so the on-disk format is
+/// stable across binary rebuilds; this maps it back to the enum.
+extension SwiftTerm.CursorStyle {
+    static func from(string: String) -> SwiftTerm.CursorStyle? {
+        switch string {
+        case "blinkBlock": return .blinkBlock
+        case "steadyBlock": return .steadyBlock
+        case "blinkUnderline": return .blinkUnderline
+        case "steadyUnderline": return .steadyUnderline
+        case "blinkBar": return .blinkBar
+        case "steadyBar": return .steadyBar
+        default: return nil
+        }
+    }
+}
+
 /// SwiftUI wrapper around SwiftTerm's `LocalProcessTerminalView`.
 /// Each instance owns a separate shell process — its lifecycle is tied to the
 /// `TerminalSession` model, not to the view tree, so tab switches don't fork
@@ -1465,6 +1482,14 @@ struct TerminalSurface: NSViewRepresentable {
         // highlighted link opens it. Selection still works via drag.
         view.linkHighlightMode = .hover
         view.linkReporting = .implicit
+        // Force full-rect redraws. SwiftTerm's default Big-Sur-era
+        // partial-redraw optimization keeps stale glyphs visible when the
+        // backing layer has an alpha-blended (clear) background — every
+        // dirty rect composites *over* the previous pixels instead of
+        // replacing them, which is the "text duplicates / ghosts" symptom
+        // on Termy's glass window. Trading a small perf hit for clean
+        // text is the right call for a glass terminal.
+        view.disableFullRedrawOnAnyChanges = false
         view.onBell = { [weak session] in
             guard let session else { return }
             TermyNotifications.shared.bell(
@@ -1546,15 +1571,10 @@ struct TerminalSurface: NSViewRepresentable {
             currentDirectory: session.initialCwd
         )
 
-        // Bump scrollback from SwiftTerm's 500-line default to 10000.
-        // 500 is laughably small for AI workflows: a single claude
-        // response easily fills 100+ lines, and the moment you split
-        // a pane (halving its width) all those lines wrap and the
-        // physical row count doubles or triples — blowing past 500
-        // and dropping the oldest history permanently. 10000 covers
-        // hours of work even with aggressive wrapping. The memory
-        // cost is modest (~few MB per pane) and bounded.
-        view.getTerminal().changeScrollback(10000)
+        // Scrollback from settings (default 10000). User-controlled so
+        // marathon Claude sessions can crank to 50000, and minimal
+        // terminals to 1000.
+        view.getTerminal().changeScrollback(settings.scrollbackLines)
 
         session.terminalView = view
 
@@ -1585,7 +1605,10 @@ struct TerminalSurface: NSViewRepresentable {
     /// — both the gate in `updateNSView` and the stamp written by
     /// `applyAppearance` read this so they can never disagree.
     private var currentAppearanceStamp: String {
-        "\(settings.themeID)|\(Int(settings.fontSize))|\(settings.fontFamily)"
+        "\(settings.themeID)|\(Int(settings.fontSize))|\(settings.fontFamily)|"
+        + "\(Int(settings.lineSpacing * 10))|\(Int(settings.fontThicken * 100))|"
+        + "\(Int(settings.minimumContrast * 100))|"
+        + "\(settings.cursorStyle)|\(settings.scrollbackLines)"
     }
 
     func makeCoordinator() -> Coordinator {
@@ -1605,27 +1628,62 @@ struct TerminalSurface: NSViewRepresentable {
             ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
         view.font = font
 
+        // Apply host-controlled typography knobs (added to SwiftTerm via
+        // release_helpers/patch-swiftterm.sh). lineSpacing widens the cell
+        // grid vertically; fontThicken bolden strokes glyphs in their fg
+        // color. Both are clamped at the settings layer so the user can't
+        // ship something illegible.
+        view.lineSpacing = settings.lineSpacing
+        view.fontThicken = settings.fontThicken
+        // Cursor style — one of SwiftTerm's six. Use `setCursorStyle` (not
+        // direct `options.cursorStyle = …`) so SwiftTerm's terminal-delegate
+        // fires `cursorStyleChanged`, which is what propagates the new
+        // style to the live CaretView. Setting the option alone updates
+        // the model but leaves the caret rendering its old shape.
+        if let style = SwiftTerm.CursorStyle.from(string: settings.cursorStyle) {
+            view.getTerminal().setCursorStyle(style)
+        }
+        // Scrollback line count. SwiftTerm's `changeScrollback` reflows the
+        // ring buffer to the new capacity — works on live panes, not only
+        // on creation. Skipping it here meant the slider only affected
+        // future panes.
+        view.getTerminal().changeScrollback(settings.scrollbackLines)
+
         // Fully transparent — the window's adaptive backdrop is the single
         // source of opacity for the entire app. No per-element backgrounds.
         view.nativeBackgroundColor = NSColor.clear
         let (fr, fg, fb) = settings.theme.foreground
-        let foreground = NSColor(
+        var foreground = NSColor(
             red: CGFloat(fr) / 255, green: CGFloat(fg) / 255, blue: CGFloat(fb) / 255, alpha: 1.0
         )
+        let (br, bg, bb) = settings.theme.ansi[0]
+        let themeBackground = NSColor(
+            red: CGFloat(br) / 255, green: CGFloat(bg) / 255, blue: CGFloat(bb) / 255, alpha: 1.0
+        )
+        // Enforce the WCAG contrast floor — themes whose foreground sits
+        // close to their declared background (Palenight, Solarized at
+        // certain values) are nudged toward white/black until they cross
+        // the user's minimumContrast threshold. Themes that are already
+        // above the floor pass through untouched.
+        if settings.minimumContrast > 1 {
+            foreground = ContrastEnforcer.enforce(
+                foreground: foreground,
+                background: themeBackground,
+                minRatio: settings.minimumContrast
+            )
+        }
         view.nativeForegroundColor = foreground
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.clear.cgColor
 
-        // Caret defaults to NSColor.selectedControlColor (system accent), which
-        // disappears on dark wallpapers/themes since the window's bg is clear
-        // glass. Pin it to the theme's foreground so the cursor is always
-        // visible, and use ansi[0] (the theme's intended bg) as the inverse
-        // text color so a character under the caret stays legible.
-        view.caretColor = foreground
-        let (br, bg, bb) = settings.theme.ansi[0]
-        view.caretTextColor = NSColor(
-            red: CGFloat(br) / 255, green: CGFloat(bg) / 255, blue: CGFloat(bb) / 255, alpha: 1.0
-        )
+        // Caret + selection — theme-driven. caretColor defaults to the
+        // theme's explicit cursor color (falls back to foreground via
+        // resolvedCursor); selection background uses the theme's selection
+        // pick (or ANSI 8 fallback). Both keep good contrast against the
+        // glass backdrop and the theme's intended chrome.
+        view.caretColor = settings.theme.nsCursorColor
+        view.caretTextColor = themeBackground
+        view.selectedTextBackgroundColor = settings.theme.nsSelectionColor
 
         view.installColors(settings.theme.swiftTermColors)
 

@@ -57,8 +57,15 @@ enum WallpaperBrightness {
     /// "dark" — the .hudWindow material's built-in contrast carries us
     /// through that edge case.
     static func opacity(forBrightness lum: Double) -> Double {
-        let minOpacity = 0.18
-        let maxOpacity = 0.78
+        // Floor raised from 0.18 → 0.45: at 0.18 the terminal is almost
+        // fully transparent and any colorful wallpaper bleeds through the
+        // text, making low-contrast theme foregrounds (Tokyo Night, One
+        // Dark) effectively unreadable. 0.45 still reads as glassy but
+        // keeps a solid enough backdrop that text contrast holds on every
+        // wallpaper — the entire point of the user's "must be readable
+        // regardless of theme/wallpaper" requirement.
+        let minOpacity = 0.45
+        let maxOpacity = 0.85
         let clamped = max(0.0, min(1.0, lum))
         let curved = clamped * clamped
         return minOpacity + curved * (maxOpacity - minOpacity)

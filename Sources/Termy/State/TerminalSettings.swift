@@ -9,7 +9,11 @@ import ServiceManagement
 final class TerminalSettings: ObservableObject {
     @Published var fontSize: CGFloat {
         didSet {
-            let clamped = max(8, min(36, fontSize))
+            // Floor raised from 8 → 11: anything below 11pt SF Mono is
+            // unreadable on a Retina display at normal viewing distance,
+            // and the "I can't make text unreadable" guarantee includes
+            // protecting users from accidentally setting a 9pt font.
+            let clamped = max(11, min(36, fontSize))
             if clamped != fontSize { fontSize = clamped; return }
             UserDefaults.standard.set(Double(fontSize), forKey: Self.fontSizeKey)
         }
@@ -130,7 +134,7 @@ final class TerminalSettings: ObservableObject {
         didSet { UserDefaults.standard.set(notifyShowPreview, forKey: Self.notifyShowPreviewKey) }
     }
 
-    /// Record each pane's raw output to a file under
+    /// Record each pane's raw output to a `.txt` transcript under
     /// `~/Library/Application Support/Termy/sessions/`. Off by default —
     /// disk write + privacy implications mean it must be explicitly opted
     /// into. One file per session, named with the start timestamp and a
@@ -197,10 +201,84 @@ final class TerminalSettings: ObservableObject {
         }
     }
 
+    // MARK: - Typography polish (host-controlled, enforced floors)
+    //
+    // Three knobs that decide whether terminal text reads "iTerm-tight" or
+    // "Ghostty-spacious". Each is clamped to a range that guarantees the
+    // user can't customize themselves into illegibility — the floor on each
+    // is the "I can read this comfortably" minimum, the ceiling is the
+    // "this isn't a cosmetic crime" maximum.
+
+    /// Extra pixels of leading added to the natural cell height. Default 3
+    /// at 14pt = ~21% added line spacing. Clamped to [0, 12].
+    @Published var lineSpacing: CGFloat {
+        didSet {
+            let clamped = max(0, min(12, lineSpacing))
+            if clamped != lineSpacing { lineSpacing = clamped; return }
+            UserDefaults.standard.set(Double(lineSpacing), forKey: Self.lineSpacingKey)
+        }
+    }
+
+    /// Strength of the "font-thicken" stroke layered on each glyph using
+    /// its own foreground color. 0 = off, ~0.5 is the sweet spot for SF
+    /// Mono at 14pt. Above ~1.5 glyphs start to lose their inner counters.
+    /// Clamped to [0, 1.5].
+    @Published var fontThicken: CGFloat {
+        didSet {
+            let clamped = max(0, min(1.5, fontThicken))
+            if clamped != fontThicken { fontThicken = clamped; return }
+            UserDefaults.standard.set(Double(fontThicken), forKey: Self.fontThickenKey)
+        }
+    }
+
+    /// Minimum WCAG contrast ratio enforced between theme foreground and
+    /// theme background. If the picked theme is below this, the apply-
+    /// appearance path nudges the foreground toward white-or-black until
+    /// the floor is met. 0 disables enforcement. Clamped to [0, 7].
+    /// Default 4.5 = WCAG AA for normal-size text — the proven legibility
+    /// floor industry-wide.
+    @Published var minimumContrast: Double {
+        didSet {
+            let clamped = max(0, min(7, minimumContrast))
+            if clamped != minimumContrast { minimumContrast = clamped; return }
+            UserDefaults.standard.set(minimumContrast, forKey: Self.minimumContrastKey)
+        }
+    }
+
+    /// Cursor style — one of SwiftTerm's six (block/bar/underline × steady/blink).
+    /// Stored as the rawValue string so we can decode straight back into
+    /// `SwiftTerm.CursorStyle`.
+    @Published var cursorStyle: String {
+        didSet { UserDefaults.standard.set(cursorStyle, forKey: Self.cursorStyleKey) }
+    }
+
+    /// Scrollback line count. 500 (SwiftTerm default) is laughably small for
+    /// AI workflows; we default to 10000 and let users push to 50000 for
+    /// marathon sessions. Floor 1000 — anything less and a single claude
+    /// response paginates itself out of reach.
+    @Published var scrollbackLines: Int {
+        didSet {
+            let clamped = max(1000, min(50000, scrollbackLines))
+            if clamped != scrollbackLines { scrollbackLines = clamped; return }
+            UserDefaults.standard.set(scrollbackLines, forKey: Self.scrollbackLinesKey)
+        }
+    }
+
     var theme: TerminalTheme { TerminalTheme.find(id: themeID) }
 
-    static let `default`: CGFloat = 13
+    // 14pt at the default density is the readability sweet spot for SF Mono
+    // on 2x Retina: 13pt felt cramped and put the descenders right against
+    // the line above, which is the "no spaces between lines" complaint.
+    // 14pt is what iTerm ships with on macOS and matches its readability.
+    static let `default`: CGFloat = 14
     static let defaultFontFamily = "SFMono-Regular"
+    /// Extra pixels of leading added to the rendered cell height, on top of
+    /// whatever the font's natural metrics report. 3pt at 14pt size = ~21%
+    /// added line spacing, which restores breathing room without making the
+    /// terminal feel sparse. Surfaced through `TermyTerminalView.lineSpacing`
+    /// → `LeadingPaddedFont` so SwiftTerm's `CTFontGetLeading` reads the
+    /// inflated value.
+    static let defaultLineSpacing: CGFloat = 3
     static let availableFontFamilies = [
         "SFMono-Regular", "Menlo", "Monaco", "JetBrainsMono-Regular",
         "FiraCode-Regular", "Hack-Regular", "Inconsolata-Regular",
@@ -231,6 +309,11 @@ final class TerminalSettings: ObservableObject {
     private static let showActivityBarKey = "termy.showActivityBar"
     private static let quakeHideOnFocusLossKey = "termy.quakeHideOnFocusLoss"
     private static let quakeHeightKey = "termy.quakeHeightFraction"
+    private static let lineSpacingKey = "termy.lineSpacing"
+    private static let fontThickenKey = "termy.fontThicken"
+    private static let minimumContrastKey = "termy.minimumContrast"
+    private static let cursorStyleKey = "termy.cursorStyle"
+    private static let scrollbackLinesKey = "termy.scrollbackLines"
 
     init() {
         let saved = UserDefaults.standard.double(forKey: Self.fontSizeKey)
@@ -309,6 +392,25 @@ final class TerminalSettings: ObservableObject {
         }
         let savedHeight = UserDefaults.standard.double(forKey: Self.quakeHeightKey)
         self.quakeHeightFraction = savedHeight > 0 ? savedHeight : 0.45
+        // Typography defaults — see property docs for rationale.
+        if UserDefaults.standard.object(forKey: Self.lineSpacingKey) == nil {
+            self.lineSpacing = Self.defaultLineSpacing
+        } else {
+            self.lineSpacing = CGFloat(UserDefaults.standard.double(forKey: Self.lineSpacingKey))
+        }
+        if UserDefaults.standard.object(forKey: Self.fontThickenKey) == nil {
+            self.fontThicken = 0.4   // subtle bolden — readability win without "fake bold" feel
+        } else {
+            self.fontThicken = CGFloat(UserDefaults.standard.double(forKey: Self.fontThickenKey))
+        }
+        if UserDefaults.standard.object(forKey: Self.minimumContrastKey) == nil {
+            self.minimumContrast = 4.5    // WCAG AA
+        } else {
+            self.minimumContrast = UserDefaults.standard.double(forKey: Self.minimumContrastKey)
+        }
+        self.cursorStyle = UserDefaults.standard.string(forKey: Self.cursorStyleKey) ?? "steadyBlock"
+        let savedScrollback = UserDefaults.standard.integer(forKey: Self.scrollbackLinesKey)
+        self.scrollbackLines = savedScrollback > 0 ? savedScrollback : 10000
         refreshEffectiveOpacity(screen: NSScreen.main)
         applyDockVisibility()
         installBrightnessObservers()

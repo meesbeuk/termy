@@ -8,7 +8,8 @@ import AppKit
 /// the conversation / build / test run they're looking for without
 /// opening anything externally.
 ///
-/// Source: `~/Library/Application Support/Termy/sessions/*.log` — the
+/// Source: `~/Library/Application Support/Termy/sessions/*.txt` (or
+/// `.log` for transcripts recorded before the v0.9.5 rename) — the
 /// files TermyTerminalView writes when `recordSessions` is on.
 struct SessionLogBrowser: View {
     let onDismiss: () -> Void
@@ -234,7 +235,7 @@ struct SessionLogBrowser: View {
         }
         let fm = FileManager.default
         var loaded: [SessionLog] = []
-        for name in names where name.hasSuffix(".log") {
+        for name in names where name.hasSuffix(".txt") || name.hasSuffix(".log") {
             let url = dir.appendingPathComponent(name)
             let attrs = (try? fm.attributesOfItem(atPath: url.path)) ?? [:]
             let date = attrs[.modificationDate] as? Date ?? Date.distantPast
@@ -257,10 +258,12 @@ struct SessionLog: Identifiable, Equatable {
     let size: Int
 
     var displayName: String {
-        // Filenames look like "2026-05-25_001233_abc123.log" — convert
-        // to a friendlier date string. Falls back to the raw name on
-        // parse failure.
-        let bare = id.replacingOccurrences(of: ".log", with: "")
+        // Filenames look like "2026-05-25_001233_abc123.txt" (or .log for
+        // pre-v0.9.5 recordings) — convert to a friendlier date string.
+        // Falls back to the raw name on parse failure.
+        let bare = id
+            .replacingOccurrences(of: ".txt", with: "")
+            .replacingOccurrences(of: ".log", with: "")
         let parts = bare.split(separator: "_")
         guard parts.count >= 2 else { return bare }
         let date = parts[0]

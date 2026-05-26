@@ -1,8 +1,17 @@
 import SwiftUI
 
-/// Settings sheet — two-column layout (macOS System Settings style).
-/// Left: list of categories. Right: controls + visual preview for whichever
-/// category is selected.
+/// Settings sheet — two-column layout with searchable sidebar.
+///
+/// Five panes, each focused on one mental model:
+///   - Appearance — how Termy looks (theme/font/density/transparency/cursor)
+///   - Behavior — how Termy acts (notifications, links, shell defaults)
+///   - Profiles — saved shell configurations
+///   - Quake — drop-down terminal settings
+///   - Advanced — power-user features + diagnostics + reset + about
+///
+/// Search filters DSSection titles across all panes; jumping to a hit
+/// switches panes automatically. Every section follows a consistent
+/// caption + control + (optional) one-line hint rhythm.
 struct TerminalSettingsSheet: View {
     @EnvironmentObject var settings: TerminalSettings
     @EnvironmentObject var updater: Updater
@@ -10,6 +19,10 @@ struct TerminalSettingsSheet: View {
     let onClose: () -> Void
 
     @State private var selectedCategory: SettingsCategory = .appearance
+    @State private var searchQuery: String = ""
+    /// Section the user just clicked in the sidebar — fires a scroll-to.
+    /// Nil means "no jump pending."
+    @State private var jumpToSection: String? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -21,11 +34,25 @@ struct TerminalSettingsSheet: View {
                 detail
             }
         }
-        .frame(width: 640, height: 480)
+        .frame(width: 700, height: 520)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: DS.Radius.modal))
         .shadow(color: .black.opacity(DS.Modal.shadowOpacity),
                 radius: DS.Modal.shadowRadius, x: 0, y: DS.Modal.shadowY)
+        .onReceive(NotificationCenter.default.publisher(for: .terminalSettingsSelectPane)) { note in
+            if let payload = note.object as? [String: String] {
+                if let raw = payload["pane"], let cat = SettingsCategory(rawValue: raw) {
+                    selectedCategory = cat
+                }
+                if let filter = payload["filter"] {
+                    searchQuery = filter
+                }
+            } else if let raw = note.object as? String,
+                      let cat = SettingsCategory(rawValue: raw) {
+                // Back-compat with the old payload shape.
+                selectedCategory = cat
+            }
+        }
     }
 
     private var header: some View {
@@ -44,37 +71,100 @@ struct TerminalSettingsSheet: View {
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            ForEach(SettingsCategory.allCases) { cat in
-                SidebarRow(
-                    title: cat.displayName,
-                    icon: cat.icon,
-                    isSelected: cat == selectedCategory,
-                    onTap: { selectedCategory = cat }
-                )
+        VStack(alignment: .leading, spacing: DS.Spacing.s) {
+            // Search field — when typed into, scrolls the detail pane to
+            // the first matching section and switches pane if needed.
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DS.Colors.tertiary)
+                TextField("Search", text: $searchQuery)
+                    .textFieldStyle(.plain)
+                    .font(DS.Typo.caption)
+                if !searchQuery.isEmpty {
+                    Button(action: { searchQuery = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(DS.Colors.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            Spacer()
+            .padding(.horizontal, DS.Spacing.s)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: DS.Radius.s)
+                    .fill(DS.Colors.chipBg)
+            )
+            .onChange(of: searchQuery) { _, q in
+                if let target = SettingsCategory.matching(query: q) {
+                    selectedCategory = target
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                ForEach(SettingsCategory.allCases) { cat in
+                    SidebarRow(
+                        title: cat.displayName,
+                        icon: cat.icon,
+                        isSelected: cat == selectedCategory,
+                        onTap: { selectedCategory = cat }
+                    )
+                    // When this pane is selected, render its sections as
+                    // indented chevrons so the user can jump straight to
+                    // a section without scrolling. Sections come from the
+                    // SettingsCategory.sections registry (kept in lockstep
+                    // with the pane content).
+                    if cat == selectedCategory {
+                        ForEach(cat.sections, id: \.self) { section in
+                            SidebarSubRow(title: section) {
+                                jumpToSection = section
+                            }
+                            .transition(.opacity)
+                        }
+                    }
+                }
+                Spacer()
+            }
+            .animation(.easeOut(duration: 0.12), value: selectedCategory)
         }
         .padding(.vertical, DS.Spacing.m)
         .padding(.horizontal, DS.Spacing.s)
-        .frame(width: 170)
+        .frame(width: 200)
         .background(.thickMaterial.opacity(0.3))
     }
 
     @ViewBuilder
     private var detail: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: DS.Spacing.l) {
-                switch selectedCategory {
-                case .general: GeneralPane()
-                case .appearance: AppearancePane()
-                case .profiles: ProfilesPane()
-                case .quake: QuakePane()
-                case .about: AboutPane()
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: DS.Spacing.l) {
+                    switch selectedCategory {
+                    case .appearance: AppearancePane(searchQuery: searchQuery)
+                    case .behavior:   BehaviorPane(searchQuery: searchQuery)
+                    case .profiles:   ProfilesPane()
+                    case .quake:      QuakePane()
+                    case .advanced:   AdvancedPane(searchQuery: searchQuery)
+                    }
+                }
+                .padding(DS.Spacing.xl)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .onChange(of: jumpToSection) { _, target in
+                guard let target else { return }
+                withAnimation(.easeOut(duration: 0.20)) {
+                    proxy.scrollTo(target, anchor: .top)
+                }
+                // Clear after the scroll fires so re-tapping the same
+                // subheader triggers a fresh scroll instead of no-oping.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    jumpToSection = nil
                 }
             }
-            .padding(DS.Spacing.xl)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .onChange(of: selectedCategory) { _, _ in
+                // Switching panes resets scroll offset to top.
+                proxy.scrollTo("__top", anchor: .top)
+            }
         }
         .environmentObject(settings)
         .environmentObject(updater)
@@ -83,29 +173,74 @@ struct TerminalSettingsSheet: View {
 }
 
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    // Consolidated from 11 → 5 sections in v0.9.11. Vibecoder + bell +
-    // updates folded into General; theme + font + density + background +
-    // chrome consolidated into Appearance with subheaders. Profiles +
-    // Quake + About stay as their own sections.
-    case general, appearance, profiles, quake, about
+    case appearance, behavior, profiles, quake, advanced
     var id: String { rawValue }
     var displayName: String {
         switch self {
-        case .general: return "General"
         case .appearance: return "Appearance"
-        case .profiles: return "Profiles"
-        case .quake: return "Quake"
-        case .about: return "About"
+        case .behavior:   return "Behavior"
+        case .profiles:   return "Profiles"
+        case .quake:      return "Quake"
+        case .advanced:   return "Advanced"
         }
     }
     var icon: String {
         switch self {
-        case .general: return "gearshape"
         case .appearance: return "paintpalette"
-        case .profiles: return "person.crop.rectangle.stack"
-        case .quake: return "chevron.down.square"
-        case .about: return "info.circle"
+        case .behavior:   return "bell.badge"
+        case .profiles:   return "person.crop.rectangle.stack"
+        case .quake:      return "chevron.down.square"
+        case .advanced:   return "slider.horizontal.3"
         }
+    }
+    /// Sections rendered inside this pane, in display order. The sidebar
+    /// uses this list to surface jumpable subheaders so the user doesn't
+    /// have to scroll an entire pane to find one section. Keep in lockstep
+    /// with the pane View's section ordering, AND with the .id() anchors
+    /// tagged on each DSSection.
+    var sections: [String] {
+        switch self {
+        case .appearance:
+            return ["Theme", "Font", "Cursor", "Density", "Background", "Chrome"]
+        case .behavior:
+            return ["System", "Notifications", "Links & editor", "Shell", "Updates"]
+        case .profiles:
+            return []
+        case .quake:
+            return []
+        case .advanced:
+            return ["Triggers", "Session recording", "Diagnostics", "About", "Reset"]
+        }
+    }
+
+    /// Maps a search query to the best-matching pane.
+    /// Used to switch panes when the user types in the sidebar search.
+    static func matching(query: String) -> SettingsCategory? {
+        let q = query.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return nil }
+        // Keyword index — extend as new sections land.
+        let map: [SettingsCategory: [String]] = [
+            .appearance: ["theme", "font", "size", "spacing", "color",
+                          "thickness", "contrast", "opacity", "glass",
+                          "background", "density", "padding", "cursor",
+                          "caret", "wallpaper"],
+            .behavior:   ["notify", "notification", "bell", "idle", "alert",
+                          "link", "editor", "vscode", "cursor editor", "shell",
+                          "scrollback", "preview", "background", "sound"],
+            .profiles:   ["profile", "default profile", "shell args", "tag",
+                          "env", "environment"],
+            .quake:      ["quake", "drop-down", "dropdown", "quick",
+                          "height", "focus loss"],
+            .advanced:   ["trigger", "regex", "session", "record", "log",
+                          "diagnostics", "reset", "version", "update",
+                          "about", "sparkle"],
+        ]
+        for cat in SettingsCategory.allCases {
+            if (map[cat] ?? []).contains(where: { $0.contains(q) || q.contains($0) }) {
+                return cat
+            }
+        }
+        return nil
     }
 }
 
@@ -143,196 +278,80 @@ private struct SidebarRow: View {
     }
 }
 
-// MARK: - Detail panes
-
-private struct GeneralPane: View {
-    @EnvironmentObject var settings: TerminalSettings
-    @EnvironmentObject var updater: Updater
-
-    private var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
-    }
+/// Indented sub-section row shown beneath the active sidebar pane. Tapping
+/// scrolls the detail ScrollView to the matching DSSection. Visually
+/// lighter than the parent row so the hierarchy is unambiguous.
+private struct SidebarSubRow: View {
+    let title: String
+    let onTap: () -> Void
+    @State private var hovering = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DS.Spacing.l) {
-            DSSection("System") {
-                Toggle("Launch at login", isOn: $settings.launchAtLogin)
-                    .toggleStyle(.checkbox).font(DS.Typo.caption)
-                Toggle("Hide from Dock (menu-bar only)", isOn: $settings.hideFromDock)
-                    .toggleStyle(.checkbox).font(DS.Typo.caption)
-                Toggle("Confirm before quitting", isOn: $settings.confirmOnQuit)
-                    .toggleStyle(.checkbox).font(DS.Typo.caption)
-            }
-
-            DSSection("Chrome") {
-                Toggle("Show tab bar", isOn: $settings.showTabBar)
-                    .toggleStyle(.checkbox).font(DS.Typo.caption)
-                Toggle("Show status bar (cwd, git, clock)", isOn: $settings.showStatusBar)
-                    .toggleStyle(.checkbox).font(DS.Typo.caption)
-                Toggle(isOn: $settings.vibecoderMode) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "sparkles")
-                            .foregroundStyle(DS.Colors.aiAccent)
-                        Text("Vibecoder Mode")
-                            .font(DS.Typo.caption.weight(.medium))
-                    }
-                }
-                .toggleStyle(.checkbox)
-                Text("Surfaces Claude Code + Codex quick-launch icons in the title strip.")
-                    .font(DS.Typo.tiny)
+        Button(action: onTap) {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(DS.Colors.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(title)
+                    .font(DS.Typo.caption)
+                    .foregroundStyle(hovering ? DS.Colors.primary : DS.Colors.secondary)
+                Spacer()
             }
-
-            DSSection("Notifications") {
-                Toggle("Notify when a command finishes (auto)", isOn: $settings.notifyOnIdle)
-                    .toggleStyle(.checkbox).font(DS.Typo.caption)
-                Text("Detects when a pane goes from actively producing output to quiet — works for Claude Code, Codex, `npm test`, `cargo build`, anything. No shell setup required.")
-                    .font(DS.Typo.tiny)
-                    .foregroundStyle(DS.Colors.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack {
-                    Text("Quiet threshold")
-                        .font(DS.Typo.caption)
-                        .foregroundStyle(DS.Colors.secondary)
-                    Slider(value: $settings.idleThresholdSeconds, in: 2...30, step: 1)
-                        .controlSize(.small)
-                        .disabled(!settings.notifyOnIdle)
-                        .opacity(settings.notifyOnIdle ? 1.0 : 0.5)
-                    Text("\(Int(settings.idleThresholdSeconds))s")
-                        .font(DS.Typo.monoCaption)
-                        .foregroundStyle(DS.Colors.secondary)
-                        .frame(width: 30, alignment: .trailing)
-                }
-
-                Toggle("Notify when an unfocused window beeps", isOn: $settings.notifyOnBell)
-                    .toggleStyle(.checkbox).font(DS.Typo.caption)
-                Text("Hooks the terminal BEL. Pair with `precmd() { print -n \"\\a\" }` in zsh to ring after every command — useful as a manual alternative to the auto-quiet detector above.")
-                    .font(DS.Typo.tiny)
-                    .foregroundStyle(DS.Colors.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Divider().opacity(0.2)
-
-                Toggle("Only when the window isn't focused", isOn: $settings.notifyOnlyBackground)
-                    .toggleStyle(.checkbox).font(DS.Typo.caption)
-                Toggle("Show last line as preview", isOn: $settings.notifyShowPreview)
-                    .toggleStyle(.checkbox).font(DS.Typo.caption)
-                Toggle("Play sound", isOn: $settings.notifySound)
-                    .toggleStyle(.checkbox).font(DS.Typo.caption)
-            }
-
-            DSSection("Editor for clickable file paths") {
-                Picker("Editor", selection: $settings.editorScheme) {
-                    Text("Auto-detect (Cursor → VSCode → Zed)").tag("")
-                    Text("Cursor").tag("cursor")
-                    Text("VSCode").tag("vscode")
-                    Text("Zed").tag("zed")
-                    Text("Sublime Text").tag("subl")
-                    Text("TextMate").tag("mate")
-                }
-                .pickerStyle(.menu).labelsHidden()
-                Text("When you click an OSC 8 hyperlink or a `path:line` reference in scrollback (e.g. error messages, Claude's file refs), Termy opens it in this editor at the right line. Auto-detect uses whichever is installed first.")
-                    .font(DS.Typo.tiny)
-                    .foregroundStyle(DS.Colors.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            DSSection("Cinema mode") {
-                Toggle("Pace incoming output for screen recording", isOn: $settings.cinemaMode)
-                    .toggleStyle(.checkbox).font(DS.Typo.caption)
-                Text("Queues PTY output and drains at a fixed rate so streaming text looks smooth on camera instead of arriving in frame-coalesced bursts. Tracking (notifications, OSC 133) still uses real arrival time. Off by default — turn on only when recording.")
-                    .font(DS.Typo.tiny)
-                    .foregroundStyle(DS.Colors.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack {
-                    Text("Speed")
-                        .font(DS.Typo.caption)
-                        .foregroundStyle(DS.Colors.secondary)
-                    Slider(value: $settings.cinemaCps, in: 30...500, step: 10)
-                        .controlSize(.small)
-                        .disabled(!settings.cinemaMode)
-                        .opacity(settings.cinemaMode ? 1.0 : 0.5)
-                    Text("\(Int(settings.cinemaCps)) cps")
-                        .font(DS.Typo.monoCaption)
-                        .foregroundStyle(DS.Colors.secondary)
-                        .frame(width: 60, alignment: .trailing)
-                }
-            }
-
-            DSSection("Triggers") {
-                Text("Pattern packs that notify you when your output matches a regex — e.g. Claude asks for approval, build fails. Toggle a pack to enable all its rules.")
-                    .font(DS.Typo.tiny)
-                    .foregroundStyle(DS.Colors.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                TriggerPacksControl()
-            }
-
-            DSSection("Session recording") {
-                Toggle("Record every pane's output to a log file", isOn: $settings.recordSessions)
-                    .toggleStyle(.checkbox).font(DS.Typo.caption)
-                Text("Each pane writes a `.log` file under `~/Library/Application Support/Termy/sessions/`. Useful for going back to a past `claude` conversation, or auditing what a command actually printed. Off by default — the log files include everything in scrollback verbatim.")
-                    .font(DS.Typo.tiny)
-                    .foregroundStyle(DS.Colors.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button("Reveal log folder in Finder") {
-                    let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-                    let dir = support?.appendingPathComponent("Termy/sessions", isDirectory: true)
-                    if let dir {
-                        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-                        NSWorkspace.shared.activateFileViewerSelecting([dir])
-                    }
-                }
-                .controlSize(.small)
-            }
-
-            DSSection("Updates") {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Termy \(currentVersion)")
-                            .font(DS.Typo.body.weight(.semibold))
-                        if let last = updater.lastCheckedDescription {
-                            Text("Last checked \(last)")
-                                .font(DS.Typo.tiny)
-                                .foregroundStyle(DS.Colors.tertiary)
-                        } else {
-                            Text("Never checked yet.")
-                                .font(DS.Typo.tiny)
-                                .foregroundStyle(DS.Colors.tertiary)
-                        }
-                    }
-                    Spacer()
-                    Button("Check Now") { updater.checkForUpdates() }
-                        .disabled(!updater.canCheck)
-                        .controlSize(.small)
-                }
-                Toggle("Automatically check for updates",
-                       isOn: Binding(get: { updater.autoCheck },
-                                     set: { updater.autoCheck = $0 }))
-                    .toggleStyle(.checkbox).font(DS.Typo.caption)
-                Toggle("Automatically download + install in background",
-                       isOn: Binding(get: { updater.autoDownload },
-                                     set: { updater.autoDownload = $0 }))
-                    .toggleStyle(.checkbox).font(DS.Typo.caption)
-                    .disabled(!updater.autoCheck)
-                    .opacity(updater.autoCheck ? 1.0 : 0.5)
-            }
+            .padding(.leading, 26)
+            .padding(.trailing, DS.Spacing.s)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(hovering ? DS.Colors.chipBgHover : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { v in
+            withAnimation(.easeOut(duration: 0.08)) { hovering = v }
         }
     }
 }
 
-/// Merged Theme + Font + Density + Background. Was four separate sections
-/// in v0.9.10 — every one is "how the terminal looks", so they belong
-/// together under one Appearance umbrella.
+// MARK: - Search filtering helper
+//
+// Sections check this before rendering so a non-empty search query hides
+// non-matching sections in the same pane. Empty query → render everything.
+private func sectionVisible(_ title: String, query: String) -> Bool {
+    let q = query.lowercased().trimmingCharacters(in: .whitespaces)
+    if q.isEmpty { return true }
+    return title.lowercased().contains(q)
+}
+
+// MARK: - Appearance pane
+
 private struct AppearancePane: View {
+    let searchQuery: String
     @EnvironmentObject var settings: TerminalSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.l) {
-            ThemePicker()
-            FontControls()
-            DensityControls()
-            BackgroundControls()
+            // Empty top anchor so onChange(selectedCategory) can scroll
+            // to top when the user switches panes.
+            Color.clear.frame(height: 0).id("__top")
+            if sectionVisible("Theme", query: searchQuery) {
+                ThemePicker().id("Theme")
+            }
+            if sectionVisible("Font", query: searchQuery) {
+                FontControls().id("Font")
+            }
+            if sectionVisible("Cursor", query: searchQuery) {
+                CursorControls().id("Cursor")
+            }
+            if sectionVisible("Density", query: searchQuery) {
+                DensityControls().id("Density")
+            }
+            if sectionVisible("Background", query: searchQuery) {
+                BackgroundControls().id("Background")
+            }
+            if sectionVisible("Chrome", query: searchQuery) {
+                ChromeControls().id("Chrome")
+            }
         }
     }
 }
@@ -363,28 +382,80 @@ private struct ThemePicker: View {
 
 private struct FontControls: View {
     @EnvironmentObject var settings: TerminalSettings
+    @State private var showAdvanced: Bool = false
+
     var body: some View {
         DSSection("Font") {
+            // Always-visible primary controls: family + size + preview.
             Picker("Font Family", selection: $settings.fontFamily) {
                 ForEach(installedFonts(), id: \.self) { Text($0).tag($0) }
             }
             .pickerStyle(.menu).labelsHidden()
 
-            HStack {
-                Text("Size").font(DS.Typo.caption).foregroundStyle(DS.Colors.secondary)
-                Slider(value: $settings.fontSize, in: 8...28, step: 1).controlSize(.small)
-                Text("\(Int(settings.fontSize))pt")
-                    .font(DS.Typo.monoCaption)
+            sliderRow(label: "Size",
+                      value: $settings.fontSize, range: 11...28, step: 1,
+                      unit: "pt")
+            sliderRow(label: "Line spacing",
+                      value: Binding(
+                          get: { Double(settings.lineSpacing) },
+                          set: { settings.lineSpacing = CGFloat($0) }),
+                      range: 0...12, step: 1,
+                      unit: "px")
+
+            // "Advanced typography" — thickness + contrast floor — folded
+            // behind a disclosure. Most users don't touch these once the
+            // defaults are good, but they're available when needed.
+            DisclosureGroup(isExpanded: $showAdvanced) {
+                VStack(alignment: .leading, spacing: 6) {
+                    sliderRow(label: "Thickness",
+                              value: Binding(
+                                  get: { Double(settings.fontThicken) },
+                                  set: { settings.fontThicken = CGFloat($0) }),
+                              range: 0...1.5, step: 0.05,
+                              formatter: { String(format: "%.2f", $0) })
+                    sliderRow(label: "Contrast floor",
+                              value: $settings.minimumContrast,
+                              range: 0...7, step: 0.5,
+                              formatter: { $0 > 0 ? String(format: "%.1f:1", $0) : "off" })
+                    Text("Stroke width on glyphs · WCAG min ratio (foreground vs theme bg). Both have safety floors — you can't drag this to illegible.")
+                        .font(DS.Typo.tiny)
+                        .foregroundStyle(DS.Colors.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 4)
+            } label: {
+                Text("Advanced typography")
+                    .font(DS.Typo.caption.weight(.medium))
                     .foregroundStyle(DS.Colors.secondary)
-                    .frame(width: 32, alignment: .trailing)
             }
+
             FontPreview(
                 family: settings.fontFamily,
                 size: settings.fontSize,
                 foreground: themeForeground
             )
-            Text("⌘+ / ⌘- / ⌘0 also adjust size.")
-                .font(DS.Typo.tiny).foregroundStyle(DS.Colors.tertiary)
+        }
+    }
+
+    // Stamp out a labeled slider — every appearance section uses the same
+    // shape, so keep one builder and call it everywhere.
+    @ViewBuilder
+    private func sliderRow<V: BinaryFloatingPoint>(
+        label: String,
+        value: Binding<V>,
+        range: ClosedRange<V>,
+        step: V.Stride,
+        unit: String = "",
+        formatter: ((Double) -> String)? = nil
+    ) -> some View where V.Stride: BinaryFloatingPoint {
+        HStack {
+            Text(label).font(DS.Typo.caption).foregroundStyle(DS.Colors.secondary)
+                .frame(width: 110, alignment: .leading)
+            Slider(value: value, in: range, step: step).controlSize(.small)
+            Text(formatter?(Double(value.wrappedValue)) ?? "\(Int(value.wrappedValue))\(unit)")
+                .font(DS.Typo.monoCaption)
+                .foregroundStyle(DS.Colors.secondary)
+                .frame(width: 48, alignment: .trailing)
         }
     }
 
@@ -412,6 +483,98 @@ private struct FontControls: View {
     }
 }
 
+private struct CursorControls: View {
+    @EnvironmentObject var settings: TerminalSettings
+    private let options: [(String, String, String)] = [
+        ("steadyBlock", "Block",     "block.fill"),
+        ("blinkBlock",  "Block (blink)", "block"),
+        ("steadyBar",   "Bar",       "rectangle.portrait.fill"),
+        ("blinkBar",    "Bar (blink)",   "rectangle.portrait"),
+        ("steadyUnderline", "Underline",     "minus"),
+        ("blinkUnderline",  "Underline (blink)", "minus.square"),
+    ]
+
+    var body: some View {
+        DSSection("Cursor") {
+            // 3x2 grid of cursor-style chips — clicking picks one.
+            LazyVGrid(columns: [GridItem(.flexible()),
+                                GridItem(.flexible()),
+                                GridItem(.flexible())],
+                      spacing: DS.Spacing.s) {
+                ForEach(options, id: \.0) { (id, label, _) in
+                    CursorChip(
+                        label: label,
+                        kind: id,
+                        isSelected: settings.cursorStyle == id,
+                        onTap: { settings.cursorStyle = id }
+                    )
+                }
+            }
+        }
+    }
+}
+
+private struct CursorChip: View {
+    let label: String
+    let kind: String
+    let isSelected: Bool
+    let onTap: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 4) {
+                cursorPreview
+                    .frame(width: 36, height: 22)
+                Text(label)
+                    .font(DS.Typo.tiny)
+                    .foregroundStyle(isSelected ? DS.Colors.primary : DS.Colors.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: DS.Radius.s)
+                    .fill(isSelected ? DS.Colors.chipBgActive : (hovering ? DS.Colors.chipBgHover : DS.Colors.chipBg))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DS.Radius.s)
+                    .stroke(isSelected ? DS.Colors.accent : Color.clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { newValue in
+            withAnimation(.easeOut(duration: 0.10)) { hovering = newValue }
+        }
+    }
+
+    @ViewBuilder
+    private var cursorPreview: some View {
+        ZStack {
+            Text("a")
+                .font(.system(size: 14, design: .monospaced))
+                .foregroundStyle(DS.Colors.secondary)
+            switch kind {
+            case "steadyBlock", "blinkBlock":
+                Rectangle()
+                    .fill(DS.Colors.accent.opacity(0.6))
+                    .frame(width: 10, height: 14)
+                    .offset(x: 8)
+            case "steadyBar", "blinkBar":
+                Rectangle()
+                    .fill(DS.Colors.accent)
+                    .frame(width: 2, height: 14)
+                    .offset(x: 8)
+            default:
+                Rectangle()
+                    .fill(DS.Colors.accent)
+                    .frame(width: 10, height: 2)
+                    .offset(x: 8, y: 7)
+            }
+        }
+    }
+}
+
 private struct DensityControls: View {
     @EnvironmentObject var settings: TerminalSettings
     var body: some View {
@@ -434,27 +597,230 @@ private struct BackgroundControls: View {
     @EnvironmentObject var settings: TerminalSettings
     var body: some View {
         DSSection("Background") {
+            Toggle("Adapt to wallpaper brightness", isOn: $settings.autoOpacity)
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
             HStack {
                 Text("Opacity").font(DS.Typo.caption).foregroundStyle(DS.Colors.secondary)
-                Spacer()
+                    .frame(width: 110, alignment: .leading)
+                Slider(value: $settings.opacity, in: 0...1.0)
+                    .controlSize(.small)
+                    .disabled(settings.autoOpacity)
+                    .opacity(settings.autoOpacity ? 0.4 : 1.0)
                 Text("\(Int(settings.effectiveOpacity * 100))%")
                     .font(DS.Typo.monoCaption)
                     .foregroundStyle(DS.Colors.secondary)
+                    .frame(width: 48, alignment: .trailing)
             }
-            Toggle("Adapt to wallpaper brightness", isOn: $settings.autoOpacity)
-                .toggleStyle(.checkbox).font(DS.Typo.caption)
-            Slider(value: $settings.opacity, in: 0...1.0)
-                .controlSize(.small)
-                .disabled(settings.autoOpacity)
-                .opacity(settings.autoOpacity ? 0.4 : 1.0)
             OpacityPreview(opacity: settings.effectiveOpacity)
-            Text(settings.autoOpacity
-                 ? "Light wallpapers → more opaque, dark → more glass."
-                 : "Manual opacity — drag to taste.")
-                .font(DS.Typo.tiny).foregroundStyle(DS.Colors.tertiary)
         }
     }
 }
+
+/// Chrome lives under Appearance now (it's a visual setting): tab bar,
+/// status bar, vibecoder strip. Removed from Behavior — they were
+/// orphans in that pane.
+private struct ChromeControls: View {
+    @EnvironmentObject var settings: TerminalSettings
+    var body: some View {
+        DSSection("Chrome") {
+            Toggle("Show tab bar", isOn: $settings.showTabBar)
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
+            Toggle("Show status bar", isOn: $settings.showStatusBar)
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
+            Toggle(isOn: $settings.vibecoderMode) {
+                HStack(spacing: 4) {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(DS.Colors.aiAccent)
+                    Text("Vibecoder mode")
+                        .font(DS.Typo.caption.weight(.medium))
+                }
+            }
+            .toggleStyle(.checkbox)
+            Text("Adds Claude Code + Codex quick-launch icons to the title strip.")
+                .font(DS.Typo.tiny)
+                .foregroundStyle(DS.Colors.tertiary)
+        }
+    }
+}
+
+// MARK: - Behavior pane
+
+private struct BehaviorPane: View {
+    let searchQuery: String
+    @EnvironmentObject var settings: TerminalSettings
+    @EnvironmentObject var updater: Updater
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.l) {
+            Color.clear.frame(height: 0).id("__top")
+            if sectionVisible("System", query: searchQuery) {
+                SystemControls().id("System")
+            }
+            if sectionVisible("Notifications", query: searchQuery) {
+                NotificationControls().id("Notifications")
+            }
+            if sectionVisible("Links", query: searchQuery)
+                || sectionVisible("editor", query: searchQuery)
+                || sectionVisible("Links & editor", query: searchQuery) {
+                LinksControls().id("Links & editor")
+            }
+            if sectionVisible("Shell", query: searchQuery) {
+                ShellDefaults().id("Shell")
+            }
+            if sectionVisible("Updates", query: searchQuery) {
+                UpdatesControls().id("Updates")
+            }
+        }
+    }
+}
+
+private struct SystemControls: View {
+    @EnvironmentObject var settings: TerminalSettings
+    var body: some View {
+        DSSection("System") {
+            Toggle("Launch at login", isOn: $settings.launchAtLogin)
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
+            Toggle("Hide from Dock", isOn: $settings.hideFromDock)
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
+            Toggle("Confirm before quitting", isOn: $settings.confirmOnQuit)
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
+        }
+    }
+}
+
+private struct NotificationControls: View {
+    @EnvironmentObject var settings: TerminalSettings
+    @State private var advanced = false
+
+    var body: some View {
+        DSSection("Notifications") {
+            Toggle("When a command finishes", isOn: $settings.notifyOnIdle)
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
+            if settings.notifyOnIdle {
+                HStack {
+                    Text("Quiet threshold")
+                        .font(DS.Typo.caption)
+                        .foregroundStyle(DS.Colors.secondary)
+                        .frame(width: 130, alignment: .leading)
+                    Slider(value: $settings.idleThresholdSeconds, in: 2...30, step: 1)
+                        .controlSize(.small)
+                    Text("\(Int(settings.idleThresholdSeconds))s")
+                        .font(DS.Typo.monoCaption)
+                        .foregroundStyle(DS.Colors.secondary)
+                        .frame(width: 32, alignment: .trailing)
+                }
+            }
+            Toggle("When an unfocused window beeps", isOn: $settings.notifyOnBell)
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
+
+            DisclosureGroup(isExpanded: $advanced) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("Only when window isn't focused", isOn: $settings.notifyOnlyBackground)
+                        .toggleStyle(.checkbox).font(DS.Typo.caption)
+                    Toggle("Include last line as preview", isOn: $settings.notifyShowPreview)
+                        .toggleStyle(.checkbox).font(DS.Typo.caption)
+                    Toggle("Play sound", isOn: $settings.notifySound)
+                        .toggleStyle(.checkbox).font(DS.Typo.caption)
+                }
+                .padding(.top, 4)
+            } label: {
+                Text("Advanced")
+                    .font(DS.Typo.caption.weight(.medium))
+                    .foregroundStyle(DS.Colors.secondary)
+            }
+        }
+    }
+}
+
+private struct LinksControls: View {
+    @EnvironmentObject var settings: TerminalSettings
+    var body: some View {
+        DSSection("Links & editor") {
+            Picker("Editor", selection: $settings.editorScheme) {
+                Text("Auto-detect (Cursor → VSCode → Zed)").tag("")
+                Text("Cursor").tag("cursor")
+                Text("VSCode").tag("vscode")
+                Text("Zed").tag("zed")
+                Text("Sublime Text").tag("subl")
+                Text("TextMate").tag("mate")
+            }
+            .pickerStyle(.menu).labelsHidden()
+            Text("Clicking a `path:line` reference in scrollback opens it here.")
+                .font(DS.Typo.tiny)
+                .foregroundStyle(DS.Colors.tertiary)
+        }
+    }
+}
+
+private struct ShellDefaults: View {
+    @EnvironmentObject var settings: TerminalSettings
+
+    var body: some View {
+        DSSection("Shell") {
+            HStack {
+                Text("Scrollback")
+                    .font(DS.Typo.caption)
+                    .foregroundStyle(DS.Colors.secondary)
+                    .frame(width: 110, alignment: .leading)
+                Slider(value: Binding(
+                    get: { Double(settings.scrollbackLines) },
+                    set: { settings.scrollbackLines = Int($0) }
+                ), in: 1000...50000, step: 1000).controlSize(.small)
+                Text("\(settings.scrollbackLines / 1000)k")
+                    .font(DS.Typo.monoCaption)
+                    .foregroundStyle(DS.Colors.secondary)
+                    .frame(width: 48, alignment: .trailing)
+            }
+            Text("Lines retained per pane. Bigger = more history, slightly more memory.")
+                .font(DS.Typo.tiny)
+                .foregroundStyle(DS.Colors.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct UpdatesControls: View {
+    @EnvironmentObject var updater: Updater
+    private var currentVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+    }
+
+    var body: some View {
+        DSSection("Updates") {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Termy \(currentVersion)")
+                        .font(DS.Typo.body.weight(.semibold))
+                    if let last = updater.lastCheckedDescription {
+                        Text("Last checked \(last)")
+                            .font(DS.Typo.tiny)
+                            .foregroundStyle(DS.Colors.tertiary)
+                    } else {
+                        Text("Never checked yet.")
+                            .font(DS.Typo.tiny)
+                            .foregroundStyle(DS.Colors.tertiary)
+                    }
+                }
+                Spacer()
+                Button("Check Now") { updater.checkForUpdates() }
+                    .disabled(!updater.canCheck)
+                    .controlSize(.small)
+            }
+            Toggle("Automatically check for updates",
+                   isOn: Binding(get: { updater.autoCheck },
+                                 set: { updater.autoCheck = $0 }))
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
+            Toggle("Download and install in background",
+                   isOn: Binding(get: { updater.autoDownload },
+                                 set: { updater.autoDownload = $0 }))
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
+                .disabled(!updater.autoCheck)
+                .opacity(updater.autoCheck ? 1.0 : 0.5)
+        }
+    }
+}
+
+// MARK: - Quake pane
 
 private struct QuakePane: View {
     @EnvironmentObject var settings: TerminalSettings
@@ -462,26 +828,252 @@ private struct QuakePane: View {
         DSSection("Quake drop-down") {
             Toggle("Hide on focus loss", isOn: $settings.quakeHideOnFocusLoss)
                 .toggleStyle(.checkbox).font(DS.Typo.caption)
-            Text("Classic Quake behaviour — clicking outside the panel slides it back up. Turn off to keep it pinned while you reference it from another window.")
-                .font(DS.Typo.tiny)
-                .foregroundStyle(DS.Colors.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-
             HStack {
                 Text("Height")
                     .font(DS.Typo.caption)
                     .foregroundStyle(DS.Colors.secondary)
+                    .frame(width: 110, alignment: .leading)
                 Slider(value: $settings.quakeHeightFraction, in: 0.20...0.95)
                     .controlSize(.small)
                 Text("\(Int(settings.quakeHeightFraction * 100))%")
                     .font(DS.Typo.monoCaption)
                     .foregroundStyle(DS.Colors.secondary)
-                    .frame(width: 40, alignment: .trailing)
+                    .frame(width: 48, alignment: .trailing)
             }
-            Text("Vertical fraction of the active display the panel takes when toggled. Applies next time you press ⌃`.")
+            Text("Vertical fraction the panel takes on ⌃`.")
+                .font(DS.Typo.tiny)
+                .foregroundStyle(DS.Colors.tertiary)
+        }
+    }
+}
+
+// MARK: - Advanced pane (consolidated: triggers, session recording, dev, about, reset)
+
+private struct AdvancedPane: View {
+    let searchQuery: String
+    @State private var showingDiagnostics = false
+    @State private var showingResetConfirm = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DS.Spacing.l) {
+            Color.clear.frame(height: 0).id("__top")
+            if sectionVisible("Triggers", query: searchQuery) {
+                TriggersSection().id("Triggers")
+            }
+            if sectionVisible("Session recording", query: searchQuery) {
+                SessionRecordingSection().id("Session recording")
+            }
+            if sectionVisible("Diagnostics", query: searchQuery) {
+                DSSection("Diagnostics") {
+                    Button(action: { showingDiagnostics = true }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "stethoscope")
+                            Text("Run Diagnostics…")
+                        }
+                        .font(DS.Typo.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DS.Colors.accent)
+                    Text("Shows what Termy advertises to capability probes. Useful for bug reports.")
+                        .font(DS.Typo.tiny)
+                        .foregroundStyle(DS.Colors.tertiary)
+                }
+                .id("Diagnostics")
+            }
+            if sectionVisible("About", query: searchQuery) {
+                AboutSection().id("About")
+            }
+            if sectionVisible("Reset", query: searchQuery) {
+                DSSection("Reset") {
+                    Button(role: .destructive, action: { showingResetConfirm = true }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.counterclockwise")
+                            Text("Reset all Termy settings…")
+                        }
+                        .font(DS.Typo.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(DS.Colors.danger.opacity(0.85))
+                    Text("Wipes every Termy preference. Termy quits; relaunch for a clean slate. Files on disk are untouched.")
+                        .font(DS.Typo.tiny)
+                        .foregroundStyle(DS.Colors.tertiary)
+                }
+                .id("Reset")
+            }
+        }
+        .sheet(isPresented: $showingDiagnostics) {
+            DiagnosticsSheet(onDismiss: { showingDiagnostics = false })
+        }
+        .alert("Reset all Termy settings?", isPresented: $showingResetConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset", role: .destructive) { resetAndQuit() }
+        } message: {
+            Text("Removes every Termy preference. Termy quits afterwards.")
+        }
+    }
+
+    private func resetAndQuit() {
+        let defaults = UserDefaults.standard
+        let dict = defaults.dictionaryRepresentation()
+        for key in dict.keys where key.hasPrefix("termy.") || key.hasPrefix("mees.terminal.") {
+            defaults.removeObject(forKey: key)
+        }
+        if let windowKeys = defaults.stringArray(forKey: "mees.terminal.windowKeys.v1") {
+            for k in windowKeys { defaults.removeObject(forKey: k) }
+        }
+        defaults.removeObject(forKey: "mees.terminal.windowKeys.v1")
+        defaults.removeObject(forKey: "mees.terminal.restoreTabs.v2")
+        defaults.synchronize()
+        NSApp.terminate(nil)
+    }
+}
+
+private struct TriggersSection: View {
+    var body: some View {
+        DSSection("Triggers") {
+            Text("Regex packs that notify you when your output matches. Toggle a pack to enable its rules.")
                 .font(DS.Typo.tiny)
                 .foregroundStyle(DS.Colors.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
+            TriggerPacksControl()
+        }
+    }
+}
+
+private struct SessionRecordingSection: View {
+    @EnvironmentObject var settings: TerminalSettings
+    @State private var showingDeleteConfirm = false
+    /// Cached file count for the confirmation dialog and button enablement.
+    /// Recomputed on appear and after a successful delete.
+    @State private var logCount: Int = 0
+    @State private var logBytes: Int64 = 0
+
+    var body: some View {
+        DSSection("Session recording") {
+            Toggle("Record every pane's output to disk", isOn: $settings.recordSessions)
+                .toggleStyle(.checkbox).font(DS.Typo.caption)
+            Text("Plain-text transcript per pane (`.txt`) under `~/Library/Application Support/Termy/sessions/`. Off by default.")
+                .font(DS.Typo.tiny)
+                .foregroundStyle(DS.Colors.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: DS.Spacing.s) {
+                Button("Reveal log folder") {
+                    let dir = SessionRecorder.sessionsDir()
+                    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                    NSWorkspace.shared.activateFileViewerSelecting([dir])
+                }
+                .controlSize(.small)
+
+                Button(role: .destructive, action: { showingDeleteConfirm = true }) {
+                    Text(logCount == 0 ? "No logs to delete" : "Delete all logs…")
+                }
+                .controlSize(.small)
+                .disabled(logCount == 0)
+
+                Spacer()
+                if logCount > 0 {
+                    Text("\(logCount) file\(logCount == 1 ? "" : "s") · \(humanBytes(logBytes))")
+                        .font(DS.Typo.tiny)
+                        .foregroundStyle(DS.Colors.tertiary)
+                }
+            }
+        }
+        .onAppear(perform: refreshStats)
+        .alert("Delete all session logs?", isPresented: $showingDeleteConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete \(logCount) file\(logCount == 1 ? "" : "s")", role: .destructive) {
+                deleteAll()
+            }
+        } message: {
+            Text("Permanently removes every transcript under `~/Library/Application Support/Termy/sessions/`. Active recordings keep running into fresh files.")
+        }
+    }
+
+    /// Scan the sessions directory and update the file count + total size.
+    /// Cheap (only stats files, doesn't read them).
+    private func refreshStats() {
+        let dir = SessionRecorder.sessionsDir()
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: dir.path) else {
+            logCount = 0; logBytes = 0; return
+        }
+        var count = 0
+        var bytes: Int64 = 0
+        for name in names where name.hasSuffix(".txt") || name.hasSuffix(".log") {
+            let url = dir.appendingPathComponent(name)
+            if let attrs = try? fm.attributesOfItem(atPath: url.path),
+               let size = attrs[.size] as? NSNumber {
+                count += 1
+                bytes += size.int64Value
+            }
+        }
+        logCount = count
+        logBytes = bytes
+    }
+
+    /// Delete every transcript. Open recorders for currently-active panes
+    /// keep their file handles open — POSIX semantics mean their next
+    /// write continues into the unlinked file (a tiny orphan), which the
+    /// next launch reaps cleanly. No need to coordinate with live panes.
+    private func deleteAll() {
+        let dir = SessionRecorder.sessionsDir()
+        let fm = FileManager.default
+        if let names = try? fm.contentsOfDirectory(atPath: dir.path) {
+            for name in names where name.hasSuffix(".txt") || name.hasSuffix(".log") {
+                try? fm.removeItem(at: dir.appendingPathComponent(name))
+            }
+        }
+        refreshStats()
+    }
+
+    private func humanBytes(_ b: Int64) -> String {
+        let f = ByteCountFormatter()
+        f.countStyle = .file
+        return f.string(fromByteCount: b)
+    }
+}
+
+private struct AboutSection: View {
+    private var version: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+    }
+    private var build: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
+    }
+    var body: some View {
+        DSSection("About") {
+            HStack(alignment: .top, spacing: DS.Spacing.l) {
+                if let icon = NSImage(named: "AppIcon") {
+                    Image(nsImage: icon)
+                        .resizable().interpolation(.medium)
+                        .frame(width: 56, height: 56)
+                } else {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.black)
+                        .frame(width: 56, height: 56)
+                        .overlay(
+                            Text("T").font(.system(size: 28, weight: .bold))
+                                .foregroundStyle(.white)
+                        )
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Termy")
+                        .font(DS.Typo.title)
+                    Text("Version \(version) (build \(build))")
+                        .font(DS.Typo.caption)
+                        .foregroundStyle(DS.Colors.secondary)
+                    if let url = URL(string: "https://github.com/meesbeuk/termy") {
+                        Link("github.com/meesbeuk/termy", destination: url)
+                            .font(DS.Typo.caption)
+                    }
+                    if let releaseURL = URL(string: "https://github.com/meesbeuk/termy/releases/tag/v\(version)") {
+                        Link("What's new in v\(version) →", destination: releaseURL)
+                            .font(DS.Typo.caption)
+                            .foregroundStyle(DS.Colors.accent)
+                    }
+                }
+                Spacer()
+            }
         }
     }
 }
@@ -519,120 +1111,6 @@ private struct TriggerPacksControl: View {
     }
 }
 
-private struct AboutPane: View {
-    @State private var showingResetConfirm = false
-    @State private var showingDiagnostics = false
-
-    private var version: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
-    }
-    private var build: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DS.Spacing.l) {
-            DSSection("About") {
-                HStack(alignment: .top, spacing: DS.Spacing.l) {
-                    if let icon = NSImage(named: "AppIcon") {
-                        Image(nsImage: icon)
-                            .resizable().interpolation(.medium)
-                            .frame(width: 64, height: 64)
-                    } else {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(.black)
-                            .frame(width: 64, height: 64)
-                            .overlay(
-                                Text("T").font(.system(size: 32, weight: .bold))
-                                    .foregroundStyle(.white)
-                            )
-                    }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Termy")
-                            .font(DS.Typo.title)
-                        Text("Version \(version) (build \(build))")
-                            .font(DS.Typo.caption)
-                            .foregroundStyle(DS.Colors.secondary)
-                        Text("A native macOS terminal for vibecoders.")
-                            .font(DS.Typo.caption)
-                            .foregroundStyle(DS.Colors.tertiary)
-                        if let url = URL(string: "https://github.com/meesbeuk/termy") {
-                            Link("github.com/meesbeuk/termy", destination: url)
-                                .font(DS.Typo.caption)
-                        }
-                        if let releaseURL = URL(string: "https://github.com/meesbeuk/termy/releases/tag/v\(version)") {
-                            Link("What's new in v\(version) →", destination: releaseURL)
-                                .font(DS.Typo.caption)
-                                .foregroundStyle(DS.Colors.accent)
-                        }
-                    }
-                    Spacer()
-                }
-            }
-
-            DSSection("Diagnostics") {
-                Button(action: { showingDiagnostics = true }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "stethoscope")
-                        Text("Run Diagnostics…")
-                    }
-                    .font(DS.Typo.caption)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(DS.Colors.accent)
-                Text("Shows what Termy is currently advertising to tools that probe terminal capabilities. Paste the copyable report in a GitHub issue if something's not working.")
-                    .font(DS.Typo.tiny)
-                    .foregroundStyle(DS.Colors.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            DSSection("Reset") {
-                Button(role: .destructive, action: { showingResetConfirm = true }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.counterclockwise")
-                        Text("Reset all Termy settings…")
-                    }
-                    .font(DS.Typo.caption)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(DS.Colors.danger.opacity(0.85))
-                Text("Restore every preference (theme, font, density, profiles, tabs, restore keys, etc.) to factory defaults. Won't touch your shell config or files. Termy quits afterwards — relaunch to start fresh.")
-                    .font(DS.Typo.tiny)
-                    .foregroundStyle(DS.Colors.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .sheet(isPresented: $showingDiagnostics) {
-            DiagnosticsSheet(onDismiss: { showingDiagnostics = false })
-        }
-        .alert("Reset all Termy settings?", isPresented: $showingResetConfirm) {
-            Button("Cancel", role: .cancel) {}
-            Button("Reset", role: .destructive) { resetAndQuit() }
-        } message: {
-            Text("This removes every Termy-owned preference — themes, profiles, saved tab layouts, notification toggles. Termy quits afterwards. Files on disk are untouched.")
-        }
-    }
-
-    /// Drops every UserDefaults key under the `termy.` namespace plus
-    /// the per-window restoreKeys, then exits. Sparkle's own SU* keys are
-    /// left alone — they're tied to update history and don't need a reset.
-    private func resetAndQuit() {
-        let defaults = UserDefaults.standard
-        let dict = defaults.dictionaryRepresentation()
-        for key in dict.keys where key.hasPrefix("termy.") || key.hasPrefix("mees.terminal.") {
-            defaults.removeObject(forKey: key)
-        }
-        // Per-window restore keys are UUID strings — flush them too.
-        if let windowKeys = defaults.stringArray(forKey: "mees.terminal.windowKeys.v1") {
-            for k in windowKeys { defaults.removeObject(forKey: k) }
-        }
-        defaults.removeObject(forKey: "mees.terminal.windowKeys.v1")
-        defaults.removeObject(forKey: "mees.terminal.restoreTabs.v2")
-        defaults.synchronize()
-        NSApp.terminate(nil)
-    }
-}
-
 // MARK: - Profiles
 
 private struct ProfilesPane: View {
@@ -641,7 +1119,7 @@ private struct ProfilesPane: View {
 
     var body: some View {
         DSSection("Profiles") {
-            Text("Saved shell configurations — open a new tab with a profile to use its shell, args, cwd, theme, and tag color. Pick one as default to apply on every new tab.")
+            Text("Saved shell configurations — open a new tab with a profile to use its shell, args, cwd, theme, and tag color.")
                 .font(DS.Typo.tiny)
                 .foregroundStyle(DS.Colors.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -709,8 +1187,6 @@ private struct ProfileRow: View {
     }
 
     private func confirmAndDelete() {
-        // Single-profile guard: never let the user delete the last profile.
-        // The seed code expects ProfileStore.profiles non-empty.
         showingDeleteConfirm = true
     }
 
@@ -740,9 +1216,6 @@ private struct ProfileRow: View {
                         .font(DS.Typo.tiny)
                         .foregroundStyle(DS.Colors.tertiary)
                 }
-                // Use DSIconButton for proper 22×22 hit areas — the previous
-                // raw Image+Button gave a ~10×10pt target that was nearly
-                // impossible to click without zooming.
                 DSIconButton(icon: isEditing ? "chevron.up" : "pencil", action: onEdit)
                 DSIconButton(icon: "trash", action: confirmAndDelete, color: DS.Colors.tertiary)
             }
@@ -752,8 +1225,6 @@ private struct ProfileRow: View {
                 HStack {
                     Spacer()
                     Button("Save") {
-                        // Don't save blank-named profiles — they render as an
-                        // empty row that's impossible to identify in the list.
                         var safe = draft
                         let trimmed = safe.name.trimmingCharacters(in: .whitespacesAndNewlines)
                         if trimmed.isEmpty { safe.name = "Untitled" }
@@ -770,18 +1241,12 @@ private struct ProfileRow: View {
             RoundedRectangle(cornerRadius: DS.Radius.s)
                 .fill(DS.Colors.chipBg)
         )
-        // Re-sync the draft whenever the editor is reopened OR the parent
-        // profile changes externally — without this, editing the same profile
-        // twice would show stale data from the previous session.
         .onChange(of: isEditing) { _, editing in
             if editing { draft = profile }
         }
         .onChange(of: profile) { _, new in
             if !isEditing { draft = new }
         }
-        // Destructive-action confirmation. Prevents an accidental click on the
-        // trash icon from nuking a profile (especially the default one) with
-        // no recourse — UserDefaults state survives launches.
         .alert("Delete profile \"\(profile.name)\"?", isPresented: $showingDeleteConfirm) {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive, action: onDelete)
@@ -817,7 +1282,7 @@ private struct ProfileEditor: View {
                 Spacer()
             }
             field("Name", text: $draft.name)
-            field("Shell", text: $draft.shellPath, placeholder: "/bin/zsh (or leave blank to use $SHELL)")
+            field("Shell", text: $draft.shellPath, placeholder: "/bin/zsh (blank = $SHELL)")
             field("Initial cwd", text: $draft.initialCwd, placeholder: "~  (blank = HOME)")
             HStack(spacing: 6) {
                 Text("Tag").font(DS.Typo.tiny).foregroundStyle(DS.Colors.tertiary).frame(width: 70, alignment: .leading)
@@ -832,11 +1297,6 @@ private struct ProfileEditor: View {
         }
     }
 
-    /// Env-vars editor — was previously model-only with no UI, so users had
-    /// to edit UserDefaults JSON by hand to set things like
-    /// `NODE_OPTIONS=--max-old-space-size=4096` or `ANTHROPIC_API_KEY=...`
-    /// per profile. Renders as a compact list of key=value rows with an
-    /// inline "add row" footer.
     @ViewBuilder
     private var envEditor: some View {
         VStack(alignment: .leading, spacing: DS.Spacing.xs) {
@@ -852,9 +1312,6 @@ private struct ProfileEditor: View {
                         .foregroundStyle(DS.Colors.tertiary)
                 }
             }
-            // Sorted so the order is stable across edits (dictionaries are
-            // unordered) — without this, removing one row reshuffles others
-            // unpredictably as the keys rehash.
             ForEach(draft.environmentExtras.keys.sorted(), id: \.self) { key in
                 envRow(key: key, value: draft.environmentExtras[key] ?? "")
             }
@@ -878,7 +1335,7 @@ private struct ProfileEditor: View {
                 .help("Add env var")
             }
             .padding(.leading, 76)
-            Text("Injected into every shell launched with this profile. Useful for per-project API keys, NODE_OPTIONS, custom PATH prefixes, etc.")
+            Text("Injected into every shell launched with this profile.")
                 .font(DS.Typo.tiny)
                 .foregroundStyle(DS.Colors.tertiary)
                 .padding(.leading, 76)
@@ -916,10 +1373,6 @@ private struct ProfileEditor: View {
 
     private var canAddEnv: Bool {
         let trimmed = newEnvKey.trimmingCharacters(in: .whitespaces)
-        // POSIX env-var names: letters / digits / underscore; first char
-        // non-digit. We don't strictly enforce that (some shells tolerate
-        // more) but we DO reject empty + whitespace-only + `=`-containing
-        // keys, which would silently break the shell's `env` parsing.
         return !trimmed.isEmpty && !trimmed.contains("=") && !trimmed.contains(" ")
     }
 
@@ -945,4 +1398,3 @@ private struct ProfileEditor: View {
         }
     }
 }
-

@@ -9,6 +9,15 @@ APP_BUNDLE="/Applications/${APP_NAME}.app"
 
 cd "$PROJECT_DIR"
 
+# Re-apply SwiftTerm patches in case `swift package update` blew them away.
+if [[ -d "$PROJECT_DIR/.build/checkouts/SwiftTerm" ]]; then
+    "$PROJECT_DIR/release_helpers/patch-swiftterm.sh"
+else
+    echo "── First-run: resolving Swift packages ──"
+    swift package resolve
+    "$PROJECT_DIR/release_helpers/patch-swiftterm.sh"
+fi
+
 echo "── Building ${APP_NAME} (release) ──"
 swift build -c release --product "${APP_NAME}" 2>&1
 

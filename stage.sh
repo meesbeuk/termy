@@ -39,6 +39,17 @@ fi
 
 cd "$PROJECT_DIR"
 
+# Re-apply the SwiftTerm patches every build. Idempotent — no-op when the
+# checkout already has the sentinels. Required after `swift package update`
+# (which restores the upstream checkout) and benign on fresh clones.
+if [[ -d "$PROJECT_DIR/.build/checkouts/SwiftTerm" ]]; then
+    "$PROJECT_DIR/release_helpers/patch-swiftterm.sh"
+else
+    echo "── First-run: resolving Swift packages ──"
+    swift package resolve
+    "$PROJECT_DIR/release_helpers/patch-swiftterm.sh"
+fi
+
 echo "── Building ${APP_NAME} (debug) ──"
 swift build --product "${APP_NAME}" 2>&1 | tail -3
 

@@ -2,53 +2,77 @@ import SwiftUI
 
 // MARK: - Theme preview card
 
-/// Visual swatch for a single theme. Shows a sample terminal line in the
-/// theme's foreground color over its dominant background, plus the full ANSI
-/// palette as a thin strip across the bottom.
+/// Mini Termy renderer used as the theme picker preview.
+///
+/// Honesty rule: every element here corresponds to something real Termy
+/// actually applies when this theme is selected — nothing fabricated.
+/// Specifically:
+///
+///   - Background: neutral dark gradient + darken layer, simulating the
+///     glass backdrop Termy renders over. Held constant across themes
+///     because the theme doesn't control wallpaper.
+///   - Active-pane stroke: theme.accentColor at 0.55 alpha — the exact
+///     overlay PaneLayout draws around the focused pane.
+///   - Terminal text: theme.foreground at the real terminal font.
+///   - ANSI samples: prompt char in ansi[2], "main" in ansi[4] — the
+///     same indices SwiftTerm's color table reads.
+///   - Selection: theme.selectionColor — what SwiftTerm sets as
+///     `selectedTextBackgroundColor` on the live pane.
+///   - Cursor: theme.cursorColor, shaped to match the user's chosen
+///     cursor style (block/bar/underline). The SAME caretColor +
+///     CursorStyle the live pane uses.
+///   - Bottom strip: the full 16-color ANSI palette.
+///
+/// No fake tab strip, no fake URL chrome, no element that doesn't trace
+/// back to a real apply site in TerminalSurface / PaneLayout.
 struct ThemePreviewCard: View {
     let theme: TerminalTheme
     let isSelected: Bool
     let onSelect: () -> Void
+    @EnvironmentObject var settings: TerminalSettings
     @State private var hovering = false
 
     private func swiftColor(_ rgb: (Int, Int, Int)) -> Color {
         Color(red: Double(rgb.0) / 255, green: Double(rgb.1) / 255, blue: Double(rgb.2) / 255)
     }
 
-    /// Background = first ANSI color (the theme's "black"); foreground from theme.
-    private var bgColor: Color { swiftColor(theme.ansi[0]) }
-    private var fgColor: Color { swiftColor(theme.foreground) }
+    /// Constant backdrop shared by every theme card. Termy itself doesn't
+    /// own the wallpaper — that's whatever the user has set on their Mac
+    /// — so the preview shouldn't change wallpaper per theme either.
+    /// Varying it would lie about what the theme actually controls.
+    /// Tuned to approximate a neutral dark desktop, since that's the
+    /// most common case; light-theme cards still read OK on it.
+    private static let sharedBackdrop: LinearGradient = LinearGradient(
+        colors: [
+            Color(red: 0.18, green: 0.18, blue: 0.22),
+            Color(red: 0.24, green: 0.22, blue: 0.28),
+            Color(red: 0.15, green: 0.15, blue: 0.20),
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    /// Constant glass alpha on top of the backdrop — mimics Termy's
+    /// .hudWindow material darkening at its default ~45% opacity floor.
+    /// Held constant across themes for the same honesty reason: a theme
+    /// doesn't drive window opacity in real Termy.
+    private static let backdropDarken: Double = 0.55
+
+    private var fg: Color { theme.foregroundColor }
 
     var body: some View {
         Button(action: onSelect) {
             VStack(alignment: .leading, spacing: 0) {
-                // Sample code preview using a handful of the theme's ANSI colors.
-                ZStack(alignment: .topLeading) {
-                    Rectangle().fill(bgColor)
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 4) {
-                            Text("$")
-                                .foregroundStyle(swiftColor(theme.ansi[2]))     // green
-                            Text("git status")
-                                .foregroundStyle(fgColor)
-                        }
-                        HStack(spacing: 4) {
-                            Text("On branch")
-                                .foregroundStyle(fgColor.opacity(0.7))
-                            Text("main")
-                                .foregroundStyle(swiftColor(theme.ansi[4]))     // blue
-                        }
-                        Text("nothing to commit")
-                            .foregroundStyle(swiftColor(theme.ansi[3]))         // yellow
-                    }
-                    .font(.system(size: 8, design: .monospaced))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 5)
-                }
-                .frame(height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                preview
+                    .frame(height: 88)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-                HStack {
+                HStack(spacing: 4) {
+                    // Accent dot — same color the app's chrome will adopt
+                    // (active-pane stroke, activity stripe, tinted controls).
+                    Circle()
+                        .fill(theme.accentColor)
+                        .frame(width: 7, height: 7)
                     Text(theme.name)
                         .font(DS.Typo.caption.weight(.medium))
                         .foregroundStyle(DS.Colors.primary)
@@ -57,14 +81,14 @@ struct ThemePreviewCard: View {
                     if isSelected {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 11))
-                            .foregroundStyle(DS.Colors.accent)
+                            .foregroundStyle(theme.accentColor)
                     }
                 }
                 .padding(.horizontal, 8)
                 .padding(.top, 6)
                 .padding(.bottom, 2)
 
-                // Full 16-color ANSI strip — the most honest "what colors will I see?"
+                // Full 16-color ANSI strip — honest "here's the cell palette".
                 HStack(spacing: 1) {
                     ForEach(0..<16, id: \.self) { i in
                         swiftColor(theme.ansi[i])
@@ -80,7 +104,7 @@ struct ThemePreviewCard: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DS.Radius.s)
-                    .strokeBorder(isSelected ? DS.Colors.accent : Color.white.opacity(0.06),
+                    .strokeBorder(isSelected ? theme.accentColor : Color.white.opacity(0.06),
                                   lineWidth: isSelected ? 1.5 : 0.5)
             )
             .contentShape(Rectangle())
@@ -88,6 +112,85 @@ struct ThemePreviewCard: View {
         .buttonStyle(.plain)
         .onHover { newValue in
             withAnimation(.easeOut(duration: 0.10)) { hovering = newValue }
+        }
+    }
+
+    @ViewBuilder
+    private var preview: some View {
+        ZStack(alignment: .topLeading) {
+            // Shared neutral backdrop — see Self.sharedBackdrop docs.
+            // Identical across every card so the differences between
+            // themes (text color, ANSI palette, selection, cursor,
+            // accent stroke) are the only thing that varies.
+            Self.sharedBackdrop
+            Color.black.opacity(Self.backdropDarken)
+
+            terminalLines
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
+
+            // Active-pane stroke — matches PaneLayout's
+            // .strokeBorder(Color.accentColor.opacity(0.55)) which
+            // tints to theme.accentColor via the .tint() cascade.
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(theme.accentColor.opacity(0.55), lineWidth: 1)
+        }
+    }
+
+    @ViewBuilder
+    private var terminalLines: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 3) {
+                Text("$")
+                    .foregroundStyle(swiftColor(theme.ansi[2]))
+                Text("git status")
+                    .foregroundStyle(fg)
+            }
+            HStack(spacing: 3) {
+                Text("On branch")
+                    .foregroundStyle(fg.opacity(0.6))
+                Text("main")
+                    .foregroundStyle(swiftColor(theme.ansi[4]))
+                    .padding(.horizontal, 1)
+                    // Selection highlight — what SwiftTerm renders when
+                    // text is drag-selected (selectedTextBackgroundColor).
+                    .background(theme.selectionColor.opacity(0.55))
+            }
+            HStack(spacing: 3) {
+                Text("$")
+                    .foregroundStyle(swiftColor(theme.ansi[2]))
+                // Cursor — shape follows the user's cursorStyle setting,
+                // color is theme.cursorColor (the exact NSColor SwiftTerm
+                // uses for caretColor on the live pane).
+                themeCursor
+            }
+        }
+        .font(.system(size: 8, design: .monospaced))
+    }
+
+    /// Cursor rendered in the same SHAPE the user has picked under
+    /// Settings → Appearance → Cursor. We deliberately render the steady
+    /// form (no blink animation) — a grid of 17 blinking cursors would
+    /// be noise, and "color + shape" is what theme selection affects.
+    @ViewBuilder
+    private var themeCursor: some View {
+        let color = theme.cursorColor
+        let style = settings.cursorStyle
+        if style.hasSuffix("Block") {
+            Rectangle()
+                .fill(color)
+                .frame(width: 5, height: 8)
+        } else if style.hasSuffix("Bar") {
+            Rectangle()
+                .fill(color)
+                .frame(width: 1.5, height: 8)
+        } else {
+            // underline — sits along the baseline like SwiftTerm's
+            // .steadyUnderline / .blinkUnderline caret.
+            Rectangle()
+                .fill(color)
+                .frame(width: 5, height: 1.5)
+                .padding(.top, 6)
         }
     }
 }

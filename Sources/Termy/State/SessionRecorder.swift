@@ -4,31 +4,31 @@ import AppKit
 /// Writes a single terminal pane's stream to a readable transcript under
 /// `~/Library/Application Support/Termy/sessions/`.
 ///
-/// **Output style** — the log reads like a book of scenes, not a memory
-/// dump:
+/// **Output style** — plain ASCII so every editor (TextEdit, less, cat,
+/// VS Code) renders it identically. No box-drawing, no fancy bullets,
+/// no leading indent that throws off grep.
 ///
 /// ```
-/// ╭──────────────────────────────────────────────────────────╮
-/// │ Termy session log                                        │
-/// │ 2026-05-25 09:33  ·  meesdebeukelaar@Meess-Mac-mini      │
-/// │ /bin/zsh  ·  ~/projects/termy                            │
-/// ╰──────────────────────────────────────────────────────────╯
+/// Termy session log
+/// =================
+/// 2026-05-25 09:33:14 +0200
+/// meesdebeukelaar@Meess-Mac-mini
+/// /bin/zsh in ~/projects/termy
+/// Termy v0.9.4
 ///
-/// ▸ 09:33:14  in ~/projects/termy
-///   ❯ ls -la
+/// [09:33:14] ~/projects/termy
+/// ls -la
+/// total 24
+/// drwxr-xr-x  ...
+/// -rw-r--r--  ...
 ///
-///   total 24
-///   drwxr-xr-x  ...
-///   -rw-r--r--  ...
+/// [09:33:22] ~/projects/termy
+/// claude
+/// [interactive program — 4m 12s]
 ///
-/// ▸ 09:33:22  in ~/projects/termy
-///   ❯ claude
-///
-///   [interactive program — 4m 12s]
-///
-/// ▸ 09:37:34  in ~/projects/termy
-///   ❯ git status
-///   ...
+/// [09:37:34] ~/projects/termy
+/// git status
+/// ...
 /// ```
 ///
 /// **How it gets there:**
@@ -40,9 +40,10 @@ import AppKit
 ///      `[interactive program — XXs]` block on exit.
 ///   3. Use OSC 133 prompt markers when present, otherwise heuristically
 ///      split on newlines following an idle pause to find prompt
-///      boundaries. Each becomes a scene header.
-///   4. Indent body text two spaces under each scene so it's visually
-///      under its header.
+///      boundaries. Each becomes a `[time] cwd` scene header.
+///   4. File extension is `.txt` (not `.log`) so editors don't apply log-
+///      syntax highlighting that mis-tints the output, and macOS Quick
+///      Look opens it directly.
 ///
 /// Best-effort: any IO failure stops further recording for this pane.
 final class SessionRecorder {
@@ -86,12 +87,16 @@ final class SessionRecorder {
     /// blank line before the very first scene.
     private var firstScene = true
 
+    /// Tracks whether the previous emitted line was already blank, so
+    /// commitLine() can collapse adjacent blanks instead of stacking them.
+    private var lastWroteBlank = true
+
     init?(cwd: String, shell: String) {
         let dir = Self.sessionsDir()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd_HHmmss"
-        let name = "\(f.string(from: Date()))_\(UUID().uuidString.prefix(6)).log"
+        let name = "\(f.string(from: Date()))_\(UUID().uuidString.prefix(6)).txt"
         self.url = dir.appendingPathComponent(name)
         self.currentCwd = cwd
         FileManager.default.createFile(atPath: url.path, contents: nil)
@@ -251,19 +256,26 @@ final class SessionRecorder {
         currentCursor += 1
     }
 
-    /// Newline arrived — finalise the current line, indent it, write it,
-    /// and reset cell state for the next line.
+    /// Newline arrived — finalise the current line, write it flush-left,
+    /// and reset cell state for the next line. Trailing whitespace on the
+    /// right is trimmed; leading is preserved (indent in the original
+    /// output should survive into the transcript).
     private func commitLine() {
         let line = String(currentCells)
         currentCells.removeAll(keepingCapacity: true)
         currentCursor = 0
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        if trimmed.isEmpty {
-            writeRaw("\n")
+        let trimmedRight = String(
+            line.reversed().drop(while: { $0 == " " || $0 == "\t" }).reversed()
+        )
+        if trimmedRight.isEmpty {
+            // Collapse runs of blank lines to a single blank so log-tail
+            // sections don't accumulate visual gaps.
+            if !lastWroteBlank { writeRaw("\n") }
+            lastWroteBlank = true
         } else {
-            writeRaw("  ")
-            writeRaw(trimmed)
+            writeRaw(trimmedRight)
             writeRaw("\n")
+            lastWroteBlank = false
         }
     }
 
@@ -335,18 +347,18 @@ final class SessionRecorder {
 
     // MARK: - Scene boundaries
 
-    /// Start a new transcript scene — fires on OSC 133;A (prompt mark)
-    /// or, lacking that, on the heuristic prompt-detection inside
-    /// flushLineBuffer. Writes a `▸ HH:mm:ss  in <cwd>` header followed
-    /// by two spaces of indent for the next prompt+output block.
+    /// Start a new transcript scene — fires on OSC 133;A (prompt mark).
+    /// Writes a flush-left `[HH:mm:ss] <cwd>` header. The scene break
+    /// itself is a single blank line, never more, so logs stay tight.
     private func beginScene() {
         if firstScene {
             firstScene = false
-        } else {
+        } else if !lastWroteBlank {
             writeRaw("\n")
         }
         let stamp = Self.headerTimeFormatter.string(from: Date())
-        writeRaw("▸ \(stamp)  in \(foldHome(currentCwd))\n")
+        writeRaw("[\(stamp)] \(foldHome(currentCwd))\n")
+        lastWroteBlank = false
     }
 
     private func writeRaw(_ s: String) {
@@ -396,17 +408,20 @@ final class SessionRecorder {
         let stamp = Self.headerStampFormatter.string(from: Date())
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
         let foldedCwd = foldHome(cwd)
+        // ASCII-only, flush-left, no box drawing — survives every editor's
+        // monospace handling unchanged. The "=" rule is plain ASCII so
+        // there's nothing to mis-render.
         let header = """
-        ╭──────────────────────────────────────────────────────────╮
-        │ Termy session log
-        │ \(stamp)  ·  \(user)@\(host)
-        │ \(shell)  ·  \(foldedCwd)
-        │ Termy \(version)
-        ╰──────────────────────────────────────────────────────────╯
-
+        Termy session log
+        =================
+        \(stamp)
+        \(user)@\(host)
+        \(shell) in \(foldedCwd)
+        Termy \(version)
 
         """
         writeRaw(header)
+        lastWroteBlank = true
     }
 
     private static let headerStampFormatter: DateFormatter = {

@@ -218,7 +218,13 @@ struct MainTerminalView: View {
         .sheet(isPresented: $showingSettings) {
             TerminalSettingsSheet(onClose: { showingSettings = false })
                 .environmentObject(settings)
+                .tint(settings.theme.accentColor)
         }
+        // Tint cascades to every SwiftUI control rendered inside the window
+        // — active tab chips, buttons, accent strokes, sliders. SwiftTerm
+        // owns its own colors so this only touches Termy's chrome, never
+        // cell content. Theme accent → app accent in one line.
+        .tint(settings.theme.accentColor)
     }
 
     private func removeKeyMonitor() {

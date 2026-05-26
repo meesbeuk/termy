@@ -287,6 +287,10 @@ extension Notification.Name {
     static let terminalOpenTermyURL = Notification.Name("mees.terminal.openTermyURL")
     /// Help → "Welcome to Termy…" — manually re-shows the onboarding sheet.
     static let terminalShowOnboarding = Notification.Name("mees.terminal.showOnboarding")
+    /// Used by `--snapshot-pane=<name>` to drive the Settings sheet's
+    /// pane selection from the CLI. The sheet's SwiftUI view observes this
+    /// and updates `selectedCategory`. Object is the raw value string.
+    static let terminalSettingsSelectPane = Notification.Name("mees.terminal.settings.selectPane")
     /// Fired when the active pane changes via split / focus cycling /
     /// pane closure. MainTerminalView observes this to claim keyboard
     /// focus for the new active pane. .onChange on the published
@@ -412,6 +416,15 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
     static var isTerminating = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // `--snapshot=/path/to/file.png` — Termy renders itself for ~3s, captures
+        // the active pane to PNG, then quits. Lets QA / CI / claude verify
+        // text rendering without needing Screen-Recording permission for the
+        // calling process — the app is capturing its own NSView, not the
+        // screen. Optional `--snapshot-text=...` writes a payload into the
+        // pane first so the snapshot has something interesting to show.
+        if let path = Self.cliArg("--snapshot=") {
+            Self.scheduleSnapshot(toPath: path, payload: Self.cliArg("--snapshot-text="))
+        }
         let hide = UserDefaults.standard.bool(forKey: "termy.hideFromDock")
         NSApp.setActivationPolicy(hide ? .accessory : .regular)
         // When running as Termy Dev (the staging bundle from stage.sh),
@@ -604,6 +617,119 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
         } else {
             openNewWindow?()
         }
+    }
+
+    // MARK: - --snapshot CLI support
+    //
+    // Lets Termy capture its own rendered output to disk so the typography
+    // changes can be verified without Screen-Recording permission for the
+    // invoking process. Termy snapshots its own NSWindow's contentView via
+    // `bitmapImageRepForCachingDisplay` (no external capture API needed),
+    // then exits.
+
+    static func cliArg(_ prefix: String) -> String? {
+        for arg in CommandLine.arguments where arg.hasPrefix(prefix) {
+            return String(arg.dropFirst(prefix.count))
+        }
+        return nil
+    }
+
+    static func scheduleSnapshot(toPath path: String, payload: String?) {
+        // 2.0s window: enough for the shell to print its prompt, optional
+        // payload to type-and-render, and the activity bar / caret to
+        // settle. Keep it generous — first-launch initialization is slower
+        // than steady state.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            // `--snapshot-pane=appearance|behavior|profiles|quake|advanced`
+            // opens the Settings sheet and switches to that pane before
+            // capture. Lets QA grab one pane at a time without manual
+            // clicking.
+            if let pane = cliArg("--snapshot-pane=") {
+                NotificationCenter.default.post(name: .terminalOpenSettings, object: nil)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    setSettingsPane(pane)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        Self.captureAndExit(path: path)
+                    }
+                }
+                return
+            }
+            if let payload, let window = NSApp.windows.first(where: { $0.isVisible }) {
+                if let view = window.contentView,
+                   let term = Self.findTermyTerminalView(view) {
+                    term.send(txt: payload)
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                Self.captureAndExit(path: path)
+            }
+        }
+    }
+
+    /// Posts the pane-selection notification — TerminalSettingsSheet
+    /// observes this and updates `selectedCategory` directly. Used by
+    /// `--snapshot-pane=<name>` from the CLI snapshot path. Accepts an
+    /// optional `:filter` suffix (e.g. `appearance:cursor`) to also
+    /// set the search query for cropping a single section.
+    static func setSettingsPane(_ name: String) {
+        let parts = name.split(separator: ":", maxSplits: 1)
+        let pane = String(parts[0]).lowercased()
+        let filter = parts.count > 1 ? String(parts[1]) : ""
+        NotificationCenter.default.post(
+            name: .terminalSettingsSelectPane,
+            object: ["pane": pane, "filter": filter] as [String: String]
+        )
+    }
+
+    static func captureAndExit(path: String) {
+        // Prefer the newest visible window (typically the sheet) over the
+        // main window so settings/sheet panes capture correctly. Fall back
+        // to first visible if none of the newer ones qualify.
+        let candidates = NSApp.windows.reversed().filter { $0.isVisible }
+        guard let window = candidates.first,
+              let view = window.contentView else {
+            fputs("snapshot: no visible window\n", stderr)
+            exit(2)
+        }
+        // Force-flush any pending draw before capture so the bitmap
+        // reflects post-layout text.
+        view.displayIfNeeded()
+        let bounds = view.bounds
+
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: bounds) else {
+            fputs("snapshot: bitmapImageRepForCachingDisplay returned nil\n", stderr)
+            exit(2)
+        }
+        view.cacheDisplay(in: bounds, to: rep)
+        // Note: SwiftTerm's CaretView renders via CALayer-delegate
+        // `draw(_:in:)` with an empty AppKit `draw(_:)`, so the cursor
+        // glyph won't appear in this bitmap. That's a snapshot
+        // limitation — the live app paints the cursor fine. To verify
+        // cursor settings, run Termy Dev interactively.
+        guard let data = rep.representation(using: .png, properties: [:]) else {
+            fputs("snapshot: PNG encode failed\n", stderr)
+            exit(2)
+        }
+        do {
+            try data.write(to: URL(fileURLWithPath: path))
+            fputs("snapshot: wrote \(data.count) bytes to \(path)\n", stderr)
+        } catch {
+            fputs("snapshot: write failed: \(error)\n", stderr)
+            exit(2)
+        }
+        exit(0)
+    }
+
+    /// Recursively walks the view tree looking for SwiftTerm's
+    /// `LocalProcessTerminalView` (or our subclass). Returns the first one
+    /// found — fine because the snapshot path only fires when one window
+    /// is up. Returns nil before the SwiftUI scene has finished mounting.
+    static func findTermyTerminalView(_ root: NSView) -> TermyTerminalView? {
+        if let t = root as? TermyTerminalView { return t }
+        for sub in root.subviews {
+            if let t = findTermyTerminalView(sub) { return t }
+        }
+        return nil
     }
 
     /// Returns a color-inverted copy of an NSImage, used to brand the

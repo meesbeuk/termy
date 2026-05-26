@@ -196,7 +196,14 @@ private struct PaneCellView: View {
                     .zIndex(10)
                 }
             }
-            .onTapGesture {
+            // Use simultaneousGesture (not .onTapGesture) so SwiftUI's
+            // tap-disambiguation state machine doesn't sit on the
+            // mouseDown waiting to decide tap-vs-drag — that delay was
+            // eating the leading edge of every drag-to-select inside
+            // SwiftTerm. simultaneous gestures fire alongside the
+            // underlying NSView event stream, so click-to-focus still
+            // works and SwiftTerm's selection drag is uninterrupted.
+            .simultaneousGesture(TapGesture().onEnded {
                 tab.activePaneId = pane.id
                 if let view = pane.terminalView {
                     view.window?.makeFirstResponder(view)
@@ -205,7 +212,7 @@ private struct PaneCellView: View {
                         object: view
                     )
                 }
-            }
+            })
             .contextMenu {
                 Button("Copy") { copySelection(pane) }
                     .disabled(!hasSelection(pane))
