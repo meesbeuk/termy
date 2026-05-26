@@ -6,6 +6,32 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.13.0</title>
+            <description><![CDATA[
+                <h2>v0.13.0 — Honest theme previews, polished session logs, smooth selection</h2>
+<p>An audit pass through Settings — every toggle/slider/picker now actually does what its UI claims — plus log polish and a selection-drag bug fix.</p>
+<ul>
+  <li><b>Theme previews now show what the theme actually changes.</b> The old preview painted a fake mini "tab strip" with the theme accent as a bottom-stroke — Termy's real tab bar does no such thing (active tabs use neutral primary tint, not the theme accent), so the preview was misleading on every theme. The card now renders only surfaces the theme genuinely drives: foreground text in the theme color, a "selected" word in the theme's selection color, a cursor in the theme's cursor color rendered in the SHAPE the user picked under Settings → Cursor (block / bar / underline), a thin accent border matching the active-pane stroke <code>PaneLayout</code> draws, and the full 16-color ANSI strip. Pick a theme and what you see in the picker is what you get in the pane.</li>
+  <li><b>Settings audit: every toggle is wired.</b> Walked each <code>@Published var</code> in <code>TerminalSettings</code> through to its apply site (font/cursor/scrollback to SwiftTerm, recording to <code>SessionRecorder</code>, idle threshold to the activity heuristic, etc.). One dead theme field — <code>urlColor</code>/<code>urlAccent</code>, which had no consumer because SwiftTerm doesn't expose a hyperlink color hook — was removed from the model and all 17 theme definitions, so nothing in the codebase pretends to drive a knob that doesn't exist.</li>
+  <li><b>Session logs are now plain text (.txt) with a clean format.</b> Extension switched from <code>.log</code> to <code>.txt</code> so editors and Quick Look don't apply log-syntax highlighting that mis-tints the output. Replaced the unicode box-drawing header (which warped in many editors because the right edge wasn't even closed) with flush-left ASCII: <code>Termy session log</code> + <code>===</code> rule + identity lines. Scene breaks are now <code>[HH:mm:ss] cwd</code> flush-left — no triangle marker, no 2-space body indent. Adjacent blank lines collapse to one. Trailing whitespace on each line is trimmed. Old <code>.log</code> files still appear in the browser so you don't lose history.</li>
+  <li><b>"Delete all logs" button in Settings → Advanced → Session recording.</b> Shows the file count + total size live; disabled when there's nothing to delete; confirm dialog before the wipe. Active recordings keep running into fresh files via POSIX unlink semantics — no coordination needed with live panes.</li>
+  <li><b>Selection drag works again.</b> SwiftUI's <code>.onTapGesture</code> on each pane was running its tap-vs-drag disambiguation state machine, holding the <code>mouseDown</code> long enough to eat the leading edge of SwiftTerm's drag-to-select. Replaced with <code>.simultaneousGesture(TapGesture()...)</code> so click-to-focus still fires but the underlying NSView mouse stream is uninterrupted. Drag-to-select, double-click word, triple-click line — all responsive on the first try now.</li>
+</ul>
+            ]]></description>
+            <pubDate>Tue, 26 May 2026 10:42:23 +0000</pubDate>
+            <sparkle:version>57</sparkle:version>
+            <sparkle:shortVersionString>0.13.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.13.0/Termy.dmg"
+                sparkle:version="57"
+                sparkle:shortVersionString="0.13.0"
+                length="3349291"
+                sparkle:edSignature="KAMpWUZ9lekzIioLKmDBW0vSBfGCoXV4P5wsi8DwZfXWD9xXy9LU29NuYrO2cJdnT2GQMX5JOqOXulSvBhyhBw=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.12.0</title>
             <description><![CDATA[
                 <h2>v0.12.0 — Smooth scroll lock, visible inactive caret, drag-drop from Finder, dev bundle</h2>
