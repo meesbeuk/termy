@@ -1368,58 +1368,48 @@ final class TermyTerminalView: LocalProcessTerminalView {
 
     override func setFrameSize(_ newSize: NSSize) {
         let wasZeroSized = frame.size.width <= 0 || frame.size.height <= 0
-        // Capture pre-resize grid for the significant-change check
-        // below. Reading these properties is cheap.
+        // Capture pre-resize grid for the post-resize predicate below.
         preResizeCols = getTerminal().cols
         preResizeRows = getTerminal().rows
-        guard inLiveResize else {
-            // After SwiftTerm reflows yDisp can point at a row that no
-            // longer makes sense for the new grid (e.g. right pane
-            // closes → left pane goes full-width → reflow shrinks
-            // total physical line count → old yDisp is past EOF and
-            // viewport renders blank). After a non-live grid change,
-            // always pin to the tail. Yanking a scrolled-back user to
-            // the live tail on resize is mildly annoying, but better
-            // than rendering an empty pane they have to click into to
-            // recover. Don't try to use SwiftTerm's
-            // `isCursorInViewPort` as a "were we at the tail"
-            // detector — its formula (`yBase + 2*yDisp`) overflows
-            // and crashes the app with deep scrollback.
-            let gridWillChange = wouldChangeCellGrid(newSize: newSize)
-            super.setFrameSize(newSize)
-            // First time we land at a real size, ask the host to re-apply
-            // appearance. updateDisplay (and therefore caret positioning)
-            // reads frame.height — an applyAppearance fired while frame was
-            // zero left the caret positioned off-screen. Dispatch async so
-            // the dispatch runs after AppKit has finished this layout pass.
-            if wasZeroSized && newSize.width > 0 && newSize.height > 0 && !hasLaidOutAtRealSize {
-                hasLaidOutAtRealSize = true
-                DispatchQueue.main.async { [weak self] in
-                    self?.onNeedsAppearanceRefresh?()
-                }
+        // Always go through SwiftTerm's setFrameSize → processSizeChange
+        // path so the terminal's cols/rows stay in lockstep with the
+        // visible cell grid, including during live drag-resize.
+        //
+        // We used to coalesce live-resize ticks (call NSView's
+        // setFrameSize directly to skip SwiftTerm's per-tick reflow,
+        // then fire one settling resize on viewDidEndLiveResize). That
+        // saved a few cycles per frame on a drag, but it meant
+        // SIGWINCH wasn't sent until the user let go — so any TUI
+        // running in the pane (claude, fzf, vim) rendered its output
+        // at the OLD width while the window had already grown wider,
+        // producing exactly the "wrap doesn't match window" artifact
+        // users were reporting. SwiftTerm 1.13's reflow is fast enough
+        // per-tick that the drag still feels smooth.
+        let gridWillChange = wouldChangeCellGrid(newSize: newSize)
+        super.setFrameSize(newSize)
+        // First time we land at a real size, ask the host to re-apply
+        // appearance. updateDisplay (and therefore caret positioning)
+        // reads frame.height — an applyAppearance fired while frame was
+        // zero left the caret positioned off-screen.
+        if wasZeroSized && newSize.width > 0 && newSize.height > 0 && !hasLaidOutAtRealSize {
+            hasLaidOutAtRealSize = true
+            DispatchQueue.main.async { [weak self] in
+                self?.onNeedsAppearanceRefresh?()
             }
-            // Non-live resize that changed the grid (split close,
-            // window snap-resize, programmatic set-size). Re-poke
-            // SwiftTerm with a tiny size nudge so its processSizeChange
-            // re-runs against the settled frame (it early-returns when
-            // size matches), then pin the viewport to the live tail
-            // and force a full redisplay. Without this nudge, the
-            // viewport renders blank after a split-close until the
-            // next keystroke kicks SwiftTerm into drawing.
-            if gridWillChange {
-                DispatchQueue.main.async { [weak self] in
-                    self?.nudgeAndRefreshAfterResize()
-                }
-            }
-            return
         }
-        // In a live resize: update NSView's frame directly, skipping
-        // SwiftTerm's per-tick terminal.resize. The cell grid stays at its
-        // previous (cols × rows) for the duration of the drag — the rendered
-        // text shifts slightly in the window while the user is dragging, but
-        // the scrollback buffer is not mutated.
-        callNSViewSetFrameSize(newSize)
-        needsDisplay = true
+        // Non-live resize that crossed a cell boundary (split close,
+        // window snap-resize, programmatic set-size). Re-poke SwiftTerm
+        // with a half-point nudge so its processSizeChange re-runs
+        // against the settled frame, then pin the viewport to the
+        // tail and force a full redisplay. Without this, the viewport
+        // renders blank after a split-close until the next keystroke.
+        // Live-resize ticks don't need the async nudge because the
+        // per-tick super.setFrameSize above already runs the reflow.
+        if gridWillChange && !inLiveResize {
+            DispatchQueue.main.async { [weak self] in
+                self?.nudgeAndRefreshAfterResize()
+            }
+        }
     }
 
     /// Sibling to viewDidEndLiveResize, called from the async path
@@ -1541,6 +1531,19 @@ struct TerminalSurface: NSViewRepresentable {
         }
 
         let view = TermyTerminalView(frame: .zero)
+        // CRITICAL FOR SELECTION. SwiftTerm defaults `allowMouseReporting`
+        // to TRUE, which routes mouse events to the running PTY app whenever
+        // it has set mouseMode != .off. Many common setups (tmux, vim with
+        // mouse, fzf, claude/codex, anything using terminfo XM/Xm) do that —
+        // and SwiftTerm's `mouseDragged` bails out the moment ANY mouse mode
+        // is set, even if the app didn't request motion events. Net effect:
+        // drag-to-select silently dies as soon as the prompt's pre-exec hooks
+        // touch mouseMode. For a daily-driver terminal where selecting text
+        // is the more fundamental affordance, turn mouse reporting off so
+        // selection always wins. (A per-profile "Pass mouse events to apps"
+        // toggle can re-enable it later for users who specifically want vim
+        // / htop mouse support, but the default must favor "I can select".)
+        view.allowMouseReporting = false
         // Default SwiftTerm requires Cmd-hover to discover and Cmd-click to
         // open links — terrible discoverability. `.hover` underlines any
         // URL / OSC 8 hyperlink the cursor is over, and a plain click on a
@@ -1695,7 +1698,16 @@ struct TerminalSurface: NSViewRepresentable {
             ?? NSFont(name: "SFMono-Regular", size: size)
             ?? NSFont(name: "Menlo", size: size)
             ?? NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
-        view.font = font
+        // CRITICAL: SwiftTerm's `font` setter unconditionally calls
+        // `selectNone()` (MacTerminalView.swift line ~209), which means
+        // any spurious applyAppearance — e.g. one triggered after the
+        // user just clicked, when the appearance hasn't really changed —
+        // wipes the selection mid-drag. Guard the assignment so we only
+        // poke the setter when the font ACTUALLY differs from what
+        // SwiftTerm is already using.
+        if view.font != font {
+            view.font = font
+        }
 
         // Apply host-controlled typography knobs (added to SwiftTerm via
         // release_helpers/patch-swiftterm.sh). lineSpacing widens the cell

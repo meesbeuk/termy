@@ -251,12 +251,8 @@ struct MainTerminalView: View {
     private func installPaneClickMonitor() {
         removePaneClickMonitor()
         paneClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [sessions] event in
-            // Only react to clicks in OUR hosted window. The monitor is
-            // global to the app, so other Termy windows would fire it
-            // too — gate on event.window.
             guard let win = sessions.hostedWindow, event.window === win else { return event }
             guard let root = win.contentView else { return event }
-            // Convert the click to root's coordinate space and walk down.
             let pt = root.convert(event.locationInWindow, from: nil)
             guard let hit = root.hitTest(pt) else { return event }
             // Walk up the view hierarchy from the hit view until we find
@@ -265,7 +261,6 @@ struct MainTerminalView: View {
             var current: NSView? = hit
             while let view = current {
                 if let term = view as? TermyTerminalView {
-                    // Find which tab.pane this view belongs to.
                     for tab in sessions.tabs {
                         if let pane = tab.panes.first(where: { $0.terminalView === term }) {
                             if sessions.selectedTabId != tab.id {

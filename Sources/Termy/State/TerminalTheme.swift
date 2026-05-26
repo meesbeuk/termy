@@ -242,7 +242,11 @@ struct TerminalTheme: Identifiable, Equatable {
             (68, 71, 90), (255, 110, 110), (105, 255, 148), (255, 255, 165),
             (212, 110, 244), (255, 146, 223), (164, 255, 255), (255, 255, 255),
         ],
-        selection: (68, 71, 90),
+        // Use Dracula's "Comment" blue, not the canonical (68,71,90)
+        // "Current Line" gray. The gray is only ~3 luminance points off
+        // the bg — at the full alpha SwiftTerm draws selection with,
+        // the highlight effectively disappears against the bg.
+        selection: (98, 114, 164),
         accent: (255, 121, 198)  // pink
     )
 
@@ -281,7 +285,11 @@ struct TerminalTheme: Identifiable, Equatable {
             (104, 104, 104), (240, 113, 120), (134, 178, 88), (255, 180, 84),
             (89, 194, 255), (255, 119, 251), (149, 230, 203), (255, 255, 255),
         ],
-        selection: (255, 180, 84),
+        // Ayu's accent orange (255,180,84) would wash out the cream
+        // foreground if used as the selection bg. Switch to Ayu's
+        // selection-blue (the "ide-selection" color from the official
+        // palette) so cream text on muted blue stays legible.
+        selection: (64, 127, 170),
         accent: (255, 180, 84)
     )
 
@@ -361,7 +369,11 @@ struct TerminalTheme: Identifiable, Equatable {
             (146, 131, 116), (251, 73, 52), (184, 187, 38), (250, 189, 47),
             (131, 165, 152), (211, 134, 155), (142, 192, 124), (235, 219, 178),
         ],
-        selection: (250, 189, 47),
+        // Gruvbox's yellow accent would make selected text near-invisible
+        // (cream-on-yellow). Use Gruvbox's `bg2` darker neutral — same
+        // color vim's :hi Visual uses — so the cream foreground stays
+        // clearly readable on the selection.
+        selection: (80, 73, 69),
         accent: (250, 189, 47)
     )
 
@@ -376,7 +388,12 @@ struct TerminalTheme: Identifiable, Equatable {
             (87, 96, 106), (215, 58, 73), (52, 168, 83), (191, 135, 0),
             (9, 105, 218), (138, 75, 175), (31, 136, 153), (36, 41, 47),
         ],
-        selection: (9, 105, 218),
+        // GitHub Light's accent blue (9,105,218) at full alpha would
+        // render near-black text on dark blue — unreadable. Use the
+        // pale-blue tint GitHub's own UI shows for text selection (the
+        // visual effect of `#0969da26` over white) so dark foreground
+        // text stays high-contrast on the selection.
+        selection: (208, 222, 243),
         accent: (9, 105, 218)
     )
 }
