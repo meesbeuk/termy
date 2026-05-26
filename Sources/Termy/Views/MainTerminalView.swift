@@ -21,6 +21,7 @@ struct MainTerminalView: View {
     @State private var findInitialQuery: String?
     @State private var hostedWindow: NSWindow?
     @State private var keyMonitor: Any?
+    @State private var paneClickMonitor: Any?
 
     var body: some View {
         ZStack {
@@ -143,6 +144,7 @@ struct MainTerminalView: View {
             if new != nil {
                 removeKeyMonitor()
                 installKeyMonitor()
+                installPaneClickMonitor()
                 // First-launch welcome — only ONE window shows it per app
                 // launch even if multiple windows restore, because we flip
                 // the completed flag the moment we show it. Dispatched
@@ -157,6 +159,7 @@ struct MainTerminalView: View {
                 }
             } else {
                 removeKeyMonitor()
+                removePaneClickMonitor()
             }
             syncWindowTitle()
         }
@@ -229,6 +232,61 @@ struct MainTerminalView: View {
 
     private func removeKeyMonitor() {
         if let m = keyMonitor { NSEvent.removeMonitor(m); keyMonitor = nil }
+    }
+
+    /// Window-scoped left-mouse-down monitor that does what `.onTapGesture`
+    /// used to: when the user clicks inside any SwiftTerm pane, set that
+    /// pane as the active pane in its tab (and switch tabs if needed).
+    ///
+    /// Why this instead of `.onTapGesture` on the SwiftUI view: SwiftUI's
+    /// tap-gesture state machine sits on the mouseDown waiting to decide
+    /// "is this a tap or the start of a drag?", which delayed/swallowed
+    /// the mouseDown→mouseDragged sequence SwiftTerm needs to begin a
+    /// selection drag. With the gesture removed and this monitor in its
+    /// place, selection drag is uninterrupted — the monitor only READS
+    /// the event (returns it unchanged), and SwiftTerm gets the full
+    /// event stream.
+    ///
+    /// Cleanup: paired with `removePaneClickMonitor()` on window detach.
+    private func installPaneClickMonitor() {
+        removePaneClickMonitor()
+        paneClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [sessions] event in
+            // Only react to clicks in OUR hosted window. The monitor is
+            // global to the app, so other Termy windows would fire it
+            // too — gate on event.window.
+            guard let win = sessions.hostedWindow, event.window === win else { return event }
+            guard let root = win.contentView else { return event }
+            // Convert the click to root's coordinate space and walk down.
+            let pt = root.convert(event.locationInWindow, from: nil)
+            guard let hit = root.hitTest(pt) else { return event }
+            // Walk up the view hierarchy from the hit view until we find
+            // a TermyTerminalView. Tap landed on a button or scrollbar?
+            // We won't find a terminal view above it — skip.
+            var current: NSView? = hit
+            while let view = current {
+                if let term = view as? TermyTerminalView {
+                    // Find which tab.pane this view belongs to.
+                    for tab in sessions.tabs {
+                        if let pane = tab.panes.first(where: { $0.terminalView === term }) {
+                            if sessions.selectedTabId != tab.id {
+                                sessions.selectedTabId = tab.id
+                            }
+                            if tab.activePaneId != pane.id {
+                                tab.activePaneId = pane.id
+                            }
+                            return event
+                        }
+                    }
+                    return event
+                }
+                current = view.superview
+            }
+            return event
+        }
+    }
+
+    private func removePaneClickMonitor() {
+        if let m = paneClickMonitor { NSEvent.removeMonitor(m); paneClickMonitor = nil }
     }
 
     /// Modal overlays extracted into a single ViewBuilder so the main

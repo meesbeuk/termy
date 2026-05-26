@@ -339,6 +339,71 @@ final class TermyTerminalView: LocalProcessTerminalView {
         onBell?()
     }
 
+    /// Native AppKit context menu installed in makeNSView via `view.menu = ...`.
+    /// Built once, shared across the view's lifetime. SwiftUI's `.contextMenu`
+    /// modifier was previously providing this — but `.contextMenu` installs
+    /// an NSGestureRecognizer that, combined with the NSViewRepresentable
+    /// wrapper, broke SwiftTerm's mouseDown→mouseDragged path for
+    /// drag-to-select. Using AppKit's built-in `view.menu` mechanism means
+    /// right-click is handled at the NSView layer (no gesture recognizers
+    /// in the way) and left-click drag is fully uninterrupted.
+    ///
+    /// `target: nil` on standard items (Copy/Paste/Select All) routes the
+    /// action up the responder chain so AppKit finds SwiftTerm's own
+    /// implementations and auto-validates them (Copy disabled when no
+    /// selection, Paste disabled when clipboard is empty, etc.).
+    static func makeContextMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = true
+
+        let copy = NSMenuItem(title: "Copy",
+                              action: #selector(NSText.copy(_:)),
+                              keyEquivalent: "")
+        menu.addItem(copy)
+
+        let paste = NSMenuItem(title: "Paste",
+                               action: #selector(NSText.paste(_:)),
+                               keyEquivalent: "")
+        menu.addItem(paste)
+
+        let selectAll = NSMenuItem(title: "Select All",
+                                   action: #selector(NSResponder.selectAll(_:)),
+                                   keyEquivalent: "")
+        menu.addItem(selectAll)
+
+        menu.addItem(NSMenuItem.separator())
+
+        menu.addItem(notificationItem(title: "Find in Scrollback",
+                                      notification: .terminalToggleFind))
+        menu.addItem(notificationItem(title: "Clear",
+                                      notification: .terminalClear))
+
+        menu.addItem(NSMenuItem.separator())
+
+        menu.addItem(notificationItem(title: "New Tab",
+                                      notification: .terminalNewTab))
+        menu.addItem(notificationItem(title: "Split Horizontally",
+                                      notification: .terminalSplitHorizontal))
+        menu.addItem(notificationItem(title: "Split Vertically",
+                                      notification: .terminalSplitVertical))
+
+        return menu
+    }
+
+    /// Build a menu item that posts an app notification when triggered.
+    /// Target is the shared dispatcher (which holds the @objc action) so
+    /// the responder chain doesn't need to know about it. Strong reference
+    /// to the dispatcher is held by the menu via target retention.
+    private static func notificationItem(title: String,
+                                         notification: Notification.Name) -> NSMenuItem {
+        let item = NSMenuItem(title: title,
+                              action: #selector(NotificationDispatcher.fire(_:)),
+                              keyEquivalent: "")
+        item.target = NotificationDispatcher.shared
+        item.representedObject = notification.rawValue
+        return item
+    }
+
     /// Intercept link clicks (OSC 8 hyperlinks + implicit URL detection)
     /// to route file paths through the user's preferred editor when
     /// possible. `link` may be:
@@ -1547,6 +1612,10 @@ struct TerminalSurface: NSViewRepresentable {
         // stale rendered text behind on every window drag.
         view.autoresizingMask = [.width, .height]
         view.registerForDraggedTypes([.fileURL])
+        // Native right-click menu (replaces the SwiftUI .contextMenu that
+        // used to wrap PaneCellView). See `TermyTerminalView.makeContextMenu`
+        // for why this was moved off the SwiftUI side.
+        view.menu = TermyTerminalView.makeContextMenu()
 
         // Bridge process state back to the session model — title/cwd updates,
         // termination, etc. Coordinator pattern keeps the delegate alive.
@@ -1746,5 +1815,19 @@ struct TerminalSurface: NSViewRepresentable {
             }
         }
 
+    }
+}
+
+/// Tiny @objc helper that turns NSMenuItem clicks into NotificationCenter
+/// posts. Used by the native context menu installed on every
+/// TermyTerminalView (see makeContextMenu). Kept as a singleton so each
+/// menu item's `target` references the same instance — saves allocating
+/// a fresh dispatcher per menu.
+final class NotificationDispatcher: NSObject {
+    static let shared = NotificationDispatcher()
+    @objc func fire(_ sender: Any?) {
+        guard let item = sender as? NSMenuItem,
+              let raw = item.representedObject as? String else { return }
+        NotificationCenter.default.post(name: Notification.Name(raw), object: nil)
     }
 }

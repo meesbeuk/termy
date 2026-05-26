@@ -110,34 +110,8 @@ struct PaneLayout: View {
             tab: tab,
             sessions: sessions,
             settings: settings,
-            single: single,
-            copySelection: { copySelection(from: $0) },
-            pasteInto: { pasteInto(pane: $0) },
-            selectAll: { selectAll(in: $0) },
-            hasSelection: { hasSelection(in: $0) }
+            single: single
         )
-    }
-
-    /// SwiftTerm's `selection` is internal — we can't query it directly.
-    /// Always enable Copy; if there's no selection SwiftTerm's copy(_:)
-    /// implementation no-ops gracefully (writes empty string).
-    private func hasSelection(in pane: TerminalSession) -> Bool { true }
-
-    private func copySelection(from pane: TerminalSession) {
-        // SwiftTerm's MacTerminalView declares `open func copy(_:)` that
-        // pulls selection text and writes to NSPasteboard. Calling it
-        // directly avoids the internal-access wall while still honoring
-        // SwiftTerm's row/column handling.
-        pane.terminalView?.copy(NSObject())
-    }
-
-    private func pasteInto(pane: TerminalSession) {
-        pane.terminalView?.paste(NSObject())
-    }
-
-    private func selectAll(in pane: TerminalSession) {
-        // NSView.selectAll(_:) routes to MacTerminalView's override.
-        pane.terminalView?.selectAll(NSObject())
     }
 }
 
@@ -151,10 +125,6 @@ private struct PaneCellView: View {
     let sessions: TerminalSessions
     @ObservedObject var settings: TerminalSettings
     let single: Bool
-    let copySelection: (TerminalSession) -> Void
-    let pasteInto: (TerminalSession) -> Void
-    let selectAll: (TerminalSession) -> Void
-    let hasSelection: (TerminalSession) -> Bool
 
     var body: some View {
         let isActivePane = pane.id == tab.activePaneId
@@ -170,6 +140,13 @@ private struct PaneCellView: View {
                             )
                     }
                 }
+                // CRITICAL: must NOT intercept clicks. SwiftUI shapes are
+                // hit-testable by default along the stroke path — a click
+                // on the 1pt border ring was getting absorbed and never
+                // reached SwiftTerm. allowsHitTesting(false) makes the
+                // border purely decorative so the entire pane area routes
+                // mouse events straight to the SwiftTerm NSView.
+                .allowsHitTesting(false)
             )
             // Thin animated indeterminate progress stripe along the top
             // edge of the pane while it's actively producing output
@@ -196,38 +173,20 @@ private struct PaneCellView: View {
                     .zIndex(10)
                 }
             }
-            // Use simultaneousGesture (not .onTapGesture) so SwiftUI's
-            // tap-disambiguation state machine doesn't sit on the
-            // mouseDown waiting to decide tap-vs-drag — that delay was
-            // eating the leading edge of every drag-to-select inside
-            // SwiftTerm. simultaneous gestures fire alongside the
-            // underlying NSView event stream, so click-to-focus still
-            // works and SwiftTerm's selection drag is uninterrupted.
-            .simultaneousGesture(TapGesture().onEnded {
-                tab.activePaneId = pane.id
-                if let view = pane.terminalView {
-                    view.window?.makeFirstResponder(view)
-                    NotificationCenter.default.post(
-                        name: TermyTerminalView.focusChangedNotification,
-                        object: view
-                    )
-                }
-            })
-            .contextMenu {
-                Button("Copy") { copySelection(pane) }
-                    .disabled(!hasSelection(pane))
-                Button("Paste") { pasteInto(pane) }
-                Button("Select All") { selectAll(pane) }
-                Divider()
-                Button("Find in Scrollback") {
-                    NotificationCenter.default.post(name: .terminalToggleFind, object: nil)
-                }
-                Button("Clear") { sessions.clearCurrent() }
-                Divider()
-                Button("New Tab") { sessions.openTab() }
-                Button("Split Horizontally") { sessions.splitHorizontal() }
-                Button("Split Vertically") { sessions.splitVertical() }
-            }
+            // NO SwiftUI .onTapGesture / .simultaneousGesture / .contextMenu
+            // here on purpose. Every one of those installs an NSGestureRecognizer
+            // on top of the NSViewRepresentable's hosting view, and AppKit's
+            // gesture system can swallow the mouseDown→mouseDragged stream that
+            // SwiftTerm needs to perform a drag-to-select. Bug repro: with
+            // .onTapGesture or .contextMenu attached, click-and-drag on a
+            // single click felt completely dead — SwiftTerm's mouseDragged
+            // never fired because the gesture recognizer held the mouseDown
+            // hostage. Pane-focus tracking is done by the app-wide
+            // NSEvent.addLocalMonitorForEvents(.leftMouseDown) installed in
+            // App.swift (it walks up the receiver chain to find the
+            // TermyTerminalView under the click, then updates activePaneId on
+            // the owning tab). Right-click menu is installed natively as
+            // -menuForEvent: on TermyTerminalView.
     }
 }
 
