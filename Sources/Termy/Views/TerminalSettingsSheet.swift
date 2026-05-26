@@ -519,7 +519,15 @@ private struct CursorChip: View {
     let kind: String
     let isSelected: Bool
     let onTap: () -> Void
+    @EnvironmentObject var settings: TerminalSettings
     @State private var hovering = false
+
+    /// Cursor preview uses the live theme's cursor color so picking
+    /// "Block" in Sunset shows an amber block, in Aurora a mint block, etc.
+    /// — exactly what the pane will render. The text glyph behind the
+    /// cursor uses the theme's foreground.
+    private var cursorColor: Color { settings.theme.cursorColor }
+    private var glyphColor: Color { settings.theme.foregroundColor.opacity(0.85) }
 
     var body: some View {
         Button(action: onTap) {
@@ -539,7 +547,7 @@ private struct CursorChip: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: DS.Radius.s)
-                    .stroke(isSelected ? DS.Colors.accent : Color.clear, lineWidth: 1)
+                    .stroke(isSelected ? settings.theme.accentColor : Color.clear, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -552,22 +560,22 @@ private struct CursorChip: View {
     private var cursorPreview: some View {
         ZStack {
             Text("a")
-                .font(.system(size: 14, design: .monospaced))
-                .foregroundStyle(DS.Colors.secondary)
+                .font(.custom(settings.fontFamily, size: 14))
+                .foregroundStyle(glyphColor)
             switch kind {
             case "steadyBlock", "blinkBlock":
                 Rectangle()
-                    .fill(DS.Colors.accent.opacity(0.6))
+                    .fill(cursorColor.opacity(0.6))
                     .frame(width: 10, height: 14)
                     .offset(x: 8)
             case "steadyBar", "blinkBar":
                 Rectangle()
-                    .fill(DS.Colors.accent)
+                    .fill(cursorColor)
                     .frame(width: 2, height: 14)
                     .offset(x: 8)
             default:
                 Rectangle()
-                    .fill(DS.Colors.accent)
+                    .fill(cursorColor)
                     .frame(width: 10, height: 2)
                     .offset(x: 8, y: 7)
             }

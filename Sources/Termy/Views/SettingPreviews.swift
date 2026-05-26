@@ -165,7 +165,11 @@ struct ThemePreviewCard: View {
                 themeCursor
             }
         }
-        .font(.system(size: 8, design: .monospaced))
+        // Use the user's chosen font family (SF Mono / Menlo / JetBrains /
+        // etc.) so picking a font in Settings → Font is reflected across
+        // every theme card too — the preview shows the SAME glyphs the
+        // live pane will draw, just smaller.
+        .font(.custom(settings.fontFamily, size: 8))
     }
 
     /// Cursor rendered in the same SHAPE the user has picked under
@@ -199,11 +203,14 @@ struct ThemePreviewCard: View {
 
 /// Mini-terminal preview that scales padding + line spacing to match what the
 /// preset actually applies. Compact = tight, cozy = balanced, spacious = lots
-/// of breathing room. So the user actually sees the difference.
+/// of breathing room. Uses the live theme's colors + font family so the
+/// preview matches what the user's actual pane will render — pick a
+/// padding under Sunset and see Sunset-tinted text, not generic green/white.
 struct DensityPreview: View {
     let preset: PaddingPreset
     let isSelected: Bool
     let onSelect: () -> Void
+    @EnvironmentObject var settings: TerminalSettings
 
     /// Scaled-down line spacing per preset — visible difference in the preview.
     private var lineGap: CGFloat {
@@ -214,7 +221,15 @@ struct DensityPreview: View {
         }
     }
 
+    private func swiftColor(_ rgb: (Int, Int, Int)) -> Color {
+        Color(red: Double(rgb.0) / 255, green: Double(rgb.1) / 255, blue: Double(rgb.2) / 255)
+    }
+
     var body: some View {
+        let theme = settings.theme
+        let fg = theme.foregroundColor
+        let promptColor = swiftColor(theme.ansi[2])   // green channel — matches the ThemePreviewCard convention
+        let dirColor = swiftColor(theme.ansi[4])      // blue channel
         Button(action: onSelect) {
             VStack(spacing: 4) {
                 ZStack {
@@ -222,26 +237,21 @@ struct DensityPreview: View {
                         .fill(Color.black.opacity(0.55))
                     VStack(alignment: .leading, spacing: lineGap) {
                         HStack(spacing: 3) {
-                            Text("$")
-                                .foregroundStyle(.green.opacity(0.9))
-                            Text("ls")
-                                .foregroundStyle(.white)
+                            Text("$").foregroundStyle(promptColor)
+                            Text("ls").foregroundStyle(fg)
                         }
                         HStack(spacing: 5) {
-                            Text("Sources")
-                                .foregroundStyle(.blue.opacity(0.9))
-                            Text("Tests")
-                                .foregroundStyle(.blue.opacity(0.9))
+                            Text("Sources").foregroundStyle(dirColor)
+                            Text("Tests").foregroundStyle(dirColor)
                         }
                         HStack(spacing: 3) {
-                            Text("$")
-                                .foregroundStyle(.green.opacity(0.9))
+                            Text("$").foregroundStyle(promptColor)
                             Rectangle()
-                                .fill(.white)
+                                .fill(theme.cursorColor)
                                 .frame(width: 4, height: 7)
                         }
                     }
-                    .font(.system(size: 7, design: .monospaced))
+                    .font(.custom(settings.fontFamily, size: 7))
                     .padding(.horizontal, preset.horizontal * 0.55)
                     .padding(.vertical, preset.vertical * 0.55)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -249,7 +259,7 @@ struct DensityPreview: View {
                 .frame(height: 72)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(isSelected ? DS.Colors.accent : Color.clear, lineWidth: 1.5)
+                        .strokeBorder(isSelected ? theme.accentColor : Color.clear, lineWidth: 1.5)
                 )
                 Text(preset.displayName)
                     .font(DS.Typo.tiny)
@@ -292,12 +302,21 @@ struct FontPreview: View {
 
 // MARK: - Opacity preview swatch
 
+/// Shows how much of "the wallpaper" the configured opacity blocks out,
+/// with sample text in the user's actual theme foreground + font so what
+/// they see here matches what the pane will render. The simulated
+/// wallpaper is a fixed gradient — real Termy renders over the user's
+/// actual desktop and that's per-user, but the value the slider drives
+/// (the dark overlay alpha) is the only thing the setting actually
+/// controls, and that IS shown faithfully.
 struct OpacityPreview: View {
     let opacity: Double
+    @EnvironmentObject var settings: TerminalSettings
 
     var body: some View {
         ZStack {
-            // Fake "wallpaper" gradient to demonstrate what shows through.
+            // Simulated wallpaper — neutral enough that text in any theme
+            // foreground stays readable across the swatch.
             LinearGradient(
                 colors: [Color.blue.opacity(0.6), Color.purple.opacity(0.5), Color.pink.opacity(0.4)],
                 startPoint: .topLeading,
@@ -305,8 +324,8 @@ struct OpacityPreview: View {
             )
             Color.black.opacity(opacity)
             Text("Sample terminal text")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.white)
+                .font(.custom(settings.fontFamily, size: 11))
+                .foregroundStyle(settings.theme.foregroundColor)
         }
         .frame(height: 44)
         .clipShape(RoundedRectangle(cornerRadius: 6))
