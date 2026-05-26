@@ -6,6 +6,32 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.13.2</title>
+            <description><![CDATA[
+                <h2>v0.13.2 — Selection drag actually works (rearchitected)</h2>
+<p>The previous attempt at fixing drag-to-select (v0.13.0, which switched <code>.onTapGesture</code> to <code>.simultaneousGesture</code>) didn't go far enough — selection was still broken because TWO SwiftUI modifiers were eating the mouseDown stream that SwiftTerm needs. This release rips both out and replaces them with pure AppKit equivalents.</p>
+<ul>
+  <li><b>SwiftUI gestures and contextMenu removed from the pane cell.</b> Both <code>.simultaneousGesture(TapGesture()...)</code> AND <code>.contextMenu { ... }</code> install <code>NSGestureRecognizer</code>s on the NSViewRepresentable hosting view. Combined, they were swallowing the leading edge of every mouseDragged so SwiftTerm's drag-to-select never started. Click-and-drag in the terminal area now goes straight to SwiftTerm with zero SwiftUI in the way.</li>
+  <li><b>Pane focus tracking moved to a window-scoped NSEvent monitor.</b> A new <code>NSEvent.addLocalMonitorForEvents(.leftMouseDown)</code> installed alongside the existing key monitor (lifecycle tied to <code>hostedWindow</code>) walks the responder chain on each click to find the underlying <code>TermyTerminalView</code> and update <code>tab.activePaneId</code> + <code>sessions.selectedTabId</code> accordingly. The monitor only READS the event (returns it unchanged), so SwiftTerm gets the full event stream.</li>
+  <li><b>Right-click context menu is now a native AppKit NSMenu.</b> Installed via <code>view.menu = TermyTerminalView.makeContextMenu()</code> in <code>makeNSView</code>. Copy / Paste / Select All target the responder chain (so SwiftTerm's own validate-menu-item logic auto-disables Copy when there's no selection, Paste when the clipboard is empty, etc.). Find / Clear / New Tab / Split Horizontally / Split Vertically post their existing notifications via a tiny singleton <code>NotificationDispatcher</code>.</li>
+  <li><b>Active-pane border overlay marked non-hit-testable.</b> SwiftUI shapes are hit-testable along the stroke path by default, so the 1pt accent ring around the active pane was eating clicks that landed exactly on the border. <code>.allowsHitTesting(false)</code> on the overlay makes it purely decorative.</li>
+</ul>
+<p>Net effect: drag-to-select, double-click word selection, triple-click line selection, shift-click extend, copy/paste/select-all from the right-click menu — all work on the first click, every time, in any pane (single or split).</p>
+            ]]></description>
+            <pubDate>Tue, 26 May 2026 10:57:15 +0000</pubDate>
+            <sparkle:version>59</sparkle:version>
+            <sparkle:shortVersionString>0.13.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.13.2/Termy.dmg"
+                sparkle:version="59"
+                sparkle:shortVersionString="0.13.2"
+                length="3344830"
+                sparkle:edSignature="IzoaBymUqLsNRNa8bwC255EJRpwlo3r19eM9puPpOXwfFComLAHE16d0rlEqVj5cva5kTCRVzvzvdJ+qtrpWAA=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.13.1</title>
             <description><![CDATA[
                 <h2>v0.13.1 — Previews use the user's font + theme everywhere</h2>
