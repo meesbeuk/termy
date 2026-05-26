@@ -6,6 +6,31 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.13.1</title>
+            <description><![CDATA[
+                <h2>v0.13.1 — Previews use the user's font + theme everywhere</h2>
+<p>Pass-2 polish on the Settings sheet — every visual preview now renders with the same font family and theme palette the live pane uses, so picking a font or a theme shows the same glyphs and colors in the preview as you'll see seconds later in the terminal.</p>
+<ul>
+  <li><b>Theme preview cards use your font.</b> Sample text inside each theme card now renders with <code>settings.fontFamily</code> (SF Mono / Menlo / JetBrains Mono / Hack / whatever you picked under Settings → Font) instead of generic <code>.system(.monospaced)</code>. So changing font family is visible across the theme picker too — every card switches together. Cursor in each card still matches the cursor style you chose (block / bar / underline) in each theme's cursor color.</li>
+  <li><b>Cursor-style chips show the active theme's cursor color.</b> The block/bar/underline chips used to render the cursor in the system accent (blue everywhere) regardless of theme. Now they use <code>theme.cursorColor</code> + <code>theme.foregroundColor</code> for the demo glyph and the theme's accent color for the selection ring — pick a chip under Sunset and see the amber cursor you'll actually get.</li>
+  <li><b>Density preview uses theme colors.</b> Compact / Cozy / Spacious cards used hardcoded green/white/blue. Now they read <code>theme.ansi[2]</code> (prompt), <code>theme.ansi[4]</code> (directory), <code>theme.foreground</code> (text), <code>theme.cursorColor</code> (cursor) and <code>theme.accentColor</code> (selection ring), in the user's font family. Picking a padding preset is no longer a context-switch out of your theme.</li>
+  <li><b>Opacity preview uses your theme foreground + font.</b> The sample "Sample terminal text" inside the opacity swatch now renders in the actual theme foreground at the user's font, so what you see at 70% opacity is what you'll see on the pane.</li>
+</ul>
+            ]]></description>
+            <pubDate>Tue, 26 May 2026 10:47:35 +0000</pubDate>
+            <sparkle:version>58</sparkle:version>
+            <sparkle:shortVersionString>0.13.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.13.1/Termy.dmg"
+                sparkle:version="58"
+                sparkle:shortVersionString="0.13.1"
+                length="3347415"
+                sparkle:edSignature="lunin/t8PJzvUDsvrBQ/bJt0PKjNNWuMecuSn+Q9d9nV7hT//bODO3V1YmrNmUe1B5aNuv2b584uEScx1966AA=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.13.0</title>
             <description><![CDATA[
                 <h2>v0.13.0 — Honest theme previews, polished session logs, smooth selection</h2>
