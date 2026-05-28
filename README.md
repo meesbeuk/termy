@@ -49,6 +49,17 @@ Requires macOS 15+ and the Xcode Command Line Tools.
 
 ## Features
 
+### Run a whole agent fleet (v0.15)
+- **Quad Claude** — `⌘⌥N` (or the grid toolbar button) spawns a 2×2 grid with a Claude Code session ready in each pane, in your current project. Define your own named layouts (grid + per-pane cwd + startup command) in the visual layout picker.
+- **Agent Dashboard** (`⌘⌥A`) — every pane across every tab at a glance: working / idle / **waiting-for-input**. A pane blocked on a y/n or "proceed?" prompt gets a loud pulsing badge so it never goes unnoticed. Click to focus.
+- **Send to one pane** (`⌘⇧S`) and **broadcast** to all — drive one agent or every agent.
+- **Pane zoom** (`⌘⇧↩`), and **real drag-to-resize** between any panes (including grids).
+- **Resume a past Claude session** into a new pane from the Agent Sessions panel.
+- **Claude Usage** (`⌘⌥U`) — tokens + estimated cost (today / 7 days / all-time, by model), read natively from your local logs — no Node, no `ccusage` install.
+- **Command Blocks** (`⌘⇧B`) and **inline images** (iTerm2 / kitty / Sixel, plus a native Show Image…).
+
+Every action is reachable without a keybind — menu bar, command palette, right-click, and toolbar buttons — with shortcuts shown inline. Layouts persist as JSON under `termy.layouts.v1`; see `FEATURES_v0.15_REPORT.md` for the config schema, full keybind table, and UI locations.
+
 ### Built for AI workflows
 - **Vibecoder Mode** — Claude Code + OpenAI Codex quick-launch icons in the title strip. One click, command runs.
 - Add other AI CLIs as **Workflows** in the Command Palette (⌘⇧P).
