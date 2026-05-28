@@ -32,7 +32,8 @@ if grep -q "TERMY_PATCH_BEGIN line_spacing" "$MAC_FILE" 2>/dev/null && \
    grep -q "TERMY_PATCH host-controlled extra leading" "$APPLE_FILE" 2>/dev/null && \
    grep -q "TERMY_PATCH_BEGIN font_thicken" "$APPLE_FILE" 2>/dev/null && \
    grep -q "TERMY_PATCH preserve_selection_on_layout" "$MAC_FILE" 2>/dev/null && \
-   grep -q "TERMY_PATCH preserve_selection_on_keydown" "$MAC_FILE" 2>/dev/null; then
+   grep -q "TERMY_PATCH preserve_selection_on_keydown" "$MAC_FILE" 2>/dev/null && \
+   grep -q "TERMY_PATCH return_key_enter" "$MAC_FILE" 2>/dev/null; then
     echo "patch-swiftterm: already applied"
     exit 0
 fi
@@ -221,6 +222,45 @@ new = """    public override func keyDown(with event: NSEvent) {
 if old not in text:
     sys.exit("keyDown anchor missing")
 open(path, "w").write(text.replace(old, new, 1))
+PY
+
+# --- map the main Return key to the kitty .enter functional key ----------
+# Under the kitty keyboard protocol (which Claude Code, neovim, fish, etc.
+# enable via `CSI > 1 u`), modified Enter must be disambiguated from plain
+# Enter. SwiftTerm's `kittyFunctionalKey(from:)` mapped keypad-Enter and the
+# arrow/F keys but NOT the main Return key (kVK_Return = 36). So Shift+Enter
+# fell through keyDown's kitty branch into `interpretKeyEvents` ->
+# `doCommand(insertNewline:)` -> `sendKittyFunctionalKey(.enter)` with NO
+# modifiers — the Shift bit was dropped, so Claude (and any kitty-aware app)
+# received a plain Enter and couldn't tell it apart. Result: Shift+Enter
+# submitted instead of inserting a newline.
+#
+# Mapping kVK_Return -> .enter routes it through the kitty functional-key
+# path in keyDown, which encodes WITH the real modifiers:
+#   plain Enter      -> CR (0x0d)            [legacySpecialKeySequence]
+#   Shift+Enter      -> ESC [ 1 3 ; 2 u      [encodeCsiU, exactly what Claude wants]
+# Unmodified Enter is unchanged (still CR), so there's no regression for
+# shells/REPLs. When kitty mode is OFF the whole branch is skipped, so normal
+# terminals are entirely unaffected.
+python3 - "$MAC_FILE" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+if "TERMY_PATCH return_key_enter" in text:
+    sys.exit(0)
+anchor = """        switch Int(event.keyCode) {
+        case kVK_ANSI_Keypad0:
+            return .keypad0"""
+patch = """        switch Int(event.keyCode) {
+        // TERMY_PATCH return_key_enter — main Return is a kitty functional key
+        // so Shift/Ctrl/Alt+Enter disambiguate (e.g. Shift+Enter => ESC[13;2u).
+        case kVK_Return:
+            return .enter
+        case kVK_ANSI_Keypad0:
+            return .keypad0"""
+if anchor not in text:
+    sys.exit("kittyFunctionalKey keyCode switch anchor missing")
+open(path, "w").write(text.replace(anchor, patch, 1))
 PY
 
 echo "patch-swiftterm: done"
