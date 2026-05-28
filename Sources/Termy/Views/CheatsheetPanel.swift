@@ -112,14 +112,16 @@ enum ShortcutCategory: String, CaseIterable, Identifiable {
             ("Next / previous tab",       "⌘⇧] / ⌘⇧["),
             ("Jump to tab 1-8",           "⌘1-8"),
             ("Jump to last tab",          "⌘9"),
-            ("Rename tab",                "Double-click chip"),
+            ("Rename tab",                "Right-click chip → Rename"),
+            ("Tab color / Reveal in Finder", "Right-click chip"),
         ]
         case .splits: return [
             ("Split horizontally",        "⌘D"),
             ("Split vertically",          "⌘⇧D"),
-            ("Focus next pane",           "⌘⌥]"),
-            ("Focus previous pane",       "⌘⌥["),
-            ("Broadcast input toggle",    "Tab → right-click"),
+            ("Focus next / previous pane", "⌘⌥] / ⌘⌥["),
+            ("Close pane",                "⌘W  ·  right-click pane"),
+            ("Resize panes",              "Drag the divider between panes"),
+            ("Broadcast input toggle",    "Palette  ·  right-click tab"),
         ]
         case .search: return [
             ("Find in scrollback",        "⌘F"),

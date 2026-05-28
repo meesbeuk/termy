@@ -381,19 +381,31 @@ final class TermyTerminalView: LocalProcessTerminalView {
 
         menu.addItem(NSMenuItem.separator())
 
-        menu.addItem(notificationItem(title: "Find in Scrollback",
+        menu.addItem(notificationItem(title: "Find in Scrollback (⌘F)",
                                       notification: .terminalToggleFind))
-        menu.addItem(notificationItem(title: "Clear",
+        menu.addItem(notificationItem(title: "Clear (⌘K)",
                                       notification: .terminalClear))
+        menu.addItem(notificationItem(title: "Copy Last Output (⌘⇧C)",
+                                      notification: .terminalCopyLastOutput))
 
         menu.addItem(NSMenuItem.separator())
 
-        menu.addItem(notificationItem(title: "New Tab",
+        menu.addItem(notificationItem(title: "New Tab (⌘T)",
                                       notification: .terminalNewTab))
-        menu.addItem(notificationItem(title: "Split Horizontally",
+        menu.addItem(notificationItem(title: "Split Horizontally (⌘D)",
                                       notification: .terminalSplitHorizontal))
-        menu.addItem(notificationItem(title: "Split Vertically",
+        menu.addItem(notificationItem(title: "Split Vertically (⌘⇧D)",
                                       notification: .terminalSplitVertical))
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Pane focus + close were keyboard-/menu-bar-only; surface them on the
+        // pane right-click too so they're reachable where the user is already
+        // pointing. Keybinds shown inline per the discoverability rule.
+        menu.addItem(notificationItem(title: "Focus Next Pane (⌘⌥])",
+                                      notification: .terminalFocusNextPane))
+        menu.addItem(notificationItem(title: "Close Pane (⌘W)",
+                                      notification: .terminalCloseTab))
 
         return menu
     }

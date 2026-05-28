@@ -202,6 +202,12 @@ struct CommandPalette: View {
                                  action: { sessions.splitHorizontal() }))
         items.append(PaletteItem(kind: .action, title: "Split Vertically", subtitle: "⌘⇧D",
                                  action: { sessions.splitVertical() }))
+        if (sessions.currentTab?.panes.count ?? 0) > 1 {
+            items.append(PaletteItem(kind: .action, title: "Focus Next Pane", subtitle: "⌘⌥]",
+                                     action: { sessions.focusNextPane() }))
+            items.append(PaletteItem(kind: .action, title: "Focus Previous Pane", subtitle: "⌘⌥[",
+                                     action: { sessions.focusPreviousPane() }))
+        }
         items.append(PaletteItem(kind: .action, title: "Clear", subtitle: "⌘K",
                                  action: { sessions.clearCurrent() }))
         items.append(PaletteItem(kind: .action, title: "Toggle Vibecoder Mode",
