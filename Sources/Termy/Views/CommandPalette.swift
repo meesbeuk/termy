@@ -10,6 +10,7 @@ struct CommandPalette: View {
     // YAML files from ~/.termy/workflows/ and project-local
     // .termy/workflows/, never injects defaults.
     @EnvironmentObject var workflows: WorkflowStore
+    @EnvironmentObject var layouts: LayoutStore
     let onDismiss: () -> Void
 
     @State private var query: String = ""
@@ -202,6 +203,38 @@ struct CommandPalette: View {
                                  action: { sessions.splitHorizontal() }))
         items.append(PaletteItem(kind: .action, title: "Split Vertically", subtitle: "⌘⇧D",
                                  action: { sessions.splitVertical() }))
+        if (sessions.currentTab?.panes.count ?? 0) > 1 {
+            items.append(PaletteItem(kind: .action, title: "Focus Next Pane", subtitle: "⌘⌥]",
+                                     action: { sessions.focusNextPane() }))
+            items.append(PaletteItem(kind: .action, title: "Focus Previous Pane", subtitle: "⌘⌥[",
+                                     action: { sessions.focusPreviousPane() }))
+            items.append(PaletteItem(kind: .action, title: "Zoom / Restore Pane", subtitle: "⌘⇧↩",
+                                     action: { sessions.toggleZoomActivePane() }))
+            items.append(PaletteItem(kind: .action, title: "Send Text to Pane…", subtitle: "⌘⇧S",
+                                     action: { NotificationCenter.default.post(name: .terminalSendToPane, object: nil) }))
+        }
+        // Layouts — spawn any named layout (Quad Claude & co.) straight from
+        // the palette, plus a visible entry to open the full picker.
+        for layout in layouts.all {
+            items.append(PaletteItem(kind: .action, title: "Layout: \(layout.name)",
+                                     subtitle: "\(layout.shapeLabel) · \(layout.id == layouts.quickLayoutID ? "⌘⌥N" : "spawn")",
+                                     action: { sessions.spawnLayout(layout) }))
+        }
+        items.append(PaletteItem(kind: .action, title: "Layout Picker…",
+                                 subtitle: "Browse, edit & save layouts",
+                                 action: { NotificationCenter.default.post(name: .terminalOpenLayoutPicker, object: nil) }))
+        items.append(PaletteItem(kind: .action, title: "Agent Dashboard…",
+                                 subtitle: "⌘⌥A — every pane's state at a glance",
+                                 action: { NotificationCenter.default.post(name: .terminalOpenAgentDashboard, object: nil) }))
+        items.append(PaletteItem(kind: .action, title: "Show Image…",
+                                 subtitle: "Render a local image inline (iTerm2/kitty protocol)",
+                                 action: { NotificationCenter.default.post(name: .terminalShowImage, object: nil) }))
+        items.append(PaletteItem(kind: .action, title: "Command Blocks…",
+                                 subtitle: "⌘⇧B — collapsible command + output history (OSC 133)",
+                                 action: { NotificationCenter.default.post(name: .terminalToggleCommandBlocks, object: nil) }))
+        items.append(PaletteItem(kind: .action, title: "Claude Usage…",
+                                 subtitle: "⌘⌥U — tokens + est. cost from ~/.claude logs",
+                                 action: { NotificationCenter.default.post(name: .terminalOpenClaudeUsage, object: nil) }))
         items.append(PaletteItem(kind: .action, title: "Clear", subtitle: "⌘K",
                                  action: { sessions.clearCurrent() }))
         items.append(PaletteItem(kind: .action, title: "Toggle Vibecoder Mode",

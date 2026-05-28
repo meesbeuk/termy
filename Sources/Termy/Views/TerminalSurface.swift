@@ -43,6 +43,10 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// reported as a leading edge instead of only the trailing edge.
     var onActivityChanged: ((_ active: Bool) -> Void)?
 
+    /// Fired at OSC 133;D with the captured command line, its output preview,
+    /// and the prompt row — drives the Command Blocks panel.
+    var onCommandBlock: ((_ command: String, _ output: String, _ row: Int) -> Void)?
+
     /// Re-applies theme + caret colors. Set by TerminalSurface so we can
     /// re-run it both when the view first lands in a window AND on first
     /// non-zero layout. SwiftTerm's caret is positioned by updateDisplay,
@@ -139,6 +143,9 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// jump prompt-to-prompt without the user scrolling. Capped at
     /// 1000 to bound memory for marathon sessions; oldest dropped.
     var promptMarks: [Int] = []
+
+    /// Command line captured at OSC 133;C, paired with its output at 133;D.
+    private var pendingBlockCommand: String?
 
     // MARK: - Cinema mode (typewriter pacer)
     //
@@ -381,19 +388,36 @@ final class TermyTerminalView: LocalProcessTerminalView {
 
         menu.addItem(NSMenuItem.separator())
 
-        menu.addItem(notificationItem(title: "Find in Scrollback",
+        menu.addItem(notificationItem(title: "Find in Scrollback (⌘F)",
                                       notification: .terminalToggleFind))
-        menu.addItem(notificationItem(title: "Clear",
+        menu.addItem(notificationItem(title: "Clear (⌘K)",
                                       notification: .terminalClear))
+        menu.addItem(notificationItem(title: "Copy Last Output (⌘⇧C)",
+                                      notification: .terminalCopyLastOutput))
 
         menu.addItem(NSMenuItem.separator())
 
-        menu.addItem(notificationItem(title: "New Tab",
+        menu.addItem(notificationItem(title: "New Tab (⌘T)",
                                       notification: .terminalNewTab))
-        menu.addItem(notificationItem(title: "Split Horizontally",
+        menu.addItem(notificationItem(title: "Split Horizontally (⌘D)",
                                       notification: .terminalSplitHorizontal))
-        menu.addItem(notificationItem(title: "Split Vertically",
+        menu.addItem(notificationItem(title: "Split Vertically (⌘⇧D)",
                                       notification: .terminalSplitVertical))
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Pane focus + zoom + send + close were keyboard-/menu-bar-only;
+        // surface them on the pane right-click too so they're reachable where
+        // the user is already pointing. Keybinds shown inline per the
+        // discoverability rule.
+        menu.addItem(notificationItem(title: "Zoom / Restore Pane (⌘⇧↩)",
+                                      notification: .terminalZoomPane))
+        menu.addItem(notificationItem(title: "Send Text to Pane… (⌘⇧S)",
+                                      notification: .terminalSendToPane))
+        menu.addItem(notificationItem(title: "Focus Next Pane (⌘⌥])",
+                                      notification: .terminalFocusNextPane))
+        menu.addItem(notificationItem(title: "Close Pane (⌘W)",
+                                      notification: .terminalCloseTab))
 
         return menu
     }
@@ -847,8 +871,10 @@ final class TermyTerminalView: LocalProcessTerminalView {
                 }
             }
         case "C":
-            // Command output starts — reset preview so it captures only
-            // this command's output, not the prompt prefix.
+            // Command output starts — capture the command line (the buffer tail
+            // before we reset) for the command-block, then reset preview so it
+            // captures only this command's output, not the prompt prefix.
+            pendingBlockCommand = tailLine(from: lastPreviewBuffer)
             lastPreviewBuffer = ""
             bytesSinceBurstStart = 0
         case "D":
@@ -860,6 +886,12 @@ final class TermyTerminalView: LocalProcessTerminalView {
             osc133JustFired = true
             onActivityChanged?(false)
             onCommandSettled?(preview, true)
+            // Emit a command block (command + output preview) for the panel.
+            if let cmd = pendingBlockCommand, !cmd.isEmpty {
+                let row = promptMarks.last ?? (getTerminal().buffer.yDisp + getTerminal().buffer.y)
+                onCommandBlock?(cmd, lastPreviewBuffer, row)
+                pendingBlockCommand = nil
+            }
         default:
             break
         }
@@ -1590,10 +1622,26 @@ struct TerminalSurface: NSViewRepresentable {
                 cwd: session.cwd
             )
         }
-        view.onActivityChanged = { [weak session] active in
+        view.onActivityChanged = { [weak session, weak view] active in
             DispatchQueue.main.async {
-                guard let session, session.isActive != active else { return }
-                session.isActive = active
+                guard let session else { return }
+                if session.isActive != active { session.isActive = active }
+                // Update the coarse activity state too. On the idle transition,
+                // classify the now-visible tail: a y/n / numbered prompt means
+                // the pane is WAITING on the user, otherwise it's just idle.
+                if active {
+                    if session.activity != .working { session.activity = .working }
+                } else {
+                    let recent = view?.recentVisibleText() ?? ""
+                    let next: PaneActivity = PaneActivityClassifier.isWaitingPrompt(recent) ? .waiting : .idle
+                    if session.activity != next { session.activity = next }
+                    // Capture the last visible line for the agent dashboard preview.
+                    let line = recent.split(whereSeparator: { $0 == "\n" || $0 == "\r" })
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                        .last(where: { !$0.isEmpty }) ?? ""
+                    let trimmed = String(line.prefix(120))
+                    if session.lastLine != trimmed { session.lastLine = trimmed }
+                }
             }
         }
         view.onCommandSettled = { [weak session] preview, viaOSC133 in
@@ -1604,6 +1652,13 @@ struct TerminalSurface: NSViewRepresentable {
                 preview: preview,
                 viaOSC133: viaOSC133
             )
+        }
+        view.onCommandBlock = { [weak session] command, output, row in
+            guard let session else { return }
+            DispatchQueue.main.async {
+                let block = CommandBlock(command: command, output: output, row: row, at: Date())
+                session.commandBlocks = CommandBlockLog.appended(session.commandBlocks, block)
+            }
         }
         // Wire the trigger pipeline. Triggers come from a shared
         // TriggerRegistry singleton so toggling a pack in Settings

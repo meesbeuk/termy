@@ -10,6 +10,7 @@ struct TermyApp: App {
     @StateObject private var workflows = WorkflowStore()
     @StateObject private var pasteHistory = PasteHistoryStore()
     @StateObject private var updater = Updater()
+    @StateObject private var layouts = LayoutStore()
 
     /// Only the first window restores persisted tabs; further windows are blank.
     nonisolated(unsafe) static var didRestoreFirstWindow = false
@@ -30,6 +31,7 @@ struct TermyApp: App {
             .environmentObject(workflows)
             .environmentObject(pasteHistory)
             .environmentObject(updater)
+            .environmentObject(layouts)
         }
         .windowStyle(.hiddenTitleBar)
         // .automatic = window can be freely resized; SwiftTerm reflows its
@@ -101,6 +103,42 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalFocusPreviousPane, object: nil)
                 }
                 .keyboardShortcut("[", modifiers: [.command, .option])
+                Divider()
+                Button("New Layout: \(layouts.quickLayout.name)") {
+                    NotificationCenter.default.post(name: .terminalSpawnQuickLayout, object: nil)
+                }
+                .keyboardShortcut("n", modifiers: [.command, .option])
+                Menu("New Layout") {
+                    ForEach(layouts.all) { layout in
+                        Button("\(layout.name)  ·  \(layout.shapeLabel)") {
+                            NotificationCenter.default.post(name: .terminalSpawnLayout,
+                                                            object: layout.id.uuidString)
+                        }
+                    }
+                    Divider()
+                    Button("Layout Picker…") {
+                        NotificationCenter.default.post(name: .terminalOpenLayoutPicker, object: nil)
+                    }
+                }
+                Button("Agent Dashboard…") {
+                    NotificationCenter.default.post(name: .terminalOpenAgentDashboard, object: nil)
+                }
+                .keyboardShortcut("a", modifiers: [.command, .option])
+                Button("Zoom / Restore Pane") {
+                    NotificationCenter.default.post(name: .terminalZoomPane, object: nil)
+                }
+                .keyboardShortcut(.return, modifiers: [.command, .shift])
+                Button("Send Text to Pane…") {
+                    NotificationCenter.default.post(name: .terminalSendToPane, object: nil)
+                }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+                Button("Show Image…") {
+                    NotificationCenter.default.post(name: .terminalShowImage, object: nil)
+                }
+                Button("Command Blocks…") {
+                    NotificationCenter.default.post(name: .terminalToggleCommandBlocks, object: nil)
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
                 Divider()
                 Button("Duplicate Tab") {
                     NotificationCenter.default.post(name: .terminalDuplicateTab, object: nil)
@@ -210,11 +248,17 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalOpenAgentPanel, object: nil)
                 }
                 .keyboardShortcut("a", modifiers: [.command, .shift])
+                Button("Claude Usage…") {
+                    NotificationCenter.default.post(name: .terminalOpenClaudeUsage, object: nil)
+                }
+                .keyboardShortcut("u", modifiers: [.command, .option])
                 Button("Quick Select…") {
                     NotificationCenter.default.post(name: .terminalOpenQuickSelect, object: nil)
                 }
                 .keyboardShortcut("/", modifiers: [.command, .shift])
                 QuickTerminalToggleButton(settings: settings, profiles: profiles)
+                Divider()
+                Toggle("Secure Keyboard Entry", isOn: $settings.secureKeyboardEntry)
             }
             CommandGroup(after: .windowArrangement) {
                 Button("Toggle Always on Top") {
@@ -281,6 +325,16 @@ extension Notification.Name {
     static let terminalScrollToTop = Notification.Name("mees.terminal.scrollToTop")
     static let terminalScrollToBottom = Notification.Name("mees.terminal.scrollToBottom")
     static let terminalCopyLastOutput = Notification.Name("mees.terminal.copyLastOutput")
+    // Agents & layouts (v0.15)
+    static let terminalSpawnQuickLayout = Notification.Name("mees.terminal.spawnQuickLayout")
+    static let terminalSpawnLayout = Notification.Name("mees.terminal.spawnLayout")
+    static let terminalOpenLayoutPicker = Notification.Name("mees.terminal.openLayoutPicker")
+    static let terminalOpenAgentDashboard = Notification.Name("mees.terminal.openAgentDashboard")
+    static let terminalZoomPane = Notification.Name("mees.terminal.zoomPane")
+    static let terminalSendToPane = Notification.Name("mees.terminal.sendToPane")
+    static let terminalToggleCommandBlocks = Notification.Name("mees.terminal.toggleCommandBlocks")
+    static let terminalShowImage = Notification.Name("mees.terminal.showImage")
+    static let terminalOpenClaudeUsage = Notification.Name("mees.terminal.openClaudeUsage")
     /// Posted when LaunchServices hands us one or more `termy://` URLs (or
     /// when an in-app menu like the command palette wants to simulate one
     /// for testing). Key window drains `TerminalAppDelegate.pendingTermyURLs`.
@@ -558,6 +612,17 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
         // Belt-and-braces — some quit paths skip applicationShouldTerminate
         // (e.g. system shutdown / log out).
         Self.isTerminating = true
+        SecureInput.disable()
+    }
+
+    // Secure Keyboard Entry must follow app-active state: enable only while
+    // Termy is frontmost, release the moment it isn't, so it never blocks
+    // input elsewhere.
+    func applicationDidBecomeActive(_ notification: Notification) {
+        SecureInput.refresh(appActive: true)
+    }
+    func applicationWillResignActive(_ notification: Notification) {
+        SecureInput.refresh(appActive: false)
     }
 
     /// Right-click Termy in the Dock → this menu. macOS appends its own

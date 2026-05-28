@@ -18,6 +18,22 @@ final class TerminalSession: ObservableObject, Identifiable {
     /// progress stripe at the top of the active pane.
     @Published var isActive: Bool = false
 
+    /// Coarse runtime state (working / idle / waiting-for-input) used by the
+    /// activity stripe and the agent mission-control dashboard. `isActive`
+    /// remains the raw "producing output" bit; `activity` adds the
+    /// idle-but-waiting-at-a-prompt distinction.
+    @Published var activity: PaneActivity = .idle
+
+    /// Last non-empty visible line, captured on the idle transition. Drives the
+    /// agent dashboard's per-pane "what's on screen" preview (the prompt it's
+    /// waiting on, or the last output line).
+    @Published var lastLine: String = ""
+
+    /// Command+output blocks captured from OSC 133 shell-integration marks.
+    /// Populated only for shells with shell integration installed; powers the
+    /// Command Blocks panel. Bounded by CommandBlockLog.cap.
+    @Published var commandBlocks: [CommandBlock] = []
+
     /// The actual SwiftTerm view. Created lazily once the SwiftUI representable
     /// is mounted so we don't fork a shell we never display.
     var terminalView: LocalProcessTerminalView?
@@ -436,6 +452,12 @@ final class TerminalSessions: ObservableObject {
         view.copy(NSObject())
     }
 
+    /// Scroll the active pane so a given scrollback row is in view — used by
+    /// the Command Blocks panel to jump to a command.
+    func scrollActivePane(toRow row: Int) {
+        currentSession?.terminalView?.scrollTo(row: max(0, row))
+    }
+
     /// Scroll the active pane to the very top of the scrollback buffer.
     /// SwiftTerm's `scrollTo(row:)` accepts an absolute row; clamps at 0
     /// internally if we ask lower than the buffer start.
@@ -508,6 +530,19 @@ final class TerminalSessions: ObservableObject {
         persist()
     }
 
+    /// Open a new tab in `cwd` and run `command` once the shell is up, via the
+    /// same pendingInitialCommand path used for dropped scripts (real Enter, no
+    /// blind timer). Used by "Resume session" in the Agent panel.
+    func openTabRunning(cwd: String, command: String) {
+        let session = TerminalSession(initialCwd: cwd)
+        session.pendingInitialCommand = command.isEmpty ? nil : command
+        let tab = TerminalTab(panes: [session])
+        tabs.append(tab)
+        selectedTabId = tab.id
+        persist()
+        notifyActivePaneChanged()
+    }
+
     /// Open a file the OS asked us to handle — typically a .sh / .command /
     /// +x binary double-clicked in Finder. Opens a new tab in the file's
     /// parent dir and queues the file path as the first shell command, so
@@ -523,6 +558,106 @@ final class TerminalSessions: ObservableObject {
         tabs.append(tab)
         selectedTabId = tab.id
         persist()
+    }
+
+    // MARK: - Layouts
+
+    /// Spawn a named layout as a NEW tab: one pane per spec, each opened in its
+    /// configured cwd (empty = inherit the current pane's cwd) and running its
+    /// startup command. The command is delivered via `pendingInitialCommand` —
+    /// the same path the app uses to run a dropped script — so it submits with
+    /// a real Enter once the shell is up, rather than via blind timed
+    /// keystrokes. Grid layouts (e.g. Quad Claude 2×2) set `gridColumns`; 1-row
+    /// / 1-column layouts reuse the existing H/V split path.
+    func spawnLayout(_ layout: TermyLayout) {
+        let baseCwd = currentSession?.cwd ?? NSHomeDirectory()
+        let plan = layout.plan(baseCwd: baseCwd)
+        guard !plan.panes.isEmpty else { return }
+
+        let panes = plan.panes.map { p -> TerminalSession in
+            let profile = p.profileID.flatMap { id in
+                profileStore?.profiles.first(where: { $0.id == id })
+            }
+            let session = TerminalSession(initialCwd: p.cwd, profile: profile)
+            session.pendingInitialCommand = p.command
+            return session
+        }
+
+        let orientation: PaneOrientation
+        switch plan.mode {
+        case .stack(let o): orientation = o
+        default:            orientation = .horizontal
+        }
+        let tab = TerminalTab(panes: panes, orientation: orientation)
+        tab.customTitle = layout.name
+        if case .grid(let cols) = plan.mode {
+            tab.gridColumns = cols
+            tab.gridColFractions = PaneMath.equalFractions(count: cols)
+            tab.gridRowFractions = PaneMath.equalFractions(
+                count: PaneMath.gridRows(count: panes.count, columns: cols))
+        }
+        tabs.append(tab)
+        selectedTabId = tab.id
+        persist()
+        notifyActivePaneChanged()
+    }
+
+    /// Toggle "zoom" on the active pane: show it full-tab while the siblings
+    /// stay mounted (parked off-screen, shells alive). A no-op for a lone pane.
+    /// Re-zooms when a different pane is active than the currently-zoomed one.
+    func toggleZoomActivePane() {
+        guard let tab = currentTab, tab.panes.count > 1, let active = tab.activePaneId else {
+            currentTab?.zoomedPaneId = nil
+            return
+        }
+        tab.zoomedPaneId = (tab.zoomedPaneId == active) ? nil : active
+        notifyActivePaneChanged()
+    }
+
+    /// Whether the current tab has a zoomed pane (drives the title-strip toggle).
+    var currentTabIsZoomed: Bool { currentTab?.zoomedPaneId != nil }
+
+    /// Focus a specific pane in a specific tab — used by the agent dashboard
+    /// and targeted send-to-pane. Selects the tab, makes the pane active, and
+    /// clears any zoom so the pane is visible in its layout.
+    func focusPane(tabId: UUID, paneId: UUID) {
+        guard let tab = tabs.first(where: { $0.id == tabId }) else { return }
+        selectedTabId = tabId
+        if tab.panes.contains(where: { $0.id == paneId }) {
+            tab.activePaneId = paneId
+            tab.zoomedPaneId = nil
+        }
+        notifyActivePaneChanged()
+    }
+
+    /// Render a local image inline in the active pane via SwiftTerm's image
+    /// API — the same rendering path the iTerm2/kitty graphics protocols use,
+    /// but injected directly (not through the shell's stdin). Returns false if
+    /// the file isn't a renderable image. `@discardableResult` so callers can
+    /// ignore the outcome.
+    @discardableResult
+    func showImage(at url: URL) -> Bool {
+        guard let view = currentSession?.terminalView else { return false }
+        guard let data = try? Data(contentsOf: url),
+              InlineImagePolicy.isRenderable(ext: url.pathExtension, byteCount: data.count),
+              NSImage(data: data) != nil
+        else { return false }
+        // Width fits the pane; aspect ratio preserved so tall images don't
+        // distort. Rendered into the terminal stream at the cursor.
+        view.createImage(source: view.getTerminal(), data: data,
+                         width: .percent(100), height: .auto, preserveAspectRatio: true)
+        return true
+    }
+
+    /// Send a line of text (with the correct Enter) to a specific pane —
+    /// the targeted complement to broadcast. Reuses the Vibecoder send path.
+    func send(text: String, toPaneId paneId: UUID) {
+        for tab in tabs {
+            if let pane = tab.panes.first(where: { $0.id == paneId }) {
+                pane.terminalView?.send(txt: text + "\r")
+                return
+            }
+        }
     }
 
     // MARK: - Splits
@@ -587,6 +722,11 @@ final class TerminalSessions: ObservableObject {
             if let title = tab.customTitle, !title.isEmpty { dict["customTitle"] = title }
             if tab.paneFractions.count == tab.panes.count, !tab.paneFractions.isEmpty {
                 dict["paneFractions"] = tab.paneFractions.map { Double($0) }
+            }
+            if let cols = tab.gridColumns, cols > 1 {
+                dict["gridColumns"] = cols
+                if !tab.gridColFractions.isEmpty { dict["gridColFractions"] = tab.gridColFractions.map { Double($0) } }
+                if !tab.gridRowFractions.isEmpty { dict["gridRowFractions"] = tab.gridRowFractions.map { Double($0) } }
             }
             return dict
         }
@@ -664,6 +804,11 @@ final class TerminalSessions: ObservableObject {
             if let fractions = entry["paneFractions"] as? [Double],
                fractions.count == tab.panes.count {
                 tab.paneFractions = fractions.map { CGFloat($0) }
+            }
+            if let cols = entry["gridColumns"] as? Int, cols > 1, tab.panes.count > 1 {
+                tab.gridColumns = cols
+                if let cf = entry["gridColFractions"] as? [Double] { tab.gridColFractions = cf.map { CGFloat($0) } }
+                if let rf = entry["gridRowFractions"] as? [Double] { tab.gridRowFractions = rf.map { CGFloat($0) } }
             }
             restored.append(tab)
         }

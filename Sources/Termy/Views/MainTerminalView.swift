@@ -7,6 +7,7 @@ struct MainTerminalView: View {
     @EnvironmentObject var sessions: TerminalSessions
     @EnvironmentObject var settings: TerminalSettings
     @EnvironmentObject var workflows: WorkflowStore
+    @EnvironmentObject var layouts: LayoutStore
     @State private var showingSettings = false
     @State private var showingRecentDirs = false
     @State private var showingPalette = false
@@ -18,6 +19,11 @@ struct MainTerminalView: View {
     @State private var showingQuickSelect = false
     @State private var showingDiagnostics = false
     @State private var showingOnboarding = false
+    @State private var showingLayoutPicker = false
+    @State private var showingAgentDashboard = false
+    @State private var showingSendToPane = false
+    @State private var showingCommandBlocks = false
+    @State private var showingClaudeUsage = false
     @State private var findInitialQuery: String?
     @State private var hostedWindow: NSWindow?
     @State private var keyMonitor: Any?
@@ -35,6 +41,9 @@ struct MainTerminalView: View {
                     onShowRecentDirs: { showingRecentDirs = true },
                     onSplitH: { sessions.splitHorizontal() },
                     onSplitV: { sessions.splitVertical() },
+                    onShowLayouts: { showingLayoutPicker = true },
+                    onZoomPane: { sessions.toggleZoomActivePane() },
+                    onShowAgentDashboard: { showingAgentDashboard = true },
                     onQuickTerminal: {
                         if let store = sessions.profileStore {
                             QuickTerminalController.shared.toggle(settings: settings, profiles: store)
@@ -200,6 +209,7 @@ struct MainTerminalView: View {
         ))
         .modifier(TerminalHandlers(
             sessions: sessions,
+            layouts: layouts,
             isKeyWindow: { isKeyWindow },
             hostedWindow: { hostedWindow },
             performFind: toggleFind,
@@ -216,7 +226,12 @@ struct MainTerminalView: View {
             showAgentPanel: { showingAgentPanel = true },
             showQuickSelect: { showingQuickSelect = true },
             showDiagnostics: { showingDiagnostics = true },
-            showOnboarding: { showingOnboarding = true }
+            showOnboarding: { showingOnboarding = true },
+            showLayoutPicker: { showingLayoutPicker = true },
+            showAgentDashboard: { showingAgentDashboard = true },
+            showSendToPane: { showingSendToPane = true },
+            showCommandBlocks: { showingCommandBlocks = true },
+            showClaudeUsage: { showingClaudeUsage = true }
         ))
         .sheet(isPresented: $showingSettings) {
             TerminalSettingsSheet(onClose: { showingSettings = false })
@@ -314,6 +329,7 @@ struct MainTerminalView: View {
                     .environmentObject(sessions)
                     .environmentObject(settings)
                     .environmentObject(workflows)
+                    .environmentObject(layouts)
                     .padding(DS.Spacing.l)
             }
             .transition(.opacity)
@@ -393,6 +409,57 @@ struct MainTerminalView: View {
             }
             .transition(.opacity)
             .zIndex(20)
+        }
+        if showingLayoutPicker {
+            ZStack {
+                Color.black.opacity(0.12).ignoresSafeArea()
+                    .onTapGesture { showingLayoutPicker = false }
+                LayoutPickerView(sessions: sessions, onDismiss: { showingLayoutPicker = false })
+                    .environmentObject(layouts)
+                    .padding(DS.Spacing.l)
+            }
+            .transition(.opacity)
+            .zIndex(18)
+        }
+        if showingAgentDashboard {
+            ZStack {
+                Color.black.opacity(0.12).ignoresSafeArea()
+                    .onTapGesture { showingAgentDashboard = false }
+                AgentDashboardView(sessions: sessions, onDismiss: { showingAgentDashboard = false })
+                    .padding(DS.Spacing.l)
+            }
+            .transition(.opacity)
+            .zIndex(19)
+        }
+        if showingSendToPane {
+            ZStack {
+                Color.black.opacity(0.12).ignoresSafeArea()
+                    .onTapGesture { showingSendToPane = false }
+                SendToPaneView(sessions: sessions, onDismiss: { showingSendToPane = false })
+                    .padding(DS.Spacing.l)
+            }
+            .transition(.opacity)
+            .zIndex(21)
+        }
+        if showingCommandBlocks {
+            ZStack {
+                Color.black.opacity(0.12).ignoresSafeArea()
+                    .onTapGesture { showingCommandBlocks = false }
+                CommandBlocksPanel(sessions: sessions, onDismiss: { showingCommandBlocks = false })
+                    .padding(DS.Spacing.l)
+            }
+            .transition(.opacity)
+            .zIndex(22)
+        }
+        if showingClaudeUsage {
+            ZStack {
+                Color.black.opacity(0.12).ignoresSafeArea()
+                    .onTapGesture { showingClaudeUsage = false }
+                ClaudeUsagePanel(onDismiss: { showingClaudeUsage = false })
+                    .padding(DS.Spacing.l)
+            }
+            .transition(.opacity)
+            .zIndex(23)
         }
     }
 
@@ -717,6 +784,9 @@ private struct TitleStrip: View {
     let onShowRecentDirs: () -> Void
     let onSplitH: () -> Void
     let onSplitV: () -> Void
+    let onShowLayouts: () -> Void
+    let onZoomPane: () -> Void
+    let onShowAgentDashboard: () -> Void
     let onQuickTerminal: () -> Void
     let onShowCheatsheet: () -> Void
 
@@ -758,9 +828,26 @@ private struct TitleStrip: View {
             ChromeIconButton(symbol: "rectangle.split.1x2",
                              tooltip: "Split Vertically (⌘⇧D)",
                              action: onSplitV)
+            ChromeIconButton(symbol: "square.grid.2x2",
+                             tooltip: "Layouts — Quad Claude & presets (⌘⌥N)",
+                             action: onShowLayouts)
+            if (sessions.currentTab?.panes.count ?? 0) > 1 {
+                ChromeIconButton(symbol: sessions.currentTabIsZoomed
+                                            ? "arrow.down.right.and.arrow.up.left"
+                                            : "arrow.up.left.and.arrow.down.right",
+                                 tooltip: "Zoom / Restore Pane (⌘⇧↩)",
+                                 action: onZoomPane)
+            }
             ChromeIconButton(symbol: "chevron.down.square",
                              tooltip: "Quick Drop-down Terminal (⌃`)",
                              action: onQuickTerminal)
+
+            ChromeDivider()
+
+            // Agents
+            ChromeIconButton(symbol: "rectangle.3.group",
+                             tooltip: "Agent Dashboard — all panes at a glance (⌘⌥A)",
+                             action: onShowAgentDashboard)
 
             ChromeDivider()
 

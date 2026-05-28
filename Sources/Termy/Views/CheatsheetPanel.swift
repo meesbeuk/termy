@@ -112,14 +112,16 @@ enum ShortcutCategory: String, CaseIterable, Identifiable {
             ("Next / previous tab",       "⌘⇧] / ⌘⇧["),
             ("Jump to tab 1-8",           "⌘1-8"),
             ("Jump to last tab",          "⌘9"),
-            ("Rename tab",                "Double-click chip"),
+            ("Rename tab",                "Right-click chip → Rename"),
+            ("Tab color / Reveal in Finder", "Right-click chip"),
         ]
         case .splits: return [
             ("Split horizontally",        "⌘D"),
             ("Split vertically",          "⌘⇧D"),
-            ("Focus next pane",           "⌘⌥]"),
-            ("Focus previous pane",       "⌘⌥["),
-            ("Broadcast input toggle",    "Tab → right-click"),
+            ("Focus next / previous pane", "⌘⌥] / ⌘⌥["),
+            ("Close pane",                "⌘W  ·  right-click pane"),
+            ("Resize panes",              "Drag the divider between panes"),
+            ("Broadcast input toggle",    "Palette  ·  right-click tab"),
         ]
         case .search: return [
             ("Find in scrollback",        "⌘F"),
@@ -133,6 +135,15 @@ enum ShortcutCategory: String, CaseIterable, Identifiable {
             ("Cheatsheet (this panel)",   "⌘/"),
         ]
         case .ai: return [
+            ("New layout (Quad Claude)",  "⌘⌥N  ·  grid button"),
+            ("Layout picker",             "Grid button  ·  palette"),
+            ("Agent dashboard",           "⌘⌥A  ·  toolbar"),
+            ("Zoom / restore pane",       "⌘⇧↩  ·  toolbar"),
+            ("Send text to one pane",     "⌘⇧S  ·  right-click"),
+            ("Command blocks (OSC 133)",  "⌘⇧B  ·  palette"),
+            ("Show image inline",         "Menu · palette"),
+            ("Resume agent session",      "Agent Sessions panel"),
+            ("Claude usage (tokens/cost)", "⌘⌥U"),
             ("Agent sessions",            "⌘⇧A"),
             ("Session logs",              "⌘⇧L"),
             ("Paste from history",        "⌘⇧V"),
@@ -149,6 +160,7 @@ enum ShortcutCategory: String, CaseIterable, Identifiable {
             ("Close window",              "⌘⇧W"),
             ("Quake drop-down",           "⌃`"),
             ("Toggle always on top",      "Window menu"),
+            ("Secure keyboard entry",     "Termy menu"),
         ]
         }
     }

@@ -125,12 +125,12 @@ struct TerminalTheme: Identifiable, Equatable {
         // Termy signatures — designed for the glass backdrop
         termyGlass, aurora, sunset, monoPop,
         // Modern dark — popular community palettes that read well over glass
-        tokyoNight, catppuccinMocha, dracula, nord, oneDark, ayuDark,
-        monokaiPro, nightOwl, palenight, synthwave84,
+        tokyoNight, catppuccinMocha, rosePine, dracula, nord, oneDark, ayuDark,
+        monokaiPro, nightOwl, palenight, kanagawa, everforest, synthwave84,
         // Classic
         solarizedDark, gruvbox,
-        // One light option for users who genuinely want it
-        githubLight,
+        // Light — for daylight / high-ambient setups
+        githubLight, catppuccinLatte, rosePineDawn, solarizedLight, gruvboxLight,
     ]
 
     static func find(id: String?) -> TerminalTheme {
@@ -395,6 +395,108 @@ struct TerminalTheme: Identifiable, Equatable {
         // text stays high-contrast on the selection.
         selection: (208, 222, 243),
         accent: (9, 105, 218)
+    )
+
+    // MARK: - Added in v0.15 (theme audit)
+
+    /// Rosé Pine — the soho-vibes palette everyone asks for. Muted, cosy,
+    /// iris/foam/rose accents over a deep mauve base.
+    static let rosePine = TerminalTheme(
+        id: "rose-pine", name: "Rosé Pine", category: .modernDark,
+        foreground: (224, 222, 244),
+        ansi: [
+            (38, 35, 58), (235, 111, 146), (49, 116, 143), (246, 193, 119),
+            (156, 207, 216), (196, 167, 231), (235, 188, 186), (224, 222, 244),
+            (110, 106, 134), (235, 111, 146), (49, 116, 143), (246, 193, 119),
+            (156, 207, 216), (196, 167, 231), (235, 188, 186), (224, 222, 244),
+        ],
+        selection: (64, 61, 82),
+        accent: (196, 167, 231)  // iris
+    )
+
+    /// Kanagawa — Hokusai-wave inspired, warm desaturated palette.
+    static let kanagawa = TerminalTheme(
+        id: "kanagawa", name: "Kanagawa", category: .modernDark,
+        foreground: (220, 215, 186),
+        ansi: [
+            (22, 22, 29), (195, 64, 67), (118, 148, 106), (192, 163, 110),
+            (126, 156, 216), (149, 127, 184), (106, 149, 137), (200, 192, 147),
+            (114, 113, 105), (228, 104, 118), (152, 187, 108), (230, 195, 132),
+            (124, 156, 216), (149, 127, 184), (122, 168, 159), (220, 215, 186),
+        ],
+        selection: (45, 79, 103),  // waveBlue
+        accent: (126, 156, 216)    // crystalBlue
+    )
+
+    /// Everforest — soft, low-contrast forest greens; very easy on the eyes.
+    static let everforest = TerminalTheme(
+        id: "everforest", name: "Everforest", category: .modernDark,
+        foreground: (211, 198, 170),
+        ansi: [
+            (45, 53, 59), (230, 126, 128), (167, 192, 128), (219, 188, 127),
+            (127, 187, 179), (214, 153, 182), (131, 192, 146), (211, 198, 170),
+            (94, 108, 112), (230, 126, 128), (167, 192, 128), (219, 188, 127),
+            (127, 187, 179), (214, 153, 182), (131, 192, 146), (211, 198, 170),
+        ],
+        selection: (71, 82, 88),
+        accent: (167, 192, 128)
+    )
+
+    // MARK: - Light themes (v0.15)
+
+    /// Catppuccin Latte — the beloved light flavour. Crisp, pastel accents.
+    static let catppuccinLatte = TerminalTheme(
+        id: "catppuccin-latte", name: "Catppuccin Latte", category: .light,
+        foreground: (76, 79, 105),
+        ansi: [
+            (92, 95, 119), (210, 15, 57), (64, 160, 43), (223, 142, 29),
+            (30, 102, 245), (136, 57, 239), (23, 146, 153), (172, 176, 190),
+            (108, 111, 133), (210, 15, 57), (64, 160, 43), (223, 142, 29),
+            (30, 102, 245), (136, 57, 239), (23, 146, 153), (220, 224, 232),
+        ],
+        // Light bg: dark text needs a pale selection to stay readable.
+        selection: (204, 208, 218),
+        accent: (136, 57, 239)  // mauve
+    )
+
+    /// Rosé Pine Dawn — the light sibling of Rosé Pine.
+    static let rosePineDawn = TerminalTheme(
+        id: "rose-pine-dawn", name: "Rosé Pine Dawn", category: .light,
+        foreground: (87, 82, 121),
+        ansi: [
+            (242, 233, 222), (180, 99, 122), (40, 105, 131), (234, 157, 52),
+            (86, 148, 159), (144, 122, 169), (215, 130, 126), (87, 82, 121),
+            (152, 147, 165), (180, 99, 122), (40, 105, 131), (234, 157, 52),
+            (86, 148, 159), (144, 122, 169), (215, 130, 126), (87, 82, 121),
+        ],
+        selection: (223, 218, 217),
+        accent: (144, 122, 169)  // iris
+    )
+
+    static let solarizedLight = TerminalTheme(
+        id: "solarized-light", name: "Solarized Light", category: .light,
+        foreground: (101, 123, 131),
+        ansi: [
+            (238, 232, 213), (220, 50, 47), (133, 153, 0), (181, 137, 0),
+            (38, 139, 210), (211, 54, 130), (42, 161, 152), (7, 54, 66),
+            (253, 246, 227), (203, 75, 22), (88, 110, 117), (101, 123, 131),
+            (131, 148, 150), (108, 113, 196), (147, 161, 161), (7, 54, 66),
+        ],
+        selection: (213, 219, 199),
+        accent: (38, 139, 210)
+    )
+
+    static let gruvboxLight = TerminalTheme(
+        id: "gruvbox-light", name: "Gruvbox Light", category: .light,
+        foreground: (60, 56, 54),
+        ansi: [
+            (251, 241, 199), (157, 0, 6), (121, 116, 14), (181, 118, 20),
+            (7, 102, 120), (143, 63, 113), (66, 123, 88), (124, 111, 100),
+            (146, 131, 116), (157, 0, 6), (121, 116, 14), (181, 118, 20),
+            (7, 102, 120), (143, 63, 113), (66, 123, 88), (60, 56, 54),
+        ],
+        selection: (235, 219, 178),
+        accent: (181, 118, 20)
     )
 }
 

@@ -122,7 +122,7 @@ struct AgentPanel: View {
     @ViewBuilder
     private var detail: some View {
         if let sess = selected {
-            AgentDetail(session: sess, onOpenInTab: { openInTab(sess) })
+            AgentDetail(session: sess, onOpenInTab: { openInTab(sess) }, onResume: { resume(sess) })
         } else {
             VStack {
                 Spacer()
@@ -164,6 +164,13 @@ struct AgentPanel: View {
     private func openInTab(_ sess: ClaudeSession) {
         // Open a new tab in the session's project directory.
         sessions.openTabIn(cwd: sess.projectPath)
+        onDismiss()
+    }
+
+    private func resume(_ sess: ClaudeSession) {
+        // Relaunch the past Claude session in a fresh pane in its project dir.
+        sessions.openTabRunning(cwd: sess.projectPath,
+                                command: ClaudeResume.command(sessionId: sess.sessionId))
         onDismiss()
     }
 }
@@ -322,6 +329,7 @@ private struct AgentRow: View {
 private struct AgentDetail: View {
     let session: ClaudeSession
     let onOpenInTab: () -> Void
+    let onResume: () -> Void
 
     private var dateString: String {
         let f = DateFormatter()
@@ -344,15 +352,28 @@ private struct AgentDetail: View {
                         .foregroundStyle(DS.Colors.tertiary)
                 }
 
-                Button(action: onOpenInTab) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus.square")
-                        Text("Open new tab in this directory")
+                HStack(spacing: DS.Spacing.s) {
+                    Button(action: onResume) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.clockwise")
+                            Text("Resume session")
+                        }
+                        .font(DS.Typo.caption)
                     }
-                    .font(DS.Typo.caption)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .help("Relaunch this session in a new pane (claude --resume)")
+
+                    Button(action: onOpenInTab) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus.square")
+                            Text("Open new tab here")
+                        }
+                        .font(DS.Typo.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
 
                 section(title: "Last user message") {
                     Text(session.lastUserMessage)

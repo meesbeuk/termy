@@ -1,11 +1,13 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// Bundles all NotificationCenter / drop / lifecycle handlers for the
 /// main terminal view. Split across two sub-modifiers so each is small enough
 /// for the Swift type-checker to handle without choking.
 struct TerminalHandlers: ViewModifier {
     let sessions: TerminalSessions
+    let layouts: LayoutStore
     let isKeyWindow: () -> Bool
     let hostedWindow: () -> NSWindow?
     let performFind: () -> Void
@@ -23,6 +25,11 @@ struct TerminalHandlers: ViewModifier {
     let showQuickSelect: () -> Void
     let showDiagnostics: () -> Void
     let showOnboarding: () -> Void
+    let showLayoutPicker: () -> Void
+    let showAgentDashboard: () -> Void
+    let showSendToPane: () -> Void
+    let showCommandBlocks: () -> Void
+    let showClaudeUsage: () -> Void
 
     func body(content: Content) -> some View {
         content
@@ -56,6 +63,78 @@ struct TerminalHandlers: ViewModifier {
                 showDiagnostics: showDiagnostics,
                 showOnboarding: showOnboarding
             ))
+            .modifier(NotificationHandlersD(
+                sessions: sessions,
+                layouts: layouts,
+                isKeyWindow: isKeyWindow,
+                showLayoutPicker: showLayoutPicker,
+                showAgentDashboard: showAgentDashboard,
+                showSendToPane: showSendToPane,
+                showCommandBlocks: showCommandBlocks,
+                showClaudeUsage: showClaudeUsage
+            ))
+    }
+}
+
+/// Agents & layouts (v0.15): spawn named layouts, the agent dashboard,
+/// targeted send-to-pane, and pane zoom. Kept in its own sub-modifier so the
+/// type-checker budget stays comfortable.
+private struct NotificationHandlersD: ViewModifier {
+    let sessions: TerminalSessions
+    let layouts: LayoutStore
+    let isKeyWindow: () -> Bool
+    let showLayoutPicker: () -> Void
+    let showAgentDashboard: () -> Void
+    let showSendToPane: () -> Void
+    let showCommandBlocks: () -> Void
+    let showClaudeUsage: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .terminalSpawnQuickLayout)) { _ in
+                if isKeyWindow() { sessions.spawnLayout(layouts.quickLayout) }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalSpawnLayout)) { note in
+                guard isKeyWindow(),
+                      let idStr = note.object as? String,
+                      let id = UUID(uuidString: idStr),
+                      let layout = layouts.layout(id: id) else { return }
+                sessions.spawnLayout(layout)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalOpenLayoutPicker)) { _ in
+                if isKeyWindow() { showLayoutPicker() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalOpenAgentDashboard)) { _ in
+                if isKeyWindow() { showAgentDashboard() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalSendToPane)) { _ in
+                if isKeyWindow() { showSendToPane() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalZoomPane)) { _ in
+                if isKeyWindow() { sessions.toggleZoomActivePane() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalShowImage)) { _ in
+                guard isKeyWindow() else { return }
+                Self.pickImage { url in sessions.showImage(at: url) }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalToggleCommandBlocks)) { _ in
+                if isKeyWindow() { showCommandBlocks() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalOpenClaudeUsage)) { _ in
+                if isKeyWindow() { showClaudeUsage() }
+            }
+    }
+
+    /// Run an image open-panel and call back with the chosen file. Kept here
+    /// so the notification observer stays a one-liner.
+    private static func pickImage(_ completion: @escaping (URL) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.image]
+        panel.prompt = "Show"
+        panel.message = "Choose an image to render inline in the active pane"
+        if panel.runModal() == .OK, let url = panel.url { completion(url) }
     }
 }
 
