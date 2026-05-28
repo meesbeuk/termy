@@ -1458,28 +1458,39 @@ final class TermyTerminalView: LocalProcessTerminalView {
         return newCols != term.cols || newRows != term.rows
     }
 
-    /// Cached (font, scale) → cell dimension. Recomputed when either changes.
-    private var cellDimensionCache: (font: NSFont, scale: CGFloat, dimension: CGSize)?
+    /// Cached (font, scale, lineSpacing) → cell dimension. Recomputed when any
+    /// changes. lineSpacing MUST be in the key: SwiftTerm folds it into the
+    /// cell height, so omitting it made the cached prediction stale after the
+    /// user changed vertical spacing.
+    private var cellDimensionCache: (font: NSFont, scale: CGFloat, lineSpacing: CGFloat, dimension: CGSize)?
 
     private func cachedCellDimension() -> CGSize {
         let f = self.font
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2.0
+        let ls = self.lineSpacing
         if let cached = cellDimensionCache,
            cached.font === f,
-           abs(cached.scale - scale) < 0.001 {
+           abs(cached.scale - scale) < 0.001,
+           cached.lineSpacing == ls {
             return cached.dimension
         }
         let glyph = f.glyph(withName: "W")
         let advance = f.advancement(forGlyph: glyph).width
         let ctFont = f as CTFont
-        let ascent = CTFontGetAscent(ctFont)
-        let descent = CTFontGetDescent(ctFont)
-        let leading = CTFontGetLeading(ctFont)
-        let height = ceil(ascent + descent + leading)
-        let snappedW = ceil(advance * scale) / scale
-        let snappedH = ceil(height * scale) / scale
-        let dim = CGSize(width: max(1, snappedW), height: max(1, min(snappedH, 8192)))
-        cellDimensionCache = (f, scale, dim)
+        // Match SwiftTerm's computeFontDimensions EXACTLY (incl. the lineSpacing
+        // patch term) so wouldChangeCellGrid predicts the same row count and
+        // resize reflow neither over- nor under-fires.
+        let dim = CGSize(
+            width: CellMetrics.snappedCellWidth(advance: advance, scale: scale),
+            height: CellMetrics.snappedCellHeight(
+                ascent: CTFontGetAscent(ctFont),
+                descent: CTFontGetDescent(ctFont),
+                leading: CTFontGetLeading(ctFont),
+                lineSpacing: ls,
+                scale: scale
+            )
+        )
+        cellDimensionCache = (f, scale, ls, dim)
         return dim
     }
 
