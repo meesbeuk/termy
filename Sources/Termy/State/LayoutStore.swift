@@ -56,6 +56,56 @@ struct TermyLayout: Identifiable, Codable, Equatable {
     var shapeLabel: String { "\(rows)×\(max(1, columns))" }
 }
 
+// MARK: - Spawn planning
+
+/// How a resolved layout should be laid out. The planner picks the cheapest
+/// correct mode so the battle-tested single-orientation split path handles
+/// 1-row / 1-column layouts and grid mode only engages for true 2-D tilings.
+enum LayoutMode: Equatable {
+    case single
+    case stack(PaneOrientation)   // one row (.horizontal) or one column (.vertical)
+    case grid(columns: Int)
+}
+
+/// A single pane's concrete spawn parameters after `baseCwd` substitution.
+struct LayoutPanePlan: Equatable {
+    let cwd: String
+    let command: String?          // nil = plain shell, no startup command
+    let profileID: UUID?
+}
+
+struct LayoutPlan: Equatable {
+    let mode: LayoutMode
+    let panes: [LayoutPanePlan]
+}
+
+extension TermyLayout {
+    /// Resolve this layout into a concrete spawn plan. Panes with an empty
+    /// cwd inherit `baseCwd` (the cwd active when the user triggers the
+    /// layout), and empty commands become `nil`. Pure + fully testable —
+    /// no shells, no views.
+    func plan(baseCwd: String) -> LayoutPlan {
+        let resolved = panes.map { spec in
+            LayoutPanePlan(cwd: spec.cwd.isEmpty ? baseCwd : spec.cwd,
+                           command: spec.command.isEmpty ? nil : spec.command,
+                           profileID: spec.profileID)
+        }
+        let n = resolved.count
+        let cols = max(1, columns)
+        let mode: LayoutMode
+        if n <= 1 {
+            mode = .single
+        } else if PaneMath.gridRows(count: n, columns: cols) == 1 {
+            mode = .stack(.horizontal)
+        } else if cols == 1 {
+            mode = .stack(.vertical)
+        } else {
+            mode = .grid(columns: cols)
+        }
+        return LayoutPlan(mode: mode, panes: resolved)
+    }
+}
+
 /// In-process store for layouts. Built-ins are code-defined and always
 /// present (with stable UUIDs so a persisted "quick layout" choice survives
 /// launches); user layouts persist to UserDefaults as JSON, exactly like

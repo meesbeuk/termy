@@ -73,4 +73,56 @@ struct LayoutStoreTests {
         let store = LayoutStore()
         #expect(store.layout(id: store.quickLayoutID) != nil)
     }
+
+    // MARK: - Spawn planning
+
+    @Test func quadClaudePlansAGrid() {
+        let quad = LayoutStore.builtIns.first { $0.id == LayoutStore.quadClaudeID }!
+        let plan = quad.plan(baseCwd: "/work/proj")
+        #expect(plan.mode == .grid(columns: 2))
+        #expect(plan.panes.count == 4)
+        // Empty cwd inherits the base; empty command stays a command.
+        #expect(plan.panes.allSatisfy { $0.cwd == "/work/proj" })
+        #expect(plan.panes.allSatisfy { $0.command == "claude" })
+    }
+
+    @Test func oneRowPlansHorizontalStackNotGrid() {
+        let dual = LayoutStore.builtIns.first { $0.id == LayoutStore.dualClaudeID }!
+        let plan = dual.plan(baseCwd: "/x")
+        // 2 panes / 2 cols == 1 row → reuse the H split path, not grid mode.
+        #expect(plan.mode == .stack(.horizontal))
+        #expect(plan.panes.count == 2)
+    }
+
+    @Test func oneColumnPlansVerticalStack() {
+        let stack = TermyLayout(name: "Tri", columns: 1,
+                                panes: [LayoutPaneSpec(), LayoutPaneSpec(), LayoutPaneSpec()])
+        #expect(stack.plan(baseCwd: "/x").mode == .stack(.vertical))
+    }
+
+    @Test func singlePanePlansSingle() {
+        let one = TermyLayout(name: "Solo", columns: 1, panes: [LayoutPaneSpec(command: "claude")])
+        let plan = one.plan(baseCwd: "/x")
+        #expect(plan.mode == .single)
+        #expect(plan.panes.first?.command == "claude")
+    }
+
+    @Test func explicitCwdIsPreservedAndEmptyCommandIsNil() {
+        let layout = TermyLayout(name: "Mixed", columns: 2, panes: [
+            LayoutPaneSpec(cwd: "/srv/logs", command: ""),     // explicit cwd, no command
+            LayoutPaneSpec(cwd: "", command: "claude"),        // inherit cwd, has command
+        ])
+        let plan = layout.plan(baseCwd: "/home/me")
+        #expect(plan.panes[0].cwd == "/srv/logs")
+        #expect(plan.panes[0].command == nil)
+        #expect(plan.panes[1].cwd == "/home/me")
+        #expect(plan.panes[1].command == "claude")
+    }
+
+    @Test func sixIntoTwoIsAThreeRowGrid() {
+        let layout = TermyLayout(name: "Six", columns: 2,
+                                 panes: (0..<6).map { _ in LayoutPaneSpec() })
+        #expect(layout.plan(baseCwd: "/x").mode == .grid(columns: 2))
+        #expect(layout.rows == 3)
+    }
 }

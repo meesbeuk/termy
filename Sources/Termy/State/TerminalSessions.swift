@@ -525,6 +525,48 @@ final class TerminalSessions: ObservableObject {
         persist()
     }
 
+    // MARK: - Layouts
+
+    /// Spawn a named layout as a NEW tab: one pane per spec, each opened in its
+    /// configured cwd (empty = inherit the current pane's cwd) and running its
+    /// startup command. The command is delivered via `pendingInitialCommand` —
+    /// the same path the app uses to run a dropped script — so it submits with
+    /// a real Enter once the shell is up, rather than via blind timed
+    /// keystrokes. Grid layouts (e.g. Quad Claude 2×2) set `gridColumns`; 1-row
+    /// / 1-column layouts reuse the existing H/V split path.
+    func spawnLayout(_ layout: TermyLayout) {
+        let baseCwd = currentSession?.cwd ?? NSHomeDirectory()
+        let plan = layout.plan(baseCwd: baseCwd)
+        guard !plan.panes.isEmpty else { return }
+
+        let panes = plan.panes.map { p -> TerminalSession in
+            let profile = p.profileID.flatMap { id in
+                profileStore?.profiles.first(where: { $0.id == id })
+            }
+            let session = TerminalSession(initialCwd: p.cwd, profile: profile)
+            session.pendingInitialCommand = p.command
+            return session
+        }
+
+        let orientation: PaneOrientation
+        switch plan.mode {
+        case .stack(let o): orientation = o
+        default:            orientation = .horizontal
+        }
+        let tab = TerminalTab(panes: panes, orientation: orientation)
+        tab.customTitle = layout.name
+        if case .grid(let cols) = plan.mode {
+            tab.gridColumns = cols
+            tab.gridColFractions = PaneMath.equalFractions(count: cols)
+            tab.gridRowFractions = PaneMath.equalFractions(
+                count: PaneMath.gridRows(count: panes.count, columns: cols))
+        }
+        tabs.append(tab)
+        selectedTabId = tab.id
+        persist()
+        notifyActivePaneChanged()
+    }
+
     // MARK: - Splits
 
     func splitHorizontal() {
