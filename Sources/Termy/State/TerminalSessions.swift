@@ -256,16 +256,13 @@ final class TerminalSessions: ObservableObject {
         guard let tabIdx = tabs.firstIndex(where: { $0.panes.contains(where: { $0.id == paneId }) })
         else { return }
         let tab = tabs[tabIdx]
-        guard let paneIdx = tab.panes.firstIndex(where: { $0.id == paneId }) else { return }
-        tab.panes[paneIdx].terminalView?.terminate()
-        tab.panes.remove(at: paneIdx)
-        if tab.panes.isEmpty {
+        // Route through TerminalTab.removePane so pane-fraction bookkeeping
+        // (donate the closed pane's share to its neighbour) matches the
+        // keyboard/menu close path. Previously this path removed the pane but
+        // left paneFractions stale, so PaneLayout reset the split to equal.
+        if tab.removePane(id: paneId) {
             closeTab(tab.id)
         } else {
-            // If we removed the active pane, focus the neighbour.
-            if tab.activePaneId == paneId {
-                tab.activePaneId = tab.panes[min(paneIdx, tab.panes.count - 1)].id
-            }
             persist()
             notifyActivePaneChanged()
         }

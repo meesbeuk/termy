@@ -110,6 +110,16 @@ final class TermyTerminalView: LocalProcessTerminalView {
         )
     }
 
+    /// Decode only the last `maxBytes` of a PTY slice (UTF-8, lenient). The
+    /// rolling preview buffer is always truncated to a couple thousand chars,
+    /// so decoding an entire up-to-128KB slice per chunk is wasted work on the
+    /// hot path. A multi-byte sequence split at the tail boundary degrades to a
+    /// single replacement char — invisible for a preview/QuickSelect scan.
+    static func previewTail(of slice: ArraySlice<UInt8>, maxBytes: Int) -> String {
+        let tail = slice.count > maxBytes ? slice.suffix(maxBytes) : slice
+        return String(decoding: tail, as: UTF8.self)
+    }
+
     /// Compiled once per app lifecycle. Previously this regex was built
     /// fresh inside both `recentVisibleText()` and `stripAnsiCSI()` —
     /// the latter runs per LINE in `scanForTriggers`, so a streaming
@@ -729,14 +739,14 @@ final class TermyTerminalView: LocalProcessTerminalView {
         }
         bytesSinceBurstStart += slice.count
         lastDataAt = now
-        // Capture a sliding window of the most recent bytes (UTF-8
-        // decoded best-effort) so we can put a meaningful tail line in
-        // the eventual notification.
-        if let s = String(bytes: slice, encoding: .utf8) {
-            lastPreviewBuffer += s
-            if lastPreviewBuffer.count > 4096 {
-                lastPreviewBuffer = String(lastPreviewBuffer.suffix(2048))
-            }
+        // Capture a sliding window of the most recent bytes for the
+        // notification tail line + QuickSelect scan. lastPreviewBuffer is
+        // truncated to 2048 chars, so decoding the WHOLE slice (PTY reads are
+        // up to 128KB) was pure waste on the main thread for every chunk during
+        // `cat bigfile` / `yes` / build logs. Decode only the tail.
+        lastPreviewBuffer += Self.previewTail(of: slice, maxBytes: 8192)
+        if lastPreviewBuffer.count > 4096 {
+            lastPreviewBuffer = String(lastPreviewBuffer.suffix(2048))
         }
         if !isCurrentlyActive && bytesSinceBurstStart >= activeByteThreshold {
             isCurrentlyActive = true

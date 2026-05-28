@@ -14,6 +14,16 @@ Branch: `harden/parity-pass`. Goal: match/beat iTerm2 on correctness, input, per
 - **Fix:** new idempotent SwiftTerm patch (`patch-swiftterm.sh`, sentinel `TERMY_PATCH return_key_enter`) maps `kVK_Return` → `.enter`, so Return is encoded through the kitty functional-key path **with real modifiers**: plain Enter → `CR` (unchanged), Shift+Enter → `ESC[13;2u` (exactly what Claude reads as newline), Ctrl/Alt+Enter likewise disambiguate. When kitty mode is off the whole branch is skipped → ordinary terminals unaffected.
 - **Tests:** `KittyEnterTests` — drives a real SwiftTerm `TerminalView` with kitty mode enabled and synthesized `NSEvent`s, capturing the bytes sent to the PTY: Shift+Enter → `ESC[13;2u`, plain Enter → `CR`, Ctrl+Enter → `ESC[13;5u`.
 
+### P1 — Closing a pane via its X button reset a custom split to equal
+- **Cause:** `TerminalSessions.closePane` (close-button + shell-`exit` path) removed the pane but never updated `paneFractions`, so `PaneLayout` saw the length mismatch and overwrote the user's split with equal fractions. The keyboard/menu path (`closeActivePane`) did it correctly — two divergent implementations.
+- **Fix:** factor a single `TerminalTab.removePane(id:)` (donates the closed pane's share to the focus-inheriting neighbour, fixes up `activePaneId`); both paths call it.
+- **Tests:** `PaneRemovalTests` — middle-pane close keeps `[0.6, 0.4]` (not `0.5/0.5`), active-vs-by-id agree, last-pane signals tab close.
+
+### P1 (perf) — Per-chunk full UTF-8 decode of up-to-128KB PTY slices on the main thread
+- **Cause:** `trackIdleBytes` decoded the entire PTY slice to a `String` every chunk (for a preview buffer that's truncated to ~2048 chars), so `cat bigfile` / `yes` / build logs paid a full decode + alloc per chunk on the main thread.
+- **Fix:** `previewTail` decodes only the last 8KB of each slice (lenient UTF-8). `scanForTriggers`'s decode was already gated on active triggers.
+- **Tests:** `PreviewTailTests` — large slice decodes ≤ maxBytes and keeps the suffix; small slice whole; split multibyte never crashes.
+
 ### P1 — Broadcast Input mangled special keys; find-bar Esc was app-wide
 - **Broadcast (`MainTerminalView.installKeyMonitor`):** mirrored `event.characters` to sibling panes, so arrows/Fn/nav keys sent macOS private-use codepoints (Up = `U+F700` → bytes `EF 9C 80`) and ignored each pane's encoding mode (app-cursor, kitty, optionAsMeta, bracketed paste). Now forwards the key **event** via each sibling's `keyDown`, so every pane encodes per its own mode — matching iTerm2.
 - **EscMonitor (`MainTerminalView`):** the Esc/Cmd-period local monitor had no `event.window` guard, so an open find bar in one window swallowed Esc for **every** window (Esc never reached claude/vim elsewhere). Now resolves the hosting window from the backing view and confines swallowing to it.

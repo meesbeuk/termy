@@ -90,33 +90,41 @@ final class TerminalTab: ObservableObject, Identifiable {
         activePaneId = newPane.id
     }
 
-    /// Close the active pane. Returns true if the tab should be closed too
-    /// (i.e. the last pane is being removed). Redistributes the closed
-    /// pane's fraction to its neighbours so the remaining panes don't
-    /// unexpectedly resize — give the freed space to the neighbour that
-    /// gets focus.
+    /// Remove the pane with `id`, donating its size fraction to the neighbour
+    /// that inherits focus, and fixing up activePaneId. Returns true if the tab
+    /// is now empty (caller should close the tab). This is the SINGLE source of
+    /// truth for pane removal — both the active-pane path (keyboard/menu) and
+    /// the close-button / shell-exit path route through it, so they can't
+    /// diverge. (The close-button path used to skip paneFractions bookkeeping
+    /// entirely, which silently reset a custom split back to equal.)
     @discardableResult
-    func closeActivePane() -> Bool {
-        guard let active = activePane,
-              let idx = panes.firstIndex(where: { $0.id == active.id })
-        else { return panes.isEmpty }
-        active.terminalView?.terminate()
+    func removePane(id: UUID) -> Bool {
+        guard let idx = panes.firstIndex(where: { $0.id == id }) else { return panes.isEmpty }
+        panes[idx].terminalView?.terminate()
+        let removedWasActive = (activePaneId == id)
         panes.remove(at: idx)
         if panes.isEmpty {
             paneFractions = []
+            activePaneId = nil
             return true
         }
-        let freed = idx < paneFractions.count ? paneFractions[idx] : 0
-        if idx < paneFractions.count {
-            paneFractions.remove(at: idx)
-        }
-        // Donate to the neighbour that inherits focus.
+        let freed = idx < paneFractions.count ? paneFractions.remove(at: idx) : 0
         let focusIdx = min(idx, panes.count - 1)
         if focusIdx < paneFractions.count {
             paneFractions[focusIdx] += freed
         }
-        activePaneId = panes[focusIdx].id
+        // Only move focus if the removed pane had it (or focus is now stale).
+        if removedWasActive || !panes.contains(where: { $0.id == activePaneId }) {
+            activePaneId = panes[focusIdx].id
+        }
         return false
+    }
+
+    /// Close the active pane. Returns true if the tab should be closed too.
+    @discardableResult
+    func closeActivePane() -> Bool {
+        guard let active = activePane else { return panes.isEmpty }
+        return removePane(id: active.id)
     }
 
     /// Cycle focus to the next pane in display order.
