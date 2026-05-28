@@ -694,7 +694,13 @@ final class TermyTerminalView: LocalProcessTerminalView {
         } else if tuiModeActive && now.timeIntervalSince(lastClearAt) > tuiModeStickWindow {
             tuiModeActive = false
         }
-        guard tuiModeActive else { return }
+        // Only erase scrollback while the repaint burst is STILL live (≥2 clears
+        // in the rolling window). Without this, a lone `clear` run within the
+        // 30s stick window fired ESC[3J and silently wiped the real scrollback
+        // the user had just built.
+        guard TUIClearPolicy.shouldEraseScrollback(
+            recentClearCount: clearTimes.count, tuiModeActive: tuiModeActive
+        ) else { return }
         // Send \e[3J asynchronously so it lands after SwiftTerm has
         // processed the \e[2J it follows. Without the async hop the
         // parser would interleave the two and not all of the cleared

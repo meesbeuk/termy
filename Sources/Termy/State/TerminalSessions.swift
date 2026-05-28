@@ -379,8 +379,15 @@ final class TerminalSessions: ObservableObject {
     }
 
     func clearCurrent() {
-        currentSession?.terminalView?.terminal.resetToInitialState()
-        currentSession?.terminalView?.feed(text: "\u{001B}[2J\u{001B}[H")
+        // Non-destructive clear: home + erase display + erase scrollback.
+        // We must NOT call resetToInitialState() (a hard RIS) here: it re-runs
+        // terminal setup, wiping the kitty-keyboard / bracketed-paste / focus /
+        // application-cursor modes that a live TUI (claude) set ONCE at startup
+        // and never re-emits. That silently broke Shift+Enter (kitty
+        // disambiguation) and paste after every Cmd+K. ESC[3J erases scrollback
+        // via SwiftTerm's dedicated CSI 3J handler without touching any modes.
+        // RIS is reserved for an explicit user-invoked "Reset Terminal".
+        currentSession?.terminalView?.feed(text: "\u{001B}[H\u{001B}[2J\u{001B}[3J")
     }
 
     /// Select every cell in the active pane's scrollback + viewport, copy
