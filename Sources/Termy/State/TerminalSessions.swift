@@ -519,6 +519,19 @@ final class TerminalSessions: ObservableObject {
         persist()
     }
 
+    /// Open a new tab in `cwd` and run `command` once the shell is up, via the
+    /// same pendingInitialCommand path used for dropped scripts (real Enter, no
+    /// blind timer). Used by "Resume session" in the Agent panel.
+    func openTabRunning(cwd: String, command: String) {
+        let session = TerminalSession(initialCwd: cwd)
+        session.pendingInitialCommand = command.isEmpty ? nil : command
+        let tab = TerminalTab(panes: [session])
+        tabs.append(tab)
+        selectedTabId = tab.id
+        persist()
+        notifyActivePaneChanged()
+    }
+
     /// Open a file the OS asked us to handle — typically a .sh / .command /
     /// +x binary double-clicked in Finder. Opens a new tab in the file's
     /// parent dir and queues the file path as the first shell command, so
