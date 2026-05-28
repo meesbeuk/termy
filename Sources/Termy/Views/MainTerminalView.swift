@@ -22,6 +22,7 @@ struct MainTerminalView: View {
     @State private var showingLayoutPicker = false
     @State private var showingAgentDashboard = false
     @State private var showingSendToPane = false
+    @State private var showingCommandBlocks = false
     @State private var findInitialQuery: String?
     @State private var hostedWindow: NSWindow?
     @State private var keyMonitor: Any?
@@ -227,7 +228,8 @@ struct MainTerminalView: View {
             showOnboarding: { showingOnboarding = true },
             showLayoutPicker: { showingLayoutPicker = true },
             showAgentDashboard: { showingAgentDashboard = true },
-            showSendToPane: { showingSendToPane = true }
+            showSendToPane: { showingSendToPane = true },
+            showCommandBlocks: { showingCommandBlocks = true }
         ))
         .sheet(isPresented: $showingSettings) {
             TerminalSettingsSheet(onClose: { showingSettings = false })
@@ -436,6 +438,16 @@ struct MainTerminalView: View {
             }
             .transition(.opacity)
             .zIndex(21)
+        }
+        if showingCommandBlocks {
+            ZStack {
+                Color.black.opacity(0.12).ignoresSafeArea()
+                    .onTapGesture { showingCommandBlocks = false }
+                CommandBlocksPanel(sessions: sessions, onDismiss: { showingCommandBlocks = false })
+                    .padding(DS.Spacing.l)
+            }
+            .transition(.opacity)
+            .zIndex(22)
         }
     }
 

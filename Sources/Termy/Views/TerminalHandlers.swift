@@ -28,6 +28,7 @@ struct TerminalHandlers: ViewModifier {
     let showLayoutPicker: () -> Void
     let showAgentDashboard: () -> Void
     let showSendToPane: () -> Void
+    let showCommandBlocks: () -> Void
 
     func body(content: Content) -> some View {
         content
@@ -67,7 +68,8 @@ struct TerminalHandlers: ViewModifier {
                 isKeyWindow: isKeyWindow,
                 showLayoutPicker: showLayoutPicker,
                 showAgentDashboard: showAgentDashboard,
-                showSendToPane: showSendToPane
+                showSendToPane: showSendToPane,
+                showCommandBlocks: showCommandBlocks
             ))
     }
 }
@@ -82,6 +84,7 @@ private struct NotificationHandlersD: ViewModifier {
     let showLayoutPicker: () -> Void
     let showAgentDashboard: () -> Void
     let showSendToPane: () -> Void
+    let showCommandBlocks: () -> Void
 
     func body(content: Content) -> some View {
         content
@@ -110,6 +113,9 @@ private struct NotificationHandlersD: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .terminalShowImage)) { _ in
                 guard isKeyWindow() else { return }
                 Self.pickImage { url in sessions.showImage(at: url) }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalToggleCommandBlocks)) { _ in
+                if isKeyWindow() { showCommandBlocks() }
             }
     }
 

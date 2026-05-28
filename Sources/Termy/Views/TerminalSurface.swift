@@ -43,6 +43,10 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// reported as a leading edge instead of only the trailing edge.
     var onActivityChanged: ((_ active: Bool) -> Void)?
 
+    /// Fired at OSC 133;D with the captured command line, its output preview,
+    /// and the prompt row — drives the Command Blocks panel.
+    var onCommandBlock: ((_ command: String, _ output: String, _ row: Int) -> Void)?
+
     /// Re-applies theme + caret colors. Set by TerminalSurface so we can
     /// re-run it both when the view first lands in a window AND on first
     /// non-zero layout. SwiftTerm's caret is positioned by updateDisplay,
@@ -139,6 +143,9 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// jump prompt-to-prompt without the user scrolling. Capped at
     /// 1000 to bound memory for marathon sessions; oldest dropped.
     var promptMarks: [Int] = []
+
+    /// Command line captured at OSC 133;C, paired with its output at 133;D.
+    private var pendingBlockCommand: String?
 
     // MARK: - Cinema mode (typewriter pacer)
     //
@@ -864,8 +871,10 @@ final class TermyTerminalView: LocalProcessTerminalView {
                 }
             }
         case "C":
-            // Command output starts — reset preview so it captures only
-            // this command's output, not the prompt prefix.
+            // Command output starts — capture the command line (the buffer tail
+            // before we reset) for the command-block, then reset preview so it
+            // captures only this command's output, not the prompt prefix.
+            pendingBlockCommand = tailLine(from: lastPreviewBuffer)
             lastPreviewBuffer = ""
             bytesSinceBurstStart = 0
         case "D":
@@ -877,6 +886,12 @@ final class TermyTerminalView: LocalProcessTerminalView {
             osc133JustFired = true
             onActivityChanged?(false)
             onCommandSettled?(preview, true)
+            // Emit a command block (command + output preview) for the panel.
+            if let cmd = pendingBlockCommand, !cmd.isEmpty {
+                let row = promptMarks.last ?? (getTerminal().buffer.yDisp + getTerminal().buffer.y)
+                onCommandBlock?(cmd, lastPreviewBuffer, row)
+                pendingBlockCommand = nil
+            }
         default:
             break
         }
@@ -1637,6 +1652,13 @@ struct TerminalSurface: NSViewRepresentable {
                 preview: preview,
                 viaOSC133: viaOSC133
             )
+        }
+        view.onCommandBlock = { [weak session] command, output, row in
+            guard let session else { return }
+            DispatchQueue.main.async {
+                let block = CommandBlock(command: command, output: output, row: row, at: Date())
+                session.commandBlocks = CommandBlockLog.appended(session.commandBlocks, block)
+            }
         }
         // Wire the trigger pipeline. Triggers come from a shared
         // TriggerRegistry singleton so toggling a pack in Settings

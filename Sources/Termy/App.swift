@@ -135,6 +135,10 @@ struct TermyApp: App {
                 Button("Show Image…") {
                     NotificationCenter.default.post(name: .terminalShowImage, object: nil)
                 }
+                Button("Command Blocks…") {
+                    NotificationCenter.default.post(name: .terminalToggleCommandBlocks, object: nil)
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
                 Divider()
                 Button("Duplicate Tab") {
                     NotificationCenter.default.post(name: .terminalDuplicateTab, object: nil)

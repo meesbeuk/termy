@@ -29,6 +29,11 @@ final class TerminalSession: ObservableObject, Identifiable {
     /// waiting on, or the last output line).
     @Published var lastLine: String = ""
 
+    /// Command+output blocks captured from OSC 133 shell-integration marks.
+    /// Populated only for shells with shell integration installed; powers the
+    /// Command Blocks panel. Bounded by CommandBlockLog.cap.
+    @Published var commandBlocks: [CommandBlock] = []
+
     /// The actual SwiftTerm view. Created lazily once the SwiftUI representable
     /// is mounted so we don't fork a shell we never display.
     var terminalView: LocalProcessTerminalView?
@@ -445,6 +450,12 @@ final class TerminalSessions: ObservableObject {
         guard let view = currentSession?.terminalView else { return }
         view.selectAll(NSObject())
         view.copy(NSObject())
+    }
+
+    /// Scroll the active pane so a given scrollback row is in view — used by
+    /// the Command Blocks panel to jump to a command.
+    func scrollActivePane(toRow row: Int) {
+        currentSession?.terminalView?.scrollTo(row: max(0, row))
     }
 
     /// Scroll the active pane to the very top of the scrollback buffer.

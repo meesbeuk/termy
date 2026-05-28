@@ -229,6 +229,9 @@ struct CommandPalette: View {
         items.append(PaletteItem(kind: .action, title: "Show Image…",
                                  subtitle: "Render a local image inline (iTerm2/kitty protocol)",
                                  action: { NotificationCenter.default.post(name: .terminalShowImage, object: nil) }))
+        items.append(PaletteItem(kind: .action, title: "Command Blocks…",
+                                 subtitle: "⌘⇧B — collapsible command + output history (OSC 133)",
+                                 action: { NotificationCenter.default.post(name: .terminalToggleCommandBlocks, object: nil) }))
         items.append(PaletteItem(kind: .action, title: "Clear", subtitle: "⌘K",
                                  action: { sessions.clearCurrent() }))
         items.append(PaletteItem(kind: .action, title: "Toggle Vibecoder Mode",
