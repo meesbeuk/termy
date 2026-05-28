@@ -248,6 +248,10 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalOpenAgentPanel, object: nil)
                 }
                 .keyboardShortcut("a", modifiers: [.command, .shift])
+                Button("Claude Usage…") {
+                    NotificationCenter.default.post(name: .terminalOpenClaudeUsage, object: nil)
+                }
+                .keyboardShortcut("u", modifiers: [.command, .option])
                 Button("Quick Select…") {
                     NotificationCenter.default.post(name: .terminalOpenQuickSelect, object: nil)
                 }
@@ -328,6 +332,7 @@ extension Notification.Name {
     static let terminalSendToPane = Notification.Name("mees.terminal.sendToPane")
     static let terminalToggleCommandBlocks = Notification.Name("mees.terminal.toggleCommandBlocks")
     static let terminalShowImage = Notification.Name("mees.terminal.showImage")
+    static let terminalOpenClaudeUsage = Notification.Name("mees.terminal.openClaudeUsage")
     /// Posted when LaunchServices hands us one or more `termy://` URLs (or
     /// when an in-app menu like the command palette wants to simulate one
     /// for testing). Key window drains `TerminalAppDelegate.pendingTermyURLs`.

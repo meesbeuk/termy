@@ -143,6 +143,7 @@ enum ShortcutCategory: String, CaseIterable, Identifiable {
             ("Command blocks (OSC 133)",  "⌘⇧B  ·  palette"),
             ("Show image inline",         "Menu · palette"),
             ("Resume agent session",      "Agent Sessions panel"),
+            ("Claude usage (tokens/cost)", "⌘⌥U"),
             ("Agent sessions",            "⌘⇧A"),
             ("Session logs",              "⌘⇧L"),
             ("Paste from history",        "⌘⇧V"),

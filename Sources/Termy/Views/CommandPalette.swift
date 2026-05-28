@@ -232,6 +232,9 @@ struct CommandPalette: View {
         items.append(PaletteItem(kind: .action, title: "Command Blocks…",
                                  subtitle: "⌘⇧B — collapsible command + output history (OSC 133)",
                                  action: { NotificationCenter.default.post(name: .terminalToggleCommandBlocks, object: nil) }))
+        items.append(PaletteItem(kind: .action, title: "Claude Usage…",
+                                 subtitle: "⌘⌥U — tokens + est. cost from ~/.claude logs",
+                                 action: { NotificationCenter.default.post(name: .terminalOpenClaudeUsage, object: nil) }))
         items.append(PaletteItem(kind: .action, title: "Clear", subtitle: "⌘K",
                                  action: { sessions.clearCurrent() }))
         items.append(PaletteItem(kind: .action, title: "Toggle Vibecoder Mode",

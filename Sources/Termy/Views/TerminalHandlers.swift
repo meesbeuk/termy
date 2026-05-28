@@ -29,6 +29,7 @@ struct TerminalHandlers: ViewModifier {
     let showAgentDashboard: () -> Void
     let showSendToPane: () -> Void
     let showCommandBlocks: () -> Void
+    let showClaudeUsage: () -> Void
 
     func body(content: Content) -> some View {
         content
@@ -69,7 +70,8 @@ struct TerminalHandlers: ViewModifier {
                 showLayoutPicker: showLayoutPicker,
                 showAgentDashboard: showAgentDashboard,
                 showSendToPane: showSendToPane,
-                showCommandBlocks: showCommandBlocks
+                showCommandBlocks: showCommandBlocks,
+                showClaudeUsage: showClaudeUsage
             ))
     }
 }
@@ -85,6 +87,7 @@ private struct NotificationHandlersD: ViewModifier {
     let showAgentDashboard: () -> Void
     let showSendToPane: () -> Void
     let showCommandBlocks: () -> Void
+    let showClaudeUsage: () -> Void
 
     func body(content: Content) -> some View {
         content
@@ -116,6 +119,9 @@ private struct NotificationHandlersD: ViewModifier {
             }
             .onReceive(NotificationCenter.default.publisher(for: .terminalToggleCommandBlocks)) { _ in
                 if isKeyWindow() { showCommandBlocks() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalOpenClaudeUsage)) { _ in
+                if isKeyWindow() { showClaudeUsage() }
             }
     }
 
