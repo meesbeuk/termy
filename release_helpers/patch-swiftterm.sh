@@ -26,6 +26,11 @@ fi
 
 MAC_FILE="$CHECKOUT/Sources/SwiftTerm/Mac/MacTerminalView.swift"
 APPLE_FILE="$CHECKOUT/Sources/SwiftTerm/Apple/AppleTerminalView.swift"
+BUFFER_FILE="$CHECKOUT/Sources/SwiftTerm/Buffer.swift"
+TERMINAL_FILE="$CHECKOUT/Sources/SwiftTerm/Terminal.swift"
+
+# SwiftPM marks some checkout files read-only; make the ones we patch writable.
+chmod u+w "$MAC_FILE" "$APPLE_FILE" "$BUFFER_FILE" "$TERMINAL_FILE" 2>/dev/null || true
 
 # Idempotent — bail if already applied.
 if grep -q "TERMY_PATCH_BEGIN line_spacing" "$MAC_FILE" 2>/dev/null && \
@@ -33,7 +38,8 @@ if grep -q "TERMY_PATCH_BEGIN line_spacing" "$MAC_FILE" 2>/dev/null && \
    grep -q "TERMY_PATCH_BEGIN font_thicken" "$APPLE_FILE" 2>/dev/null && \
    grep -q "TERMY_PATCH preserve_selection_on_layout" "$MAC_FILE" 2>/dev/null && \
    grep -q "TERMY_PATCH preserve_selection_on_keydown" "$MAC_FILE" 2>/dev/null && \
-   grep -q "TERMY_PATCH return_key_enter" "$MAC_FILE" 2>/dev/null; then
+   grep -q "TERMY_PATCH return_key_enter" "$MAC_FILE" 2>/dev/null && \
+   grep -q "TERMY_PATCH public_ybase" "$BUFFER_FILE" 2>/dev/null; then
     echo "patch-swiftterm: already applied"
     exit 0
 fi
@@ -261,6 +267,31 @@ patch = """        switch Int(event.keyCode) {
 if anchor not in text:
     sys.exit("kittyFunctionalKey keyCode switch anchor missing")
 open(path, "w").write(text.replace(anchor, patch, 1))
+PY
+
+# --- expose Buffer.yBase for reading from the host module ----------------
+# Termy's scroll lock needs to know whether the viewport is at the LIVE tail
+# (buffer.yDisp == buffer.yBase). It can't use SwiftTerm's `scrollPosition`
+# because that reads `terminal.displayBuffer`, which is the FROZEN snapshot
+# during a DECSET 2026 synchronized-output frame — making it lie about the
+# tail mid-frame and spuriously engage the lock (scrolling claude's input +
+# caret off-screen). `yDisp` is already public; make `yBase`'s getter public
+# (setter stays internal) so the host can compute the true live-tail state.
+python3 - "$BUFFER_FILE" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+if "TERMY_PATCH public_ybase" in text:
+    sys.exit(0)
+old = """    /// has access to are `lines [yBase..(yBase+rows)]`
+    var yBase: Int {"""
+new = """    /// has access to are `lines [yBase..(yBase+rows)]`
+    // TERMY_PATCH public_ybase — getter exposed so the host can detect the
+    // live tail without going through the sync-frozen displayBuffer.
+    public internal(set) var yBase: Int {"""
+if old not in text:
+    sys.exit("yBase anchor missing")
+open(path, "w").write(text.replace(old, new, 1))
 PY
 
 echo "patch-swiftterm: done"

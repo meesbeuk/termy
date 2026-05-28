@@ -223,10 +223,6 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// output — the lock target stays put even as multiple data
     /// chunks fire while a restore is in flight.
     private var lockedRow: Int? = nil
-    /// Tolerance for "at bottom" check — scrollPosition is a Double
-    /// 0..1 ratio; floating-point rounding can leave a fully-scrolled
-    /// view at 0.9998 instead of 1.0.
-    private let scrollPositionTailEpsilon: Double = 0.005
 
     /// Re-evaluate the lock state from current yDisp/scrollPosition.
     /// Called synchronously inside `dataReceived` (per chunk) so the
@@ -234,21 +230,22 @@ final class TermyTerminalView: LocalProcessTerminalView {
     /// dispatch, no stale `lockedRow`, no race between scroll wheel
     /// events and chunk arrivals.
     private func recomputeScrollLock() {
-        guard canScroll else {
-            releaseScrollLock()
-            return
-        }
-        let atTail = scrollPosition >= (1.0 - scrollPositionTailEpsilon)
-        if atTail {
-            releaseScrollLock()
-        } else {
+        // Decide purely from the LIVE buffer. We must NOT use `scrollPosition`
+        // here: it reads `terminal.displayBuffer`, which during a DECSET 2026
+        // synchronized-output frame is the FROZEN snapshot (claude wraps every
+        // repaint in ESC[?2026h..l). A stale snapshot can read "not at tail"
+        // while the live tail is actually at the bottom — that spuriously
+        // engaged the lock, pinned yDisp, and scrolled claude's live input
+        // (and its caret) off-screen, which read to users as "the caret
+        // doesn't render". The live buffer is never frozen, so yDisp/yBase
+        // always reflect reality. ALWAYS following the current yDisp also means
+        // a mid-stream user scroll is tracked instead of snapping back.
+        let b = getTerminal().buffer
+        if let row = ScrollLockLogic.lockTarget(yDisp: b.yDisp, yBase: b.yBase, canScroll: canScroll) {
             userScrolledAway = true
-            // ALWAYS update to current yDisp — if the user scrolled
-            // since the last chunk, follow them. Without this, the
-            // sync restore would yank them back to the original
-            // locked row instead of the row they just scrolled to,
-            // which is the "scrolling feels glitchy" symptom.
-            lockedRow = getTerminal().buffer.yDisp
+            lockedRow = row
+        } else {
+            releaseScrollLock()
         }
     }
 
@@ -287,9 +284,10 @@ final class TermyTerminalView: LocalProcessTerminalView {
                     guard let self else { return }
                     // Just check the at-tail predicate and release if so.
                     // Setting the lock is the job of dataReceived's
-                    // synchronous path.
-                    if self.canScroll,
-                       self.scrollPosition >= (1.0 - self.scrollPositionTailEpsilon) {
+                    // synchronous path. Read the LIVE buffer (not scrollPosition,
+                    // which can be frozen mid-2026-sync — see recomputeScrollLock).
+                    let b = self.getTerminal().buffer
+                    if ScrollLockLogic.lockTarget(yDisp: b.yDisp, yBase: b.yBase, canScroll: self.canScroll) == nil {
                         self.releaseScrollLock()
                     }
                 }
