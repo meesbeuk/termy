@@ -47,7 +47,8 @@ struct GridLayoutTests {
 
     @Test func unevenColumnFractionsAreHonoured() {
         // A 70/30 column split must put ~70% of the usable width in column 0.
-        let total = CGSize(width: 1004, height: 400) // 1004 - 4px divider = 1000 usable
+        // Pad the total by one divider so usable width is a clean 1000.
+        let total = CGSize(width: 1000 + PaneMath.dividerWidth, height: 400)
         let rects = PaneMath.gridCellRects(count: 2, columns: 2,
                                            colFractions: [0.7, 0.3], rowFractions: [1.0],
                                            total: total)

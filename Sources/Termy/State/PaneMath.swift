@@ -5,7 +5,12 @@ import CoreGraphics
 /// transparent — no UIKit/SwiftUI state.
 enum PaneMath {
     static let minFraction: CGFloat = 0.10
-    static let dividerWidth: CGFloat = 4
+    /// Gap between panes — also the divider's grab zone. Kept generous (8pt)
+    /// so the resize handle is easy to hit with a mouse; the visible hairline
+    /// is drawn thin and centred inside it. Layout math and the rendered
+    /// divider both use this single value so panes + dividers always fill the
+    /// parent exactly.
+    static let dividerWidth: CGFloat = 8
 
     /// Minimum fraction a pane may occupy, derived from a hard pixel floor
     /// (PaneCellView pins each pane to minWidth 200 / minHeight 100). Tying the

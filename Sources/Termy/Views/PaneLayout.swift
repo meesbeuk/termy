@@ -345,15 +345,21 @@ private struct ActivityStripe: View {
     }
 }
 
-/// Draggable divider between two adjacent panes. Renders as a 1-px line
-/// with a wider invisible hit zone so the cursor change feels generous.
-/// Calls back with the absolute pixel delta along the orientation axis;
-/// the parent maps that to a fraction shift.
+/// Draggable divider between two adjacent panes. The whole `dividerWidth`-wide
+/// strip is a grab zone (the previous build's content shape was zero-height, so
+/// there was effectively nothing to grab — the "can't resize panes" report).
+/// A thin hairline is centred in it, brightening and thickening on
+/// hover/drag, with a short grip handle so it visibly reads as draggable.
+/// `isHorizontal == true` means a VERTICAL divider sitting between a left and
+/// right pane (drag changes width); `false` is a horizontal divider between a
+/// top and bottom pane (drag changes height). Calls back with the absolute
+/// pixel delta along the resize axis.
 private struct ResizableDivider: View {
     let isHorizontal: Bool
     let onDrag: (CGFloat) -> Void
 
     @State private var hovering = false
+    @State private var dragging = false
     /// Last cumulative translation seen during the in-flight drag. SwiftUI's
     /// DragGesture reports translation as the TOTAL distance from the gesture
     /// start, but `onDrag` consumes an incremental per-frame delta — so we diff
@@ -361,36 +367,57 @@ private struct ResizableDivider: View {
     @State private var lastTranslation: CGFloat = 0
 
     var body: some View {
-        Group {
-            if isHorizontal {
-                Rectangle()
-                    .fill(Color.primary.opacity(hovering ? 0.25 : 0.12))
-                    .frame(width: 1)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(Rectangle().offset(x: -2).size(CGSize(width: 5, height: 0)))
-            } else {
-                Rectangle()
-                    .fill(Color.primary.opacity(hovering ? 0.25 : 0.12))
-                    .frame(height: 1)
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle().offset(y: -2).size(CGSize(width: 0, height: 5)))
+        let active = hovering || dragging
+        ZStack {
+            // Full-size transparent grab zone. The 0.001 fill keeps it
+            // hit-testable; contentShape(Rectangle()) makes the ENTIRE strip
+            // grabbable rather than just the 1px line.
+            Rectangle().fill(Color.primary.opacity(0.001))
+
+            // Centred hairline: subtle at rest, accented while interacting.
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(Color.primary.opacity(active ? 0.35 : 0.14))
+                .frame(
+                    width:  isHorizontal ? (active ? 2.5 : 1) : nil,
+                    height: isHorizontal ? nil : (active ? 2.5 : 1)
+                )
+
+            // Grip handle — a short pill that appears on hover/drag so the
+            // divider visibly advertises that it can be dragged.
+            if active {
+                Capsule()
+                    .fill(Color.primary.opacity(0.5))
+                    .frame(
+                        width:  isHorizontal ? 3 : 26,
+                        height: isHorizontal ? 26 : 3
+                    )
+                    .transition(.opacity)
             }
         }
-        .frame(width: isHorizontal ? 4 : nil, height: isHorizontal ? nil : 4)
-        .background(Color.primary.opacity(0.001))  // make the whole 4px width grabbable
+        .frame(
+            width:  isHorizontal ? PaneMath.dividerWidth : nil,
+            height: isHorizontal ? nil : PaneMath.dividerWidth
+        )
+        .frame(
+            maxWidth:  isHorizontal ? nil : .infinity,
+            maxHeight: isHorizontal ? .infinity : nil
+        )
+        .contentShape(Rectangle())
+        .animation(.easeOut(duration: 0.12), value: active)
         .onHover { hovering in
             self.hovering = hovering
             // Cursor feedback so users discover it's draggable.
             if hovering {
                 if isHorizontal { NSCursor.resizeLeftRight.set() }
                 else { NSCursor.resizeUpDown.set() }
-            } else {
+            } else if !dragging {
                 NSCursor.arrow.set()
             }
         }
         .gesture(
-            DragGesture()
+            DragGesture(minimumDistance: 1)
                 .onChanged { value in
+                    dragging = true
                     // translation is CUMULATIVE from the gesture start; the
                     // resize handler applies its argument as an INCREMENTAL
                     // delta. Feed it the per-frame difference, else every frame
@@ -402,8 +429,10 @@ private struct ResizableDivider: View {
                 }
                 .onEnded { _ in
                     lastTranslation = 0
+                    dragging = false
                 }
         )
+        .help(isHorizontal ? "Drag to resize panes (↔)" : "Drag to resize panes (↕)")
     }
 }
 
