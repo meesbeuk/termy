@@ -6,6 +6,35 @@
         <language>en</language>
 
         <item>
+            <title>Version 0.14.0</title>
+            <description><![CDATA[
+                <h2>v0.14.0 — Hardening + Claude Code parity pass</h2>
+<p>A focused correctness pass: the cursor now shows in Claude Code, Shift+Enter inserts a newline, split-pane resizing works, and two silent data-loss bugs are gone. Every fix is backed by an automated test (a brand-new Swift Testing suite, 49 tests).</p>
+<ul>
+  <li><b>Claude Code cursor is visible again.</b> Claude hides the OS cursor and draws its own as a <i>reverse-video</i> cell. SwiftTerm filled reverse-video cells with the inverse of the background color — and on Termy's transparent glass that inverse is still transparent, so the cursor (and any default reverse-video text) painted nothing. Reversed default cells now fall back to the opaque foreground, so the cursor renders as a proper block. Two contributing issues were also fixed: the scroll-lock could scroll Claude's input off-screen during its synchronized-output frames, and the caret could be positioned from a frozen mid-frame snapshot.</li>
+  <li><b>Shift+Enter inserts a newline in Claude / REPLs.</b> Under the kitty keyboard protocol the main Return key wasn't mapped, so Shift+Enter lost its modifier and read as a plain Enter (submit). It now encodes correctly (<code>ESC[13;2u</code>); Ctrl/Alt+Enter disambiguate too.</li>
+  <li><b>Split-pane divider drag works.</b> The divider fed SwiftUI's cumulative drag distance into a handler that treated it as a per-frame delta, so it accelerated and shot to the edge. It now tracks the cursor 1:1, can't shrink a pane below its minimum size, and fills the parent with zero drift.</li>
+  <li><b>Scrollback &amp; window-resize integrity.</b> Heavy streaming under Claude no longer mislatches the scroll lock; window resize predicts the cell grid correctly (it was ignoring line spacing) so it stops over-firing reflow; Claude's banner no longer stacks on resize.</li>
+  <li><b>No more silent data loss.</b> <kbd>&#8984;K</kbd> did a full terminal reset that wiped scrollback <i>and</i> reset Claude's keyboard/paste modes (silently re-breaking Shift+Enter) — it's now a non-destructive clear. And a lone <code>clear</code> shortly after a TUI session can no longer trim your real scrollback.</li>
+  <li><b>Input fixes.</b> Ctrl/Alt+Backspace and Shift+Escape keep their modifiers; Cmd/Fn/Option+Delete line-editing keys work (Ctrl-U/K/W); Broadcast Input now sends real key sequences to every pane (arrows/Fn/kitty keys instead of garbage); a find bar open in one window no longer eats Escape in your other windows.</li>
+  <li><b>State &amp; performance.</b> Closing a pane with its &times; keeps your custom split sizes; the Quick Terminal no longer leaves a blank phantom window on next launch; tab renames / colors / broadcast toggles persist across quit; heavy output (<code>cat</code> a big file) no longer decodes every chunk twice on the main thread.</li>
+</ul>
+<p><i>Under the hood: added a CLT-compatible Swift Testing suite (49 tests) and a sentinel-guarded SwiftTerm patch set; see HARDENING_REPORT.md in the repo for the full breakdown and residual-risk notes.</i></p>
+            ]]></description>
+            <pubDate>Thu, 28 May 2026 20:05:56 +0000</pubDate>
+            <sparkle:version>61</sparkle:version>
+            <sparkle:shortVersionString>0.14.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/meesbeuk/termy/releases/download/v0.14.0/Termy.dmg"
+                sparkle:version="61"
+                sparkle:shortVersionString="0.14.0"
+                length="3350200"
+                sparkle:edSignature="aSZf/ABUxuktCut99yePR1tFrtCkLeQCIvbh6boAmugH46zzvUQNvcBWRiUyvKovCfkJAgNdEreQsoMrl5U1AA=="
+                type="application/octet-stream"/>
+        </item>
+
+        <item>
             <title>Version 0.13.3</title>
             <description><![CDATA[
                 <h2>v0.13.3 — Selection drag, live-resize reflow, font-thicken actually works</h2>
