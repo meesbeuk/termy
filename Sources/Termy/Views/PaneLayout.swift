@@ -77,13 +77,11 @@ struct PaneLayout: View {
     }
 
     private func absoluteSizes(fractions: [CGFloat], total: CGFloat) -> [CGFloat] {
-        // Subtract divider widths so the panes + dividers exactly fill
-        // the parent — without this, drag jitter accumulates rounding
-        // error and the last pane drifts.
-        let dividerCount = max(0, fractions.count - 1)
-        let dividerWidth: CGFloat = 4
-        let usable = max(0, total - CGFloat(dividerCount) * dividerWidth)
-        return fractions.map { round($0 * usable) }
+        // Delegated to PaneMath, which folds the rounding remainder into the
+        // last pane so panes + dividers fill the parent exactly. The old
+        // per-element `round($0 * usable)` drifted the last pane by a pixel
+        // or two on every drag tick.
+        PaneMath.absoluteSizes(fractions: fractions, total: total)
     }
 
     /// Drag handler: moves a fraction `delta` (signed, in absolute
@@ -91,16 +89,14 @@ struct PaneLayout: View {
     /// can't go below 10% — small enough to fit a one-column terminal,
     /// large enough that the divider stays grabbable.
     private func resize(at idx: Int, delta: CGFloat, total: CGFloat) {
-        guard total > 0, idx + 1 < tab.paneFractions.count else { return }
+        guard total > 0 else { return }
+        // `delta` is an INCREMENTAL pixel delta (the divider converts SwiftUI's
+        // cumulative drag translation to per-frame deltas before calling here).
+        // PaneMath clamps to the 10% floor and conserves the total.
         let deltaFraction = delta / total
-        let minFraction: CGFloat = 0.10
-        var fractions = tab.paneFractions
-        let newLeft = fractions[idx] + deltaFraction
-        let newRight = fractions[idx + 1] - deltaFraction
-        if newLeft < minFraction || newRight < minFraction { return }
-        fractions[idx] = newLeft
-        fractions[idx + 1] = newRight
-        tab.paneFractions = fractions
+        if let updated = PaneMath.resized(tab.paneFractions, at: idx, deltaFraction: deltaFraction) {
+            tab.paneFractions = updated
+        }
     }
 
     @ViewBuilder
@@ -271,6 +267,11 @@ private struct ResizableDivider: View {
     let onDrag: (CGFloat) -> Void
 
     @State private var hovering = false
+    /// Last cumulative translation seen during the in-flight drag. SwiftUI's
+    /// DragGesture reports translation as the TOTAL distance from the gesture
+    /// start, but `onDrag` consumes an incremental per-frame delta — so we diff
+    /// against this and reset it when the drag ends.
+    @State private var lastTranslation: CGFloat = 0
 
     var body: some View {
         Group {
@@ -303,8 +304,17 @@ private struct ResizableDivider: View {
         .gesture(
             DragGesture()
                 .onChanged { value in
-                    let delta = isHorizontal ? value.translation.width : value.translation.height
-                    onDrag(delta)
+                    // translation is CUMULATIVE from the gesture start; the
+                    // resize handler applies its argument as an INCREMENTAL
+                    // delta. Feed it the per-frame difference, else every frame
+                    // re-applies the whole distance and the divider accelerates
+                    // / overshoots (the "resizing splits is broken" bug).
+                    let cumulative = isHorizontal ? value.translation.width : value.translation.height
+                    onDrag(cumulative - lastTranslation)
+                    lastTranslation = cumulative
+                }
+                .onEnded { _ in
+                    lastTranslation = 0
                 }
         )
     }
