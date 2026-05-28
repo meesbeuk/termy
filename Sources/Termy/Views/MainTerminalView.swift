@@ -509,11 +509,16 @@ struct MainTerminalView: View {
         let sessionsRef = sessions
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak window] event in
             guard let window, event.window === window,
-                  let tab = sessionsRef.currentTab, tab.broadcastInput,
-                  let chars = event.characters, !chars.isEmpty
+                  let tab = sessionsRef.currentTab, tab.broadcastInput
             else { return event }
+            // Dispatch the KEY EVENT to each sibling, NOT event.characters.
+            // event.characters returns macOS private-use codepoints for arrows /
+            // Fn / nav keys (Up = U+F700, etc.) and ignores the terminal's own
+            // encoding (application-cursor SS3 vs CSI, kitty CSI-u, optionAsMeta
+            // ESC-prefix, bracketed paste). Routing keyDown lets each pane encode
+            // per its own mode — matching iTerm2's broadcast.
             for pane in tab.panes where pane.id != tab.activePaneId {
-                pane.terminalView?.send(txt: chars)
+                pane.terminalView?.keyDown(with: event)
             }
             return event
         }
@@ -564,11 +569,14 @@ private struct EscMonitor: NSViewRepresentable {
     func makeCoordinator() -> Coord { Coord() }
 
     func makeNSView(context: Context) -> NSView {
+        let v = NSView(frame: .zero)
+        context.coordinator.hostView = v
         context.coordinator.sync(isActive: isActive, onEscape: onEscape)
-        return NSView(frame: .zero)
+        return v
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.hostView = nsView
         context.coordinator.sync(isActive: isActive, onEscape: onEscape)
     }
 
@@ -579,12 +587,21 @@ private struct EscMonitor: NSViewRepresentable {
     final class Coord {
         private var monitor: Any?
         private var onEscape: (() -> Void) = {}
+        /// The representable's backing view — used to resolve our hosting
+        /// NSWindow at event time so Esc-swallowing is confined to THIS window.
+        weak var hostView: NSView?
 
         func sync(isActive: Bool, onEscape: @escaping () -> Void) {
             self.onEscape = onEscape
             if isActive && monitor == nil {
                 monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
                     guard let self else { return event }
+                    // Confine to the window whose find bar is actually open.
+                    // Without this, an open find bar in window A swallowed Esc /
+                    // Cmd-period for EVERY window — so Esc never reached claude /
+                    // vim in window B. (The other monitors all guard event.window;
+                    // this one didn't.)
+                    guard let win = self.hostView?.window, event.window === win else { return event }
                     // keyCode 53 = Esc. Also accept Cmd+. (keyCode 47 with cmd)
                     // as the macOS-standard "cancel" combo — works in cases
                     // where bare Esc is being absorbed by the system text-

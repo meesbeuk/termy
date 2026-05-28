@@ -64,6 +64,35 @@ struct ModifiedSpecialKeyTests {
     }
 }
 
+/// Broadcast-input forwarding: routing the key EVENT through a sibling view's
+/// keyDown encodes special keys correctly, whereas the old `event.characters`
+/// path mirrored macOS private-use codepoints. We assert the underlying truth:
+/// (a) the arrow key's `.characters` is the private-use scalar the old code
+/// would have sent, and (b) keyDown produces the real CSI sequence.
+@MainActor
+struct BroadcastEncodingTests {
+    @Test func arrowCharactersAreUselessPrivateUse() {
+        // U+F700 (NSUpArrowFunctionKey) — what the old broadcast forwarded.
+        let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.function, .numericPad],
+            timestamp: 0, windowNumber: 0, context: nil, characters: "\u{F700}",
+            charactersIgnoringModifiers: "\u{F700}", isARepeat: false, keyCode: UInt16(kVK_UpArrow))!
+        let bytes = Array((e.characters ?? "").utf8)
+        #expect(bytes == [0xEF, 0x9C, 0x80], "Up arrow .characters is U+F700 (private use) — wrong to send to a PTY")
+    }
+
+    @Test func keyDownEncodesUpArrowAsCSI() {
+        let v = TerminalView(frame: NSRect(x: 0, y: 0, width: 480, height: 320))
+        let d = KeyCaptureDelegate(); v.terminalDelegate = d; _ = d
+        let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.function, .numericPad],
+            timestamp: 0, windowNumber: 0, context: nil, characters: "\u{F700}",
+            charactersIgnoringModifiers: "\u{F700}", isARepeat: false, keyCode: UInt16(kVK_UpArrow))!
+        v.keyDown(with: e)
+        // Normal (non-application) cursor mode: ESC [ A.
+        #expect(d.sent == [0x1b, 0x5b, 0x41],
+                "routing keyDown encodes Up as ESC[A, got \(d.sent)")
+    }
+}
+
 /// Cocoa line-editing selectors that used to be dropped by doCommand's default.
 @MainActor
 struct CocoaEditingKeyTests {
