@@ -39,7 +39,10 @@ if grep -q "TERMY_PATCH_BEGIN line_spacing" "$MAC_FILE" 2>/dev/null && \
    grep -q "TERMY_PATCH preserve_selection_on_layout" "$MAC_FILE" 2>/dev/null && \
    grep -q "TERMY_PATCH preserve_selection_on_keydown" "$MAC_FILE" 2>/dev/null && \
    grep -q "TERMY_PATCH return_key_enter" "$MAC_FILE" 2>/dev/null && \
-   grep -q "TERMY_PATCH public_ybase" "$BUFFER_FILE" 2>/dev/null; then
+   grep -q "TERMY_PATCH public_ybase" "$BUFFER_FILE" 2>/dev/null && \
+   grep -q "TERMY_PATCH sync_active_internal" "$TERMINAL_FILE" 2>/dev/null && \
+   grep -q "TERMY_PATCH caret_sync_consistency" "$APPLE_FILE" 2>/dev/null && \
+   grep -q "TERMY_PATCH caret_single_owner" "$MAC_FILE" 2>/dev/null; then
     echo "patch-swiftterm: already applied"
     exit 0
 fi
@@ -291,6 +294,110 @@ new = """    /// has access to are `lines [yBase..(yBase+rows)]`
     public internal(set) var yBase: Int {"""
 if old not in text:
     sys.exit("yBase anchor missing")
+open(path, "w").write(text.replace(old, new, 1))
+PY
+
+# --- expose Terminal.synchronizedOutputActive to the rest of the module ---
+# updateCursorPosition (in AppleTerminalView.swift, same module but a different
+# file) needs to know whether a DECSET 2026 frame is in flight. The flag is
+# file-private to Terminal.swift; widen it to internal (read stays in-module).
+python3 - "$TERMINAL_FILE" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+if "TERMY_PATCH sync_active_internal" in text:
+    sys.exit(0)
+old = "    private var synchronizedOutputActive: Bool = false"
+new = "    // TERMY_PATCH sync_active_internal — readable across the module so the\n    // caret logic can defer while a synchronized-output frame is in flight.\n    var synchronizedOutputActive: Bool = false"
+if old not in text:
+    sys.exit("synchronizedOutputActive anchor missing")
+open(path, "w").write(text.replace(old, new, 1))
+PY
+
+# --- caret reflects only fully-committed frames (DECSET 2026) -------------
+# updateCursorPosition takes ALL its geometry from terminal.displayBuffer,
+# which during a synchronized-output frame is the FROZEN snapshot, while it
+# reads terminal.cursorHidden LIVE — an inconsistent mix that mis-positions or
+# removes the caret mid-frame (claude wraps every repaint in ESC[?2026h..l).
+# Defer all caret mutation until the frame commits; endSynchronizedOutput()
+# fires synchronizedOutputChanged -> queuePendingDisplay, which re-runs this off
+# the now-live buffer once the whole frame has landed.
+python3 - "$APPLE_FILE" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+if "TERMY_PATCH caret_sync_consistency" in text:
+    sys.exit(0)
+old = """    func updateCursorPosition()
+    {
+        guard let caretView else { return }"""
+new = """    func updateCursorPosition()
+    {
+        guard let caretView else { return }
+        // TERMY_PATCH caret_sync_consistency
+        // During a DECSET 2026 synchronized-output frame, terminal.displayBuffer
+        // is a frozen snapshot while terminal.cursorHidden is read live. Mixing
+        // stale geometry with a live visibility flag mis-positions or removes the
+        // caret mid-frame. Leave it exactly as-is until the frame commits — the
+        // post-sync queuePendingDisplay re-runs this off the live buffer.
+        if terminal.synchronizedOutputActive { return }"""
+if old not in text:
+    sys.exit("updateCursorPosition anchor missing")
+open(path, "w").write(text.replace(old, new, 1))
+PY
+
+# --- updateCursorPosition is the SINGLE owner of caret attach/detach ------
+# showCursor/hideCursor (the DECTCEM ESC[?25h/l delegate callbacks) used to
+# poke caretView.superview directly with NO viewport check and NO reposition —
+# so showCursor re-attached the caret at its STALE frame origin and raced the
+# async updateCursorPosition (two owners of the same view). Route both through
+# updateCursorPosition, which already does viewport + position + cursorHidden +
+# sync gating. cursorHidden is set before these callbacks fire (Terminal.swift),
+# so updateCursorPosition sees the correct visibility.
+python3 - "$MAC_FILE" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+if "TERMY_PATCH caret_single_owner" in text:
+    sys.exit(0)
+old = """    open func showCursor(source: Terminal) {
+        if useMetalRenderer {
+            queueMetalDisplay()
+            return
+        }
+        if caretView.superview == nil {
+            addSubview(caretView)
+        }
+    }
+
+    open func hideCursor(source: Terminal) {
+        if useMetalRenderer {
+            queueMetalDisplay()
+            return
+        }
+        caretView.removeFromSuperview()
+    }"""
+new = """    open func showCursor(source: Terminal) {
+        if useMetalRenderer {
+            queueMetalDisplay()
+            return
+        }
+        // TERMY_PATCH caret_single_owner — route through the single owner so the
+        // caret is re-attached at the CURRENT position (not its stale frame) and
+        // honours the viewport + sync gating instead of racing updateCursorPosition.
+        updateCursorPosition()
+    }
+
+    open func hideCursor(source: Terminal) {
+        if useMetalRenderer {
+            queueMetalDisplay()
+            return
+        }
+        // TERMY_PATCH caret_single_owner
+        updateCursorPosition()
+    }"""
+if old not in text:
+    sys.exit("showCursor/hideCursor anchor missing")
 open(path, "w").write(text.replace(old, new, 1))
 PY
 
