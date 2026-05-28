@@ -14,6 +14,19 @@ Branch: `harden/parity-pass`. Goal: match/beat iTerm2 on correctness, input, per
 - **Fix:** new idempotent SwiftTerm patch (`patch-swiftterm.sh`, sentinel `TERMY_PATCH return_key_enter`) maps `kVK_Return` → `.enter`, so Return is encoded through the kitty functional-key path **with real modifiers**: plain Enter → `CR` (unchanged), Shift+Enter → `ESC[13;2u` (exactly what Claude reads as newline), Ctrl/Alt+Enter likewise disambiguate. When kitty mode is off the whole branch is skipped → ordinary terminals unaffected.
 - **Tests:** `KittyEnterTests` — drives a real SwiftTerm `TerminalView` with kitty mode enabled and synthesized `NSEvent`s, capturing the bytes sent to the PTY: Shift+Enter → `ESC[13;2u`, plain Enter → `CR`, Ctrl+Enter → `ESC[13;5u`.
 
+### P1 — Quick Terminal leaked a restore key → phantom blank window each launch
+- **Cause:** the Quake panel built `TerminalSessions()`, whose init unconditionally registered the window's restore key — but it never persists a tab payload, so launch reopened a blank window for that payload-less key forever.
+- **Fix:** `TerminalSessions.init(registerWindowKey:)` (Quake passes `false`); launch also skips any saved key with no payload and garbage-collects it (cleans up already-leaked keys).
+
+### P1 — Tab rename / color / broadcast toggle lost on quit
+- **Cause:** TabChip + command palette mutate `TerminalTab` `@Published` properties directly without calling `persist()`; the fields are in the payload but nothing wrote it.
+- **Fix:** `TerminalSessions` observes each tab's `objectWillChange` (re-subscribed on `tabs` change) and debounce-persists (0.8s) — one place, covers every tab-property edit. (Verified by build + the existing round-trip payload; the Combine+Timer+UserDefaults wiring isn't cleanly unit-testable — see residual risk.)
+
+### P1 — Divider could shrink a pane below its min size and clip
+- **Cause:** the drag clamp used a flat 10% floor while PaneCellView pins each pane to minWidth 200 / minHeight 100; when 10%·total < the pixel floor, children overflowed the parent and the divider detached.
+- **Fix:** `PaneMath.minFraction(minPixels:total:)` derives the clamp from the pixel floor (capped at 0.45 so a 2-pane split stays satisfiable); `resize` passes the orientation's floor (200 H / 100 V).
+- **Tests:** `PaneMathTests` — min-fraction tracks the pixel floor, caps on small windows, and the resize clamp honours it.
+
 ### P1 — Closing a pane via its X button reset a custom split to equal
 - **Cause:** `TerminalSessions.closePane` (close-button + shell-`exit` path) removed the pane but never updated `paneFractions`, so `PaneLayout` saw the length mismatch and overwrote the user's split with equal fractions. The keyboard/menu path (`closeActivePane`) did it correctly — two divergent implementations.
 - **Fix:** factor a single `TerminalTab.removePane(id:)` (donates the closed pane's share to the focus-inheriting neighbour, fixes up `activePaneId`); both paths call it.

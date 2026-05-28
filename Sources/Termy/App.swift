@@ -456,10 +456,16 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
         // bound runaway accumulation. Also garbage-collect orphan keys
         // beyond the cap so their UserDefaults entries don't leak forever.
         let saved = UserDefaults.standard.stringArray(forKey: TerminalSessions.windowKeysKey) ?? []
-        let kept = Array(saved.prefix(8))
-        if kept.count != saved.count {
+        // Skip keys with no saved tab payload — e.g. a leaked Quick Terminal key
+        // (older builds registered it but it never persisted tabs). Without this
+        // a payload-less key reopens a blank phantom window on every launch.
+        // The payload is written under the key itself (persist() -> forKey:
+        // restoreKey), so object(forKey:) == nil means "nothing to restore".
+        let withPayload = saved.filter { UserDefaults.standard.object(forKey: $0) != nil }
+        let kept = Array(withPayload.prefix(8))
+        if kept != saved {
             UserDefaults.standard.set(kept, forKey: TerminalSessions.windowKeysKey)
-            for orphan in saved.dropFirst(8) {
+            for orphan in saved where !kept.contains(orphan) {
                 UserDefaults.standard.removeObject(forKey: orphan)
             }
         }

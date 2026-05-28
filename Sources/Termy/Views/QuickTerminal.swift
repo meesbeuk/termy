@@ -40,7 +40,8 @@ final class QuickTerminalController {
     }
 
     private func buildPanel(settings: TerminalSettings, profiles: ProfileStore) {
-        let s = TerminalSessions()
+        // Quake window is ephemeral — keep it out of the window-restore list.
+        let s = TerminalSessions(registerWindowKey: false)
         s.profileStore = profiles
         s.openTab(persistChange: false)
         self.sessions = s

@@ -94,8 +94,38 @@ final class TerminalSession: ObservableObject, Identifiable {
 /// Each tab contains 1..N panes (splits).
 @MainActor
 final class TerminalSessions: ObservableObject {
-    @Published var tabs: [TerminalTab] = []
+    @Published var tabs: [TerminalTab] = [] {
+        didSet { reobserveTabs() }
+    }
     @Published var selectedTabId: UUID?
+
+    // MARK: - Tab-property auto-persist
+    //
+    // Tab-level edits (rename, tag color, broadcast toggle, orientation,
+    // paneFractions) mutate @Published properties on TerminalTab directly from
+    // the UI (TabChip context menu, command palette). Those sites don't call
+    // persist(), so the changes were lost on quit even though the fields ARE in
+    // the persist payload. Observe each tab's objectWillChange and debounce a
+    // persist so any tab-property edit survives a relaunch — one place, can't
+    // be forgotten at a new mutation site. (Pane streaming churn lives on
+    // TerminalSession, not TerminalTab, so it doesn't trip this.)
+    private var tabObservers: [AnyCancellable] = []
+    private var tabPersistTimer: Timer?
+
+    private func reobserveTabs() {
+        tabObservers = tabs.map { tab in
+            tab.objectWillChange.sink { [weak self] in
+                self?.scheduleTabPersist()
+            }
+        }
+    }
+
+    private func scheduleTabPersist() {
+        tabPersistTimer?.invalidate()
+        tabPersistTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: false) { [weak self] _ in
+            DispatchQueue.main.async { self?.persist() }
+        }
+    }
 
     /// Weak ref to the NSWindow hosting these sessions. Set from the SwiftUI
     /// view via WindowAccessor. Used so multi-window setups close the *right*
@@ -142,9 +172,15 @@ final class TerminalSessions: ObservableObject {
     /// the action.
     var canReopenClosedTab: Bool { !closedTabHistory.isEmpty }
 
-    init(restoreKey: String = UUID().uuidString) {
+    init(restoreKey: String = UUID().uuidString, registerWindowKey: Bool = true) {
         self.restoreKey = restoreKey
-        Self.registerWindowKey(restoreKey)
+        // Ephemeral sessions (the Quick Terminal / Quake window) must NOT join
+        // the window-restore list: they never persist a tab payload, so a
+        // registered-but-empty key spawned a blank phantom window on every
+        // subsequent launch.
+        if registerWindowKey {
+            Self.registerWindowKey(restoreKey)
+        }
     }
 
     private static func registerWindowKey(_ key: String) {
