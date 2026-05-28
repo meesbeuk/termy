@@ -135,6 +135,11 @@ enum ShortcutCategory: String, CaseIterable, Identifiable {
             ("Cheatsheet (this panel)",   "⌘/"),
         ]
         case .ai: return [
+            ("New layout (Quad Claude)",  "⌘⌥N  ·  grid button"),
+            ("Layout picker",             "Grid button  ·  palette"),
+            ("Agent dashboard",           "⌘⌥A  ·  toolbar"),
+            ("Zoom / restore pane",       "⌘⇧↩  ·  toolbar"),
+            ("Send text to one pane",     "⌘⇧S  ·  right-click"),
             ("Agent sessions",            "⌘⇧A"),
             ("Session logs",              "⌘⇧L"),
             ("Paste from history",        "⌘⇧V"),

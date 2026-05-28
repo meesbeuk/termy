@@ -26,7 +26,11 @@ struct PaneLayout: View {
         // ForEach's `id: \.element.id` the sole identity source, so
         // both tab switches and splits diff correctly per pane.
         GeometryReader { geo in
-            if let cols = tab.gridColumns, cols > 1, tab.panes.count > 1 {
+            if let zoomedId = tab.zoomedPaneId, tab.panes.count > 1,
+               tab.panes.contains(where: { $0.id == zoomedId }) {
+                zoomContents(zoomedId: zoomedId, size: geo.size)
+                    .frame(width: geo.size.width, height: geo.size.height)
+            } else if let cols = tab.gridColumns, cols > 1, tab.panes.count > 1 {
                 gridContents(columns: cols, size: geo.size)
                     .frame(width: geo.size.width, height: geo.size.height)
             } else {
@@ -42,6 +46,25 @@ struct PaneLayout: View {
                     }
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
+            }
+        }
+    }
+
+    // MARK: - Zoom (maximise one pane)
+
+    /// Show the zoomed pane full-tab while every sibling stays mounted but
+    /// parked far off-screen — same trick MainTerminalView uses for inactive
+    /// tabs, so a zoom/un-zoom never re-parents a SwiftTerm view (which would
+    /// restart its shell and lose scrollback).
+    @ViewBuilder
+    private func zoomContents(zoomedId: UUID, size: CGSize) -> some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(Array(tab.panes.enumerated()), id: \.element.id) { _, pane in
+                let isZoomed = pane.id == zoomedId
+                paneCell(pane, single: true)
+                    .frame(width: size.width, height: size.height)
+                    .offset(x: isZoomed ? 0 : -100_000, y: 0)
+                    .allowsHitTesting(isZoomed)
             }
         }
     }

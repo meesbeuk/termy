@@ -49,6 +49,11 @@ final class TerminalTab: ObservableObject, Identifiable {
     @Published var gridColFractions: [CGFloat] = []
     @Published var gridRowFractions: [CGFloat] = []
 
+    /// When non-nil, this pane is "zoomed" — temporarily shown full-tab while
+    /// the other panes stay mounted (parked off-screen, so their shells keep
+    /// running). Cleared on un-zoom, pane removal, or collapse to one pane.
+    @Published var zoomedPaneId: UUID?
+
     init(initialCwd: String = NSHomeDirectory(), profile: Profile? = nil) {
         let first = TerminalSession(initialCwd: initialCwd, profile: profile)
         self.panes = [first]
@@ -112,6 +117,7 @@ final class TerminalTab: ObservableObject, Identifiable {
         guard let idx = panes.firstIndex(where: { $0.id == id }) else { return panes.isEmpty }
         panes[idx].terminalView?.terminate()
         let removedWasActive = (activePaneId == id)
+        if zoomedPaneId == id { zoomedPaneId = nil }
         panes.remove(at: idx)
         if panes.isEmpty {
             paneFractions = []
@@ -127,7 +133,7 @@ final class TerminalTab: ObservableObject, Identifiable {
         // single-pane tab — drop grid mode so subsequent splits use the
         // normal H/V path and no stale grid chrome lingers. (For >1 pane the
         // grid renderer re-normalises its row/col fractions to the new count.)
-        if panes.count == 1 { gridColumns = nil; gridColFractions = []; gridRowFractions = [] }
+        if panes.count == 1 { gridColumns = nil; gridColFractions = []; gridRowFractions = []; zoomedPaneId = nil }
         // Only move focus if the removed pane had it (or focus is now stale).
         if removedWasActive || !panes.contains(where: { $0.id == activePaneId }) {
             activePaneId = panes[focusIdx].id

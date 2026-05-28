@@ -10,6 +10,7 @@ struct TermyApp: App {
     @StateObject private var workflows = WorkflowStore()
     @StateObject private var pasteHistory = PasteHistoryStore()
     @StateObject private var updater = Updater()
+    @StateObject private var layouts = LayoutStore()
 
     /// Only the first window restores persisted tabs; further windows are blank.
     nonisolated(unsafe) static var didRestoreFirstWindow = false
@@ -30,6 +31,7 @@ struct TermyApp: App {
             .environmentObject(workflows)
             .environmentObject(pasteHistory)
             .environmentObject(updater)
+            .environmentObject(layouts)
         }
         .windowStyle(.hiddenTitleBar)
         // .automatic = window can be freely resized; SwiftTerm reflows its
@@ -101,6 +103,35 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalFocusPreviousPane, object: nil)
                 }
                 .keyboardShortcut("[", modifiers: [.command, .option])
+                Divider()
+                Button("New Layout: \(layouts.quickLayout.name)") {
+                    NotificationCenter.default.post(name: .terminalSpawnQuickLayout, object: nil)
+                }
+                .keyboardShortcut("n", modifiers: [.command, .option])
+                Menu("New Layout") {
+                    ForEach(layouts.all) { layout in
+                        Button("\(layout.name)  ·  \(layout.shapeLabel)") {
+                            NotificationCenter.default.post(name: .terminalSpawnLayout,
+                                                            object: layout.id.uuidString)
+                        }
+                    }
+                    Divider()
+                    Button("Layout Picker…") {
+                        NotificationCenter.default.post(name: .terminalOpenLayoutPicker, object: nil)
+                    }
+                }
+                Button("Agent Dashboard…") {
+                    NotificationCenter.default.post(name: .terminalOpenAgentDashboard, object: nil)
+                }
+                .keyboardShortcut("a", modifiers: [.command, .option])
+                Button("Zoom / Restore Pane") {
+                    NotificationCenter.default.post(name: .terminalZoomPane, object: nil)
+                }
+                .keyboardShortcut(.return, modifiers: [.command, .shift])
+                Button("Send Text to Pane…") {
+                    NotificationCenter.default.post(name: .terminalSendToPane, object: nil)
+                }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
                 Divider()
                 Button("Duplicate Tab") {
                     NotificationCenter.default.post(name: .terminalDuplicateTab, object: nil)
@@ -281,6 +312,14 @@ extension Notification.Name {
     static let terminalScrollToTop = Notification.Name("mees.terminal.scrollToTop")
     static let terminalScrollToBottom = Notification.Name("mees.terminal.scrollToBottom")
     static let terminalCopyLastOutput = Notification.Name("mees.terminal.copyLastOutput")
+    // Agents & layouts (v0.15)
+    static let terminalSpawnQuickLayout = Notification.Name("mees.terminal.spawnQuickLayout")
+    static let terminalSpawnLayout = Notification.Name("mees.terminal.spawnLayout")
+    static let terminalOpenLayoutPicker = Notification.Name("mees.terminal.openLayoutPicker")
+    static let terminalOpenAgentDashboard = Notification.Name("mees.terminal.openAgentDashboard")
+    static let terminalZoomPane = Notification.Name("mees.terminal.zoomPane")
+    static let terminalSendToPane = Notification.Name("mees.terminal.sendToPane")
+    static let terminalToggleCommandBlocks = Notification.Name("mees.terminal.toggleCommandBlocks")
     /// Posted when LaunchServices hands us one or more `termy://` URLs (or
     /// when an in-app menu like the command palette wants to simulate one
     /// for testing). Key window drains `TerminalAppDelegate.pendingTermyURLs`.

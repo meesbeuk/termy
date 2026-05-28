@@ -567,6 +567,21 @@ final class TerminalSessions: ObservableObject {
         notifyActivePaneChanged()
     }
 
+    /// Toggle "zoom" on the active pane: show it full-tab while the siblings
+    /// stay mounted (parked off-screen, shells alive). A no-op for a lone pane.
+    /// Re-zooms when a different pane is active than the currently-zoomed one.
+    func toggleZoomActivePane() {
+        guard let tab = currentTab, tab.panes.count > 1, let active = tab.activePaneId else {
+            currentTab?.zoomedPaneId = nil
+            return
+        }
+        tab.zoomedPaneId = (tab.zoomedPaneId == active) ? nil : active
+        notifyActivePaneChanged()
+    }
+
+    /// Whether the current tab has a zoomed pane (drives the title-strip toggle).
+    var currentTabIsZoomed: Bool { currentTab?.zoomedPaneId != nil }
+
     // MARK: - Splits
 
     func splitHorizontal() {
