@@ -80,6 +80,26 @@ struct PaneMathTests {
         #expect(abs(out.reduce(0, +) - 1.0) < 1e-9, "clamped move still conserves total")
     }
 
+    // MARK: size-aware minimum (divider can't shrink a pane below its px floor)
+
+    @Test func minFractionTracksPixelFloor() {
+        // 200px floor on a 1000px axis -> 0.20.
+        #expect(abs(PaneMath.minFraction(minPixels: 200, total: 1000) - 0.20) < 1e-9)
+    }
+
+    @Test func minFractionCappedForSmallWindows() {
+        // 200px on a 300px axis would be 0.67 — capped to 0.45 so a 2-pane
+        // split stays satisfiable.
+        #expect(PaneMath.minFraction(minPixels: 200, total: 300) == 0.45)
+    }
+
+    @Test func resizeHonoursSizeAwareClamp() {
+        // With a 0.20 floor, dragging pane 0 down to 0.05 clamps it to 0.20.
+        let mf = PaneMath.minFraction(minPixels: 200, total: 1000)
+        let out = PaneMath.resized([0.5, 0.5], at: 0, deltaFraction: -0.45, minFraction: mf)!
+        #expect(out[0] >= mf - 1e-9, "pane can't be dragged below its pixel floor")
+    }
+
     @Test func resizeRejectsOutOfRangeIndex() {
         #expect(PaneMath.resized([0.5, 0.5], at: 1, deltaFraction: 0.1) == nil)
         #expect(PaneMath.resized([1.0], at: 0, deltaFraction: 0.1) == nil)

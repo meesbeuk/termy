@@ -7,6 +7,17 @@ enum PaneMath {
     static let minFraction: CGFloat = 0.10
     static let dividerWidth: CGFloat = 4
 
+    /// Minimum fraction a pane may occupy, derived from a hard pixel floor
+    /// (PaneCellView pins each pane to minWidth 200 / minHeight 100). Tying the
+    /// drag clamp to the same pixel floor stops a divider drag from shrinking a
+    /// pane below its SwiftUI minimum — which made the children's sizes exceed
+    /// the parent and clip / detach the divider from the edge. Capped at 0.45 so
+    /// a two-pane split is always satisfiable on a small window.
+    static func minFraction(minPixels: CGFloat, total: CGFloat) -> CGFloat {
+        guard total > 0 else { return minFraction }
+        return min(0.45, max(0.04, minPixels / total))
+    }
+
     /// Even split for `count` panes.
     static func equalFractions(count: Int) -> [CGFloat] {
         guard count > 0 else { return [] }

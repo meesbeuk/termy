@@ -52,7 +52,12 @@ struct PaneLayout: View {
             if idx > 0 {
                 ResizableDivider(
                     isHorizontal: isHorizontal,
-                    onDrag: { delta in resize(at: idx - 1, delta: delta, total: total) }
+                    onDrag: { delta in
+                        // Pixel floor matches PaneCellView's minWidth/minHeight so
+                        // the drag can't shrink a pane below it and overflow.
+                        resize(at: idx - 1, delta: delta, total: total,
+                               minPixels: isHorizontal ? 200 : 100)
+                    }
                 )
             }
             paneCell(pane, single: single)
@@ -88,13 +93,16 @@ struct PaneLayout: View {
     /// pixels) from pane `idx` to pane `idx+1`. Clamped so each pane
     /// can't go below 10% — small enough to fit a one-column terminal,
     /// large enough that the divider stays grabbable.
-    private func resize(at idx: Int, delta: CGFloat, total: CGFloat) {
+    private func resize(at idx: Int, delta: CGFloat, total: CGFloat, minPixels: CGFloat) {
         guard total > 0 else { return }
         // `delta` is an INCREMENTAL pixel delta (the divider converts SwiftUI's
         // cumulative drag translation to per-frame deltas before calling here).
-        // PaneMath clamps to the 10% floor and conserves the total.
+        // The min fraction is derived from the pane's pixel floor so the clamp
+        // matches PaneCellView's minWidth/minHeight. PaneMath conserves the total.
         let deltaFraction = delta / total
-        if let updated = PaneMath.resized(tab.paneFractions, at: idx, deltaFraction: deltaFraction) {
+        let minFraction = PaneMath.minFraction(minPixels: minPixels, total: total)
+        if let updated = PaneMath.resized(tab.paneFractions, at: idx,
+                                          deltaFraction: deltaFraction, minFraction: minFraction) {
             tab.paneFractions = updated
         }
     }
