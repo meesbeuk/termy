@@ -18,6 +18,12 @@ final class TerminalSession: ObservableObject, Identifiable {
     /// progress stripe at the top of the active pane.
     @Published var isActive: Bool = false
 
+    /// Coarse runtime state (working / idle / waiting-for-input) used by the
+    /// activity stripe and the agent mission-control dashboard. `isActive`
+    /// remains the raw "producing output" bit; `activity` adds the
+    /// idle-but-waiting-at-a-prompt distinction.
+    @Published var activity: PaneActivity = .idle
+
     /// The actual SwiftTerm view. Created lazily once the SwiftUI representable
     /// is mounted so we don't fork a shell we never display.
     var terminalView: LocalProcessTerminalView?

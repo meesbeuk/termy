@@ -265,6 +265,21 @@ private struct PaneCellView: View {
                         .allowsHitTesting(false)
                 }
             }
+            // Loud "waiting for input" flag: a pane sitting at a y/n / numbered
+            // prompt (claude asking permission, etc.) gets a pulsing accent
+            // ring + a pill so it's unmistakable across a wall of panes.
+            .overlay {
+                if pane.activity == .waiting {
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(DS.Colors.aiAccent.opacity(0.9), lineWidth: 2)
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: .top) {
+                if pane.activity == .waiting {
+                    WaitingBadge().allowsHitTesting(false).padding(.top, 4)
+                }
+            }
             .overlay(alignment: .topTrailing) {
                 if !single {
                     PaneCloseButton {
@@ -365,6 +380,28 @@ private struct ActivityStripe: View {
             if active { anchor = Date() }
         }
         .accessibilityHidden(true)
+    }
+}
+
+/// "Waiting for input" pill shown at the top of a pane whose program is
+/// blocked on a prompt. Gently pulses so it draws the eye without thrashing.
+private struct WaitingBadge: View {
+    @State private var pulse = false
+    var body: some View {
+        HStack(spacing: DS.Spacing.xs) {
+            Image(systemName: "keyboard.fill").font(.system(size: 9, weight: .bold))
+            Text("Waiting for input").font(DS.Typo.tiny.weight(.semibold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(DS.Colors.aiAccent))
+        .overlay(Capsule().strokeBorder(.white.opacity(0.25), lineWidth: 0.5))
+        .shadow(color: DS.Colors.aiAccent.opacity(0.5), radius: 5)
+        .opacity(pulse ? 1.0 : 0.72)
+        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)
+        .onAppear { pulse = true }
+        .accessibilityLabel("Pane is waiting for input")
     }
 }
 

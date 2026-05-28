@@ -1602,10 +1602,20 @@ struct TerminalSurface: NSViewRepresentable {
                 cwd: session.cwd
             )
         }
-        view.onActivityChanged = { [weak session] active in
+        view.onActivityChanged = { [weak session, weak view] active in
             DispatchQueue.main.async {
-                guard let session, session.isActive != active else { return }
-                session.isActive = active
+                guard let session else { return }
+                if session.isActive != active { session.isActive = active }
+                // Update the coarse activity state too. On the idle transition,
+                // classify the now-visible tail: a y/n / numbered prompt means
+                // the pane is WAITING on the user, otherwise it's just idle.
+                if active {
+                    if session.activity != .working { session.activity = .working }
+                } else {
+                    let recent = view?.recentVisibleText() ?? ""
+                    let next: PaneActivity = PaneActivityClassifier.isWaitingPrompt(recent) ? .waiting : .idle
+                    if session.activity != next { session.activity = next }
+                }
             }
         }
         view.onCommandSettled = { [weak session] preview, viaOSC133 in
