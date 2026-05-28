@@ -132,6 +132,9 @@ struct TermyApp: App {
                     NotificationCenter.default.post(name: .terminalSendToPane, object: nil)
                 }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
+                Button("Show Image…") {
+                    NotificationCenter.default.post(name: .terminalShowImage, object: nil)
+                }
                 Divider()
                 Button("Duplicate Tab") {
                     NotificationCenter.default.post(name: .terminalDuplicateTab, object: nil)
@@ -320,6 +323,7 @@ extension Notification.Name {
     static let terminalZoomPane = Notification.Name("mees.terminal.zoomPane")
     static let terminalSendToPane = Notification.Name("mees.terminal.sendToPane")
     static let terminalToggleCommandBlocks = Notification.Name("mees.terminal.toggleCommandBlocks")
+    static let terminalShowImage = Notification.Name("mees.terminal.showImage")
     /// Posted when LaunchServices hands us one or more `termy://` URLs (or
     /// when an in-app menu like the command palette wants to simulate one
     /// for testing). Key window drains `TerminalAppDelegate.pendingTermyURLs`.

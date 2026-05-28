@@ -606,6 +606,25 @@ final class TerminalSessions: ObservableObject {
         notifyActivePaneChanged()
     }
 
+    /// Render a local image inline in the active pane via SwiftTerm's image
+    /// API — the same rendering path the iTerm2/kitty graphics protocols use,
+    /// but injected directly (not through the shell's stdin). Returns false if
+    /// the file isn't a renderable image. `@discardableResult` so callers can
+    /// ignore the outcome.
+    @discardableResult
+    func showImage(at url: URL) -> Bool {
+        guard let view = currentSession?.terminalView else { return false }
+        guard let data = try? Data(contentsOf: url),
+              InlineImagePolicy.isRenderable(ext: url.pathExtension, byteCount: data.count),
+              NSImage(data: data) != nil
+        else { return false }
+        // Width fits the pane; aspect ratio preserved so tall images don't
+        // distort. Rendered into the terminal stream at the cursor.
+        view.createImage(source: view.getTerminal(), data: data,
+                         width: .percent(100), height: .auto, preserveAspectRatio: true)
+        return true
+    }
+
     /// Send a line of text (with the correct Enter) to a specific pane —
     /// the targeted complement to broadcast. Reuses the Vibecoder send path.
     func send(text: String, toPaneId paneId: UUID) {

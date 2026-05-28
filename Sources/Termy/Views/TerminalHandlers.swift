@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// Bundles all NotificationCenter / drop / lifecycle handlers for the
 /// main terminal view. Split across two sub-modifiers so each is small enough
@@ -106,6 +107,22 @@ private struct NotificationHandlersD: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: .terminalZoomPane)) { _ in
                 if isKeyWindow() { sessions.toggleZoomActivePane() }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .terminalShowImage)) { _ in
+                guard isKeyWindow() else { return }
+                Self.pickImage { url in sessions.showImage(at: url) }
+            }
+    }
+
+    /// Run an image open-panel and call back with the chosen file. Kept here
+    /// so the notification observer stays a one-liner.
+    private static func pickImage(_ completion: @escaping (URL) -> Void) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.image]
+        panel.prompt = "Show"
+        panel.message = "Choose an image to render inline in the active pane"
+        if panel.runModal() == .OK, let url = panel.url { completion(url) }
     }
 }
 
