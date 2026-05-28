@@ -53,6 +53,16 @@ final class TerminalSettings: ObservableObject {
         didSet { UserDefaults.standard.set(vibecoderMode, forKey: Self.vibecoderKey) }
     }
 
+    /// Secure Keyboard Entry — block other processes from reading keystrokes
+    /// typed into Termy (password / auth flows). Opt-in; default off. Writes to
+    /// the key SecureInput reads, and reconciles the live state on change.
+    @Published var secureKeyboardEntry: Bool {
+        didSet {
+            UserDefaults.standard.set(secureKeyboardEntry, forKey: SecureInput.defaultsKey)
+            SecureInput.refresh(appActive: NSApplication.shared.isActive)
+        }
+    }
+
     @Published var paddingPreset: PaddingPreset {
         didSet { UserDefaults.standard.set(paddingPreset.rawValue, forKey: Self.paddingKey) }
     }
@@ -336,6 +346,7 @@ final class TerminalSettings: ObservableObject {
         } else {
             self.vibecoderMode = UserDefaults.standard.bool(forKey: Self.vibecoderKey)
         }
+        self.secureKeyboardEntry = UserDefaults.standard.bool(forKey: SecureInput.defaultsKey)
         let padRaw = UserDefaults.standard.string(forKey: Self.paddingKey) ?? PaddingPreset.cozy.rawValue
         self.paddingPreset = PaddingPreset(rawValue: padRaw) ?? .cozy
         if UserDefaults.standard.object(forKey: Self.showStatusBarKey) == nil {

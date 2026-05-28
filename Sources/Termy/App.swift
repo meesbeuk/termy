@@ -257,6 +257,8 @@ struct TermyApp: App {
                 }
                 .keyboardShortcut("/", modifiers: [.command, .shift])
                 QuickTerminalToggleButton(settings: settings, profiles: profiles)
+                Divider()
+                Toggle("Secure Keyboard Entry", isOn: $settings.secureKeyboardEntry)
             }
             CommandGroup(after: .windowArrangement) {
                 Button("Toggle Always on Top") {
@@ -610,6 +612,17 @@ final class TerminalAppDelegate: NSObject, NSApplicationDelegate {
         // Belt-and-braces — some quit paths skip applicationShouldTerminate
         // (e.g. system shutdown / log out).
         Self.isTerminating = true
+        SecureInput.disable()
+    }
+
+    // Secure Keyboard Entry must follow app-active state: enable only while
+    // Termy is frontmost, release the moment it isn't, so it never blocks
+    // input elsewhere.
+    func applicationDidBecomeActive(_ notification: Notification) {
+        SecureInput.refresh(appActive: true)
+    }
+    func applicationWillResignActive(_ notification: Notification) {
+        SecureInput.refresh(appActive: false)
     }
 
     /// Right-click Termy in the Dock → this menu. macOS appends its own

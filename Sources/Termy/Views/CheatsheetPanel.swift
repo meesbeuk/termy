@@ -160,6 +160,7 @@ enum ShortcutCategory: String, CaseIterable, Identifiable {
             ("Close window",              "⌘⇧W"),
             ("Quake drop-down",           "⌃`"),
             ("Toggle always on top",      "Window menu"),
+            ("Secure keyboard entry",     "Termy menu"),
         ]
         }
     }
