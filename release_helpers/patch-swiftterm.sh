@@ -42,7 +42,9 @@ if grep -q "TERMY_PATCH_BEGIN line_spacing" "$MAC_FILE" 2>/dev/null && \
    grep -q "TERMY_PATCH public_ybase" "$BUFFER_FILE" 2>/dev/null && \
    grep -q "TERMY_PATCH sync_active_internal" "$TERMINAL_FILE" 2>/dev/null && \
    grep -q "TERMY_PATCH caret_sync_consistency" "$APPLE_FILE" 2>/dev/null && \
-   grep -q "TERMY_PATCH caret_single_owner" "$MAC_FILE" 2>/dev/null; then
+   grep -q "TERMY_PATCH caret_single_owner" "$MAC_FILE" 2>/dev/null && \
+   grep -q "TERMY_PATCH special_keys_kitty" "$MAC_FILE" 2>/dev/null && \
+   grep -q "TERMY_PATCH editing_keys" "$MAC_FILE" 2>/dev/null; then
     echo "patch-swiftterm: already applied"
     exit 0
 fi
@@ -398,6 +400,85 @@ new = """    open func showCursor(source: Terminal) {
     }"""
 if old not in text:
     sys.exit("showCursor/hideCursor anchor missing")
+open(path, "w").write(text.replace(old, new, 1))
+PY
+
+# --- map Backspace/Escape/ForwardDelete to kitty functional keys ---------
+# These fell through keyDown's kitty branch into doCommand, which calls
+# sendKittyFunctionalKey(.backspace/.escape) with NO modifiers — so Ctrl+
+# Backspace, Alt+Backspace, Shift+Escape, etc. emitted plain DEL/ESC instead
+# of their disambiguated CSI-u forms. Mapping the keyCodes here routes them
+# through keyDown's kitty path WITH the real modifiers. Unmodified keys still
+# encode to legacy bytes (DEL/ESC), so there's no regression.
+python3 - "$MAC_FILE" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+if "TERMY_PATCH special_keys_kitty" in text:
+    sys.exit(0)
+anchor = """        case kVK_Return:
+            return .enter
+        case kVK_ANSI_Keypad0:
+            return .keypad0"""
+patch = """        case kVK_Return:
+            return .enter
+        // TERMY_PATCH special_keys_kitty — route Backspace/Escape/ForwardDelete
+        // through the modifier-carrying kitty path (Ctrl+Backspace => ESC[127;5u,
+        // Shift+Escape => ESC[27;2u). Unmodified keys still encode to legacy bytes.
+        case kVK_Delete:
+            return .backspace
+        case kVK_Escape:
+            return .escape
+        case kVK_ForwardDelete:
+            return .delete
+        case kVK_ANSI_Keypad0:
+            return .keypad0"""
+if anchor not in text:
+    sys.exit("special_keys anchor missing")
+open(path, "w").write(text.replace(anchor, patch, 1))
+PY
+
+# --- handle the common Cocoa line-editing selectors in doCommand ----------
+# Cmd+Delete (deleteToBeginningOfLine), Fn+Delete/Ctrl+K (deleteToEndOfLine),
+# Option+Delete when optionAsMetaKey is off (deleteWordBackward), and forward/
+# word-forward deletes all hit doCommand's `default:` and were dropped with a
+# stray print(). Send the conventional readline control bytes that shells
+# expect, matching iTerm2. Lives in the shared switch so it covers kitty + non-
+# kitty modes.
+python3 - "$MAC_FILE" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+if "TERMY_PATCH editing_keys" in text:
+    sys.exit(0)
+old = """        case #selector(moveToRightEndOfLine(_:)):
+            send (EscapeSequences.emacsForward)
+        default:
+            print (\"Unhandle selector \\(selector)\")
+        }
+    }"""
+new = """        case #selector(moveToRightEndOfLine(_:)):
+            send (EscapeSequences.emacsForward)
+        // TERMY_PATCH editing_keys — Cocoa line-editing keys that were dropped.
+        case #selector(deleteToBeginningOfLine(_:)):
+            send ([0x15])                       // Ctrl+U  (Cmd+Delete)
+        case #selector(deleteToEndOfLine(_:)):
+            send ([0x0b])                       // Ctrl+K  (Fn+Delete / Ctrl+K)
+        case #selector(deleteWordBackward(_:)):
+            send ([0x17])                       // Ctrl+W  (Option+Delete)
+        case #selector(deleteWordForward(_:)):
+            send ([0x1b, 0x64])                 // ESC d
+        case #selector(deleteForward(_:)):
+            send (terminal.applicationCursor ? EscapeSequences.cmdDelKey : [0x1b, 0x5b, 0x33, 0x7e])  // ESC[3~
+        default:
+            #if DEBUG
+            print (\"Unhandle selector \\(selector)\")
+            #endif
+            break
+        }
+    }"""
+if old not in text:
+    sys.exit("doCommand default anchor missing")
 open(path, "w").write(text.replace(old, new, 1))
 PY
 
