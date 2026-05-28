@@ -44,7 +44,8 @@ if grep -q "TERMY_PATCH_BEGIN line_spacing" "$MAC_FILE" 2>/dev/null && \
    grep -q "TERMY_PATCH caret_sync_consistency" "$APPLE_FILE" 2>/dev/null && \
    grep -q "TERMY_PATCH caret_single_owner" "$MAC_FILE" 2>/dev/null && \
    grep -q "TERMY_PATCH special_keys_kitty" "$MAC_FILE" 2>/dev/null && \
-   grep -q "TERMY_PATCH editing_keys" "$MAC_FILE" 2>/dev/null; then
+   grep -q "TERMY_PATCH editing_keys" "$MAC_FILE" 2>/dev/null && \
+   grep -q "TERMY_PATCH inverse_bg_opaque" "$APPLE_FILE" 2>/dev/null; then
     echo "patch-swiftterm: already applied"
     exit 0
 fi
@@ -479,6 +480,44 @@ new = """        case #selector(moveToRightEndOfLine(_:)):
     }"""
 if old not in text:
     sys.exit("doCommand default anchor missing")
+open(path, "w").write(text.replace(old, new, 1))
+PY
+
+# --- reverse-video on the default bg must paint a VISIBLE block -----------
+# A cell with the default background + the `inverse` style resolves its fill to
+# `.defaultInvertedColor` -> nativeBackgroundColor.inverseColor(). Termy uses a
+# transparent glass backdrop, so nativeBackgroundColor is NSColor.clear (alpha
+# 0) and inverseColor() preserves alpha — the inverted background is STILL fully
+# transparent, so reverse-video cells render as nothing. That's why Claude
+# Code's cursor is invisible: it hides the real caret (ESC[?25l) and draws its
+# cursor as an ESC[7m (reverse) cell. Fall back to the opaque foreground colour
+# (the correct fill for a reversed default cell) whenever the inverted
+# background would be transparent. Opaque hosts are unaffected (their inverted
+# background already has alpha 1).
+python3 - "$APPLE_FILE" <<'PY'
+import sys
+path = sys.argv[1]
+text = open(path).read()
+if "TERMY_PATCH inverse_bg_opaque" in text:
+    sys.exit(0)
+old = """        case .defaultInvertedColor:
+            if isFg {
+                return nativeForegroundColor.inverseColor()
+            } else {
+                return nativeBackgroundColor.inverseColor()
+            }"""
+new = """        case .defaultInvertedColor:
+            if isFg {
+                return nativeForegroundColor.inverseColor()
+            } else {
+                // TERMY_PATCH inverse_bg_opaque
+                if nativeBackgroundColor.alphaComponent < 0.05 {
+                    return nativeForegroundColor
+                }
+                return nativeBackgroundColor.inverseColor()
+            }"""
+if old not in text:
+    sys.exit("defaultInvertedColor anchor missing")
 open(path, "w").write(text.replace(old, new, 1))
 PY
 
