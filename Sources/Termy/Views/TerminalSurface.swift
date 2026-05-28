@@ -1615,6 +1615,12 @@ struct TerminalSurface: NSViewRepresentable {
                     let recent = view?.recentVisibleText() ?? ""
                     let next: PaneActivity = PaneActivityClassifier.isWaitingPrompt(recent) ? .waiting : .idle
                     if session.activity != next { session.activity = next }
+                    // Capture the last visible line for the agent dashboard preview.
+                    let line = recent.split(whereSeparator: { $0 == "\n" || $0 == "\r" })
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                        .last(where: { !$0.isEmpty }) ?? ""
+                    let trimmed = String(line.prefix(120))
+                    if session.lastLine != trimmed { session.lastLine = trimmed }
                 }
             }
         }

@@ -417,6 +417,16 @@ struct MainTerminalView: View {
             .transition(.opacity)
             .zIndex(18)
         }
+        if showingAgentDashboard {
+            ZStack {
+                Color.black.opacity(0.12).ignoresSafeArea()
+                    .onTapGesture { showingAgentDashboard = false }
+                AgentDashboardView(sessions: sessions, onDismiss: { showingAgentDashboard = false })
+                    .padding(DS.Spacing.l)
+            }
+            .transition(.opacity)
+            .zIndex(19)
+        }
     }
 
     /// Promote the active pane's NSView to first responder. Tab switches

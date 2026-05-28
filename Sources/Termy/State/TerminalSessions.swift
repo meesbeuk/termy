@@ -24,6 +24,11 @@ final class TerminalSession: ObservableObject, Identifiable {
     /// idle-but-waiting-at-a-prompt distinction.
     @Published var activity: PaneActivity = .idle
 
+    /// Last non-empty visible line, captured on the idle transition. Drives the
+    /// agent dashboard's per-pane "what's on screen" preview (the prompt it's
+    /// waiting on, or the last output line).
+    @Published var lastLine: String = ""
+
     /// The actual SwiftTerm view. Created lazily once the SwiftUI representable
     /// is mounted so we don't fork a shell we never display.
     var terminalView: LocalProcessTerminalView?
@@ -587,6 +592,30 @@ final class TerminalSessions: ObservableObject {
 
     /// Whether the current tab has a zoomed pane (drives the title-strip toggle).
     var currentTabIsZoomed: Bool { currentTab?.zoomedPaneId != nil }
+
+    /// Focus a specific pane in a specific tab — used by the agent dashboard
+    /// and targeted send-to-pane. Selects the tab, makes the pane active, and
+    /// clears any zoom so the pane is visible in its layout.
+    func focusPane(tabId: UUID, paneId: UUID) {
+        guard let tab = tabs.first(where: { $0.id == tabId }) else { return }
+        selectedTabId = tabId
+        if tab.panes.contains(where: { $0.id == paneId }) {
+            tab.activePaneId = paneId
+            tab.zoomedPaneId = nil
+        }
+        notifyActivePaneChanged()
+    }
+
+    /// Send a line of text (with the correct Enter) to a specific pane —
+    /// the targeted complement to broadcast. Reuses the Vibecoder send path.
+    func send(text: String, toPaneId paneId: UUID) {
+        for tab in tabs {
+            if let pane = tab.panes.first(where: { $0.id == paneId }) {
+                pane.terminalView?.send(txt: text + "\r")
+                return
+            }
+        }
+    }
 
     // MARK: - Splits
 

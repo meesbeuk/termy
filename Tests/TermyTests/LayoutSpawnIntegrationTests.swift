@@ -77,4 +77,20 @@ struct LayoutSpawnIntegrationTests {
         sessions.toggleZoomActivePane()
         #expect(sessions.currentTab?.zoomedPaneId == nil)
     }
+
+    @Test func focusPaneSelectsTabAndClearsZoom() {
+        // Dashboard click target: focus a pane in a non-selected, zoomed tab.
+        let sessions = freshSessions()
+        let tabA = sessions.openTab()
+        let tabB = sessions.openTab()
+        sessions.selectTab(tabB.id)
+        tabA.split(orientation: .horizontal)        // tabA now has 2 panes
+        tabA.zoomedPaneId = tabA.panes[1].id        // pretend it's zoomed
+        let target = tabA.panes[0].id
+
+        sessions.focusPane(tabId: tabA.id, paneId: target)
+        #expect(sessions.selectedTabId == tabA.id)
+        #expect(tabA.activePaneId == target)
+        #expect(tabA.zoomedPaneId == nil)           // zoom cleared so pane is visible
+    }
 }
