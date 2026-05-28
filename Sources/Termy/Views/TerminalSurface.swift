@@ -399,9 +399,14 @@ final class TermyTerminalView: LocalProcessTerminalView {
 
         menu.addItem(NSMenuItem.separator())
 
-        // Pane focus + close were keyboard-/menu-bar-only; surface them on the
-        // pane right-click too so they're reachable where the user is already
-        // pointing. Keybinds shown inline per the discoverability rule.
+        // Pane focus + zoom + send + close were keyboard-/menu-bar-only;
+        // surface them on the pane right-click too so they're reachable where
+        // the user is already pointing. Keybinds shown inline per the
+        // discoverability rule.
+        menu.addItem(notificationItem(title: "Zoom / Restore Pane (⌘⇧↩)",
+                                      notification: .terminalZoomPane))
+        menu.addItem(notificationItem(title: "Send Text to Pane… (⌘⇧S)",
+                                      notification: .terminalSendToPane))
         menu.addItem(notificationItem(title: "Focus Next Pane (⌘⌥])",
                                       notification: .terminalFocusNextPane))
         menu.addItem(notificationItem(title: "Close Pane (⌘W)",
