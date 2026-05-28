@@ -588,6 +588,11 @@ final class TerminalSessions: ObservableObject {
             if tab.paneFractions.count == tab.panes.count, !tab.paneFractions.isEmpty {
                 dict["paneFractions"] = tab.paneFractions.map { Double($0) }
             }
+            if let cols = tab.gridColumns, cols > 1 {
+                dict["gridColumns"] = cols
+                if !tab.gridColFractions.isEmpty { dict["gridColFractions"] = tab.gridColFractions.map { Double($0) } }
+                if !tab.gridRowFractions.isEmpty { dict["gridRowFractions"] = tab.gridRowFractions.map { Double($0) } }
+            }
             return dict
         }
         UserDefaults.standard.set(payload, forKey: restoreKey)
@@ -664,6 +669,11 @@ final class TerminalSessions: ObservableObject {
             if let fractions = entry["paneFractions"] as? [Double],
                fractions.count == tab.panes.count {
                 tab.paneFractions = fractions.map { CGFloat($0) }
+            }
+            if let cols = entry["gridColumns"] as? Int, cols > 1, tab.panes.count > 1 {
+                tab.gridColumns = cols
+                if let cf = entry["gridColFractions"] as? [Double] { tab.gridColFractions = cf.map { CGFloat($0) } }
+                if let rf = entry["gridRowFractions"] as? [Double] { tab.gridRowFractions = rf.map { CGFloat($0) } }
             }
             restored.append(tab)
         }

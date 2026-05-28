@@ -26,18 +26,97 @@ struct PaneLayout: View {
         // ForEach's `id: \.element.id` the sole identity source, so
         // both tab switches and splits diff correctly per pane.
         GeometryReader { geo in
-            let isHorizontal = tab.orientation == .horizontal
-            let total = isHorizontal ? geo.size.width : geo.size.height
-            let fractions = normalisedFractions(panes: tab.panes.count)
-            let sizes = absoluteSizes(fractions: fractions, total: total)
-            Group {
-                if isHorizontal {
-                    HStack(spacing: 0) { contents(sizes: sizes, isHorizontal: true, total: total) }
-                } else {
-                    VStack(spacing: 0) { contents(sizes: sizes, isHorizontal: false, total: total) }
+            if let cols = tab.gridColumns, cols > 1, tab.panes.count > 1 {
+                gridContents(columns: cols, size: geo.size)
+                    .frame(width: geo.size.width, height: geo.size.height)
+            } else {
+                let isHorizontal = tab.orientation == .horizontal
+                let total = isHorizontal ? geo.size.width : geo.size.height
+                let fractions = normalisedFractions(panes: tab.panes.count)
+                let sizes = absoluteSizes(fractions: fractions, total: total)
+                Group {
+                    if isHorizontal {
+                        HStack(spacing: 0) { contents(sizes: sizes, isHorizontal: true, total: total) }
+                    } else {
+                        VStack(spacing: 0) { contents(sizes: sizes, isHorizontal: false, total: total) }
+                    }
                 }
+                .frame(width: geo.size.width, height: geo.size.height)
             }
-            .frame(width: geo.size.width, height: geo.size.height)
+        }
+    }
+
+    // MARK: - Grid layout (Quad Claude & named layout presets)
+
+    /// Absolute-positioned grid. Every pane is a leaf of ONE id-keyed ForEach
+    /// and merely changes its frame/offset on reflow, so a grid resize or a
+    /// pane close never re-parents a SwiftTerm view (which would restart its
+    /// shell and wipe scrollback). Draggable dividers sit on top as an
+    /// overlay; they adjust the shared row/column fractions.
+    @ViewBuilder
+    private func gridContents(columns: Int, size: CGSize) -> some View {
+        let count = tab.panes.count
+        let rows = PaneMath.gridRows(count: count, columns: columns)
+        let colFractions = normalisedGrid(stored: tab.gridColFractions, count: columns) {
+            tab.gridColFractions = $0
+        }
+        let rowFractions = normalisedGrid(stored: tab.gridRowFractions, count: rows) {
+            tab.gridRowFractions = $0
+        }
+        let rects = PaneMath.gridCellRects(count: count, columns: columns,
+                                           colFractions: colFractions, rowFractions: rowFractions,
+                                           total: size)
+        ZStack(alignment: .topLeading) {
+            ForEach(Array(tab.panes.enumerated()), id: \.element.id) { idx, pane in
+                let rect = idx < rects.count ? rects[idx] : .zero
+                paneCell(pane, single: false)
+                    .frame(width: rect.width, height: rect.height)
+                    .offset(x: rect.minX, y: rect.minY)
+            }
+            // Vertical dividers (between columns) — full height, adjust gridColFractions.
+            ForEach(Array(PaneMath.gridColumnDividerXs(columns: columns, colFractions: colFractions,
+                                                       totalWidth: size.width).enumerated()), id: \.offset) { b, x in
+                ResizableDivider(isHorizontal: true, onDrag: { delta in
+                    resizeGrid(\TerminalTab.gridColFractions, count: columns,
+                               at: b, delta: delta, total: size.width, minPixels: 200)
+                })
+                .frame(width: PaneMath.dividerWidth, height: size.height)
+                .offset(x: x, y: 0)
+            }
+            // Horizontal dividers (between rows) — full width, adjust gridRowFractions.
+            ForEach(Array(PaneMath.gridRowDividerYs(rows: rows, rowFractions: rowFractions,
+                                                    totalHeight: size.height).enumerated()), id: \.offset) { b, y in
+                ResizableDivider(isHorizontal: false, onDrag: { delta in
+                    resizeGrid(\TerminalTab.gridRowFractions, count: rows,
+                               at: b, delta: delta, total: size.height, minPixels: 100)
+                })
+                .frame(width: size.width, height: PaneMath.dividerWidth)
+                .offset(x: 0, y: y)
+            }
+        }
+    }
+
+    /// Read a grid fraction array, repairing length to `count` (panes added /
+    /// removed, or a restore from a save with a different shape). Writes the
+    /// repaired array back so subsequent renders are stable.
+    private func normalisedGrid(stored: [CGFloat], count: Int,
+                                assign: ([CGFloat]) -> Void) -> [CGFloat] {
+        if stored.count != count || stored.isEmpty {
+            let equal = PaneMath.equalFractions(count: count)
+            assign(equal)
+            return equal
+        }
+        return PaneMath.normalised(stored, count: count)
+    }
+
+    private func resizeGrid(_ keyPath: ReferenceWritableKeyPath<TerminalTab, [CGFloat]>,
+                            count: Int, at idx: Int, delta: CGFloat, total: CGFloat, minPixels: CGFloat) {
+        guard total > 0 else { return }
+        let fractions = PaneMath.normalised(tab[keyPath: keyPath], count: count)
+        let minFraction = PaneMath.minFraction(minPixels: minPixels, total: total)
+        if let updated = PaneMath.resized(fractions, at: idx, deltaFraction: delta / total,
+                                          minFraction: minFraction) {
+            tab[keyPath: keyPath] = updated
         }
     }
 

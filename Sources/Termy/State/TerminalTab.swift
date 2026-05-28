@@ -39,6 +39,16 @@ final class TerminalTab: ObservableObject, Identifiable {
     /// re-normalised on split/close.
     @Published var paneFractions: [CGFloat] = []
 
+    /// When non-nil, the panes are laid out as a row-major GRID of this many
+    /// columns (e.g. 2 for the "Quad Claude" 2×2) instead of the default flat
+    /// single-orientation stack. `nil` is the original behaviour, so existing
+    /// tabs/splits render exactly as before — grid mode is purely additive.
+    /// Grid sizing uses `gridColFractions` (per column) and `gridRowFractions`
+    /// (per row) rather than `paneFractions`.
+    @Published var gridColumns: Int?
+    @Published var gridColFractions: [CGFloat] = []
+    @Published var gridRowFractions: [CGFloat] = []
+
     init(initialCwd: String = NSHomeDirectory(), profile: Profile? = nil) {
         let first = TerminalSession(initialCwd: initialCwd, profile: profile)
         self.panes = [first]
@@ -113,6 +123,11 @@ final class TerminalTab: ObservableObject, Identifiable {
         if focusIdx < paneFractions.count {
             paneFractions[focusIdx] += freed
         }
+        // A grid that collapses to a single pane becomes an ordinary
+        // single-pane tab — drop grid mode so subsequent splits use the
+        // normal H/V path and no stale grid chrome lingers. (For >1 pane the
+        // grid renderer re-normalises its row/col fractions to the new count.)
+        if panes.count == 1 { gridColumns = nil; gridColFractions = []; gridRowFractions = [] }
         // Only move focus if the removed pane had it (or focus is now stale).
         if removedWasActive || !panes.contains(where: { $0.id == activePaneId }) {
             activePaneId = panes[focusIdx].id

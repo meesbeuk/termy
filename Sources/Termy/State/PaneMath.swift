@@ -76,4 +76,87 @@ enum PaneMath {
         out[idx + 1] -= clamped
         return out
     }
+
+    // MARK: - Grid layout (Quad Claude & named layout presets)
+    //
+    // The default pane model is a flat array with a single orientation per
+    // tab. A grid layout ("Quad Claude" = 2×2) lays the same flat `panes`
+    // array out row-major into `columns` columns. All geometry is computed
+    // here as pure functions of (count, columns, fractions, size) so the
+    // renderer can position each pane by an absolute rect — keeping every
+    // pane a stable leaf in ONE id-keyed ForEach, so a grid reflow never
+    // re-parents (and thus never remounts / restarts) a pane's shell.
+
+    /// Rows needed to lay `count` panes into `columns` columns, row-major.
+    static func gridRows(count: Int, columns: Int) -> Int {
+        guard columns > 0, count > 0 else { return 0 }
+        return (count + columns - 1) / columns
+    }
+
+    /// Number of panes in `row` — the last row may be partial.
+    static func gridCellsInRow(count: Int, columns: Int, row: Int) -> Int {
+        let rows = gridRows(count: count, columns: columns)
+        guard columns > 0, row >= 0, row < rows else { return 0 }
+        if row < rows - 1 { return columns }
+        let last = count - (rows - 1) * columns
+        return last == 0 ? columns : last
+    }
+
+    /// Column fractions to use for a row: full rows use all columns; a
+    /// partial last row uses the leading columns renormalised to fill width
+    /// (so a 5-into-2 grid's lone last cell still spans the row).
+    static func gridRowColumnFractions(_ colFractions: [CGFloat], cellsInRow: Int) -> [CGFloat] {
+        guard cellsInRow > 0 else { return [] }
+        if cellsInRow >= colFractions.count { return normalised(colFractions, count: colFractions.count) }
+        return normalised(Array(colFractions.prefix(cellsInRow)), count: cellsInRow)
+    }
+
+    /// One rect per pane (index-aligned with the pane array) for a row-major
+    /// grid sized by per-column / per-row fractions with `dividerWidth` gaps.
+    /// Cells + dividers fill `total` exactly (the trailing cell/row absorbs
+    /// the rounding remainder, as in `absoluteSizes`).
+    static func gridCellRects(count: Int, columns: Int,
+                              colFractions: [CGFloat], rowFractions: [CGFloat],
+                              total: CGSize) -> [CGRect] {
+        guard count > 0, columns > 0 else { return [] }
+        let rows = gridRows(count: count, columns: columns)
+        let cols = normalised(colFractions, count: columns)
+        let rws = normalised(rowFractions, count: rows)
+        let rowHeights = absoluteSizes(fractions: rws, total: total.height)
+        var rects: [CGRect] = []
+        rects.reserveCapacity(count)
+        var y: CGFloat = 0
+        for r in 0..<rows {
+            let cells = gridCellsInRow(count: count, columns: columns, row: r)
+            let rowCols = gridRowColumnFractions(cols, cellsInRow: cells)
+            let colWidths = absoluteSizes(fractions: rowCols, total: total.width)
+            var x: CGFloat = 0
+            for c in 0..<cells {
+                rects.append(CGRect(x: x, y: y, width: colWidths[c], height: rowHeights[r]))
+                x += colWidths[c] + dividerWidth
+            }
+            y += rowHeights[r] + dividerWidth
+        }
+        return rects
+    }
+
+    /// X positions (left edge) of the `columns - 1` vertical dividers.
+    static func gridColumnDividerXs(columns: Int, colFractions: [CGFloat], totalWidth: CGFloat) -> [CGFloat] {
+        guard columns > 1 else { return [] }
+        let widths = absoluteSizes(fractions: normalised(colFractions, count: columns), total: totalWidth)
+        var xs: [CGFloat] = []
+        var x: CGFloat = 0
+        for b in 0..<(columns - 1) { x += widths[b]; xs.append(x); x += dividerWidth }
+        return xs
+    }
+
+    /// Y positions (top edge) of the `rows - 1` horizontal dividers.
+    static func gridRowDividerYs(rows: Int, rowFractions: [CGFloat], totalHeight: CGFloat) -> [CGFloat] {
+        guard rows > 1 else { return [] }
+        let heights = absoluteSizes(fractions: normalised(rowFractions, count: rows), total: totalHeight)
+        var ys: [CGFloat] = []
+        var y: CGFloat = 0
+        for b in 0..<(rows - 1) { y += heights[b]; ys.append(y); y += dividerWidth }
+        return ys
+    }
 }
