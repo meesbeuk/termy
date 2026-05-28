@@ -21,5 +21,14 @@ let package = Package(
             path: "Sources/Termy",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        .testTarget(
+            name: "TermyTests",
+            dependencies: [
+                "Termy",
+                .product(name: "SwiftTerm", package: "SwiftTerm"),
+            ],
+            path: "Tests/TermyTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
     ]
 )
